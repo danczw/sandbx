@@ -57,7 +57,9 @@ PREFIX = "sandbx-"
 
 # Check 4's input: crates no parent may reach except as a dev-dependency. A list because
 # nothing in a manifest marks a crate as a fixture, and cargo-deny has no key for it.
+# Every package named `*-fixture` must appear in it, so the list cannot fall behind.
 DEV_ONLY = ("sandbx-helper-fixture", "sandbx-pty-fixture", "sandbx-turn-fixture")
+FIXTURE_SUFFIX = "-fixture"
 
 
 def read_graph(
@@ -261,6 +263,14 @@ def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
                 " edge into it.",
                 "cargo-deny's wrappers read every kind, so it passes this edge.",
             )
+    # The list's own omission hole, closed by name as check 1 closes a typo: a fixture
+    # left off it is never read, and an emptied list fails here rather than passing.
+    for crate in sorted(packages):
+        if crate.endswith(FIXTURE_SUFFIX) and crate not in dev_only:
+            error(
+                f"'{crate}' is named as a fixture but DEV_ONLY does not list it.",
+                "Check 4 then never reads its edges, so a production edge passes.",
+            )
 
     # A comparison of nothing is not a pass — `guide-ci.md`'s *A glob that matches
     # nothing must fail*, which asks it of any check that iterates.
@@ -287,6 +297,16 @@ def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
 FIXTURE_CRATES = ("a", "b", "c")
 
 
+def write_member(root: pathlib.Path, directory: str, package: str) -> None:
+    """An empty library crate at `root/directory`, for every scratch workspace below."""
+    (root / directory / "src").mkdir(parents=True)
+    (root / directory / "src" / "lib.rs").write_text("")
+    (root / directory / "Cargo.toml").write_text(
+        f'[package]\nname = "{package}"\nversion = "0.0.0"\n'
+        'edition = "2024"\npublish = false\n'
+    )
+
+
 def write_fixture(root: pathlib.Path, deny: str) -> None:
     """`b` depends on `a`; `c` dev-depends on `a`, so the dev-edge arm is covered."""
     root.mkdir(parents=True)
@@ -294,17 +314,12 @@ def write_fixture(root: pathlib.Path, deny: str) -> None:
         '[workspace]\nresolver = "3"\nmembers = ["a", "b", "c"]\n'
     )
     for crate in FIXTURE_CRATES:
-        (root / crate / "src").mkdir(parents=True)
-        (root / crate / "src" / "lib.rs").write_text("")
-        (root / crate / "Cargo.toml").write_text(
-            f'[package]\nname = "sandbx-{crate}"\nversion = "0.0.0"\n'
-            'edition = "2024"\npublish = false\n'
-        )
+        write_member(root, crate, f"sandbx-{crate}")
     with (root / "b" / "Cargo.toml").open("a") as handle:
         handle.write('\n[dependencies]\nsandbx-a = { path = "../a" }\n')
     with (root / "c" / "Cargo.toml").open("a") as handle:
         handle.write('\n[dev-dependencies]\nsandbx-a = { path = "../a" }\n')
-    (root / "deny.toml").write_text(deny)
+    (root / "deny.toml").write_text(deny.lstrip("\n"))
 
 
 # name, expected ok/fail, a string the output must contain, the deny.toml body.
@@ -513,18 +528,13 @@ def write_off_prefix_fixture(root: pathlib.Path, deny: str) -> None:
     )
     for directory, package in (("a", "sandbx-a"), ("b", "sandbx-b"),
                                ("helper", "sbx-helper")):
-        (root / directory / "src").mkdir(parents=True)
-        (root / directory / "src" / "lib.rs").write_text("")
-        (root / directory / "Cargo.toml").write_text(
-            f'[package]\nname = "{package}"\nversion = "0.0.0"\n'
-            'edition = "2024"\npublish = false\n'
-        )
+        write_member(root, directory, package)
     with (root / "b" / "Cargo.toml").open("a") as handle:
         handle.write(
             '\n[dependencies]\nsandbx-a = { path = "../a" }\n'
             'sbx-helper = { path = "../helper" }\n'
         )
-    (root / "deny.toml").write_text(deny)
+    (root / "deny.toml").write_text(deny.lstrip("\n"))
 
 
 OFF_PREFIX_CASES: list[tuple[str, bool, str, str]] = [
@@ -550,45 +560,53 @@ wrappers = ["sandbx-nobody-at-all"]
 ]
 
 
-def write_dev_only_fixture(root: pathlib.Path, table: str) -> None:
-    """`sandbx-p` depends on `sandbx-f` under `table`, and `deny.toml` is correct for it.
+def write_dev_only_fixture(root: pathlib.Path, tables: tuple[str, str]) -> None:
+    """`sandbx-p` and `sandbx-q` depend on `sandbx-f-fixture`, under `tables` in turn.
 
-    So the wrappers checks all pass, and check 4 is the only one with anything to say.
+    `deny.toml` is correct for both, so the wrappers checks pass and check 4 is the only
+    one with anything to say.
     """
     root.mkdir(parents=True)
     (root / "Cargo.toml").write_text(
-        '[workspace]\nresolver = "3"\nmembers = ["p", "f"]\n'
+        '[workspace]\nresolver = "3"\nmembers = ["p", "q", "f"]\n'
     )
-    for crate in ("p", "f"):
-        (root / crate / "src").mkdir(parents=True)
-        (root / crate / "src" / "lib.rs").write_text("")
-        (root / crate / "Cargo.toml").write_text(
-            f'[package]\nname = "sandbx-{crate}"\nversion = "0.0.0"\n'
-            'edition = "2024"\npublish = false\n'
-        )
-    with (root / "p" / "Cargo.toml").open("a") as handle:
-        handle.write(f'\n[{table}]\nsandbx-f = {{ path = "../f" }}\n')
+    for directory, package in (("p", "sandbx-p"), ("q", "sandbx-q"),
+                               ("f", "sandbx-f-fixture")):
+        write_member(root, directory, package)
+    for parent, table in zip(("p", "q"), tables):
+        with (root / parent / "Cargo.toml").open("a") as handle:
+            handle.write(f'\n[{table}]\nsandbx-f-fixture = {{ path = "../f" }}\n')
     (root / "deny.toml").write_text(
-        '[[bans.deny]]\nname = "sandbx-f"\nwrappers = ["sandbx-p"]\n'
+        '[[bans.deny]]\nname = "sandbx-f-fixture"\n'
+        'wrappers = ["sandbx-p", "sandbx-q"]\n'
     )
 
 
-# name, expected ok/fail, a string the output must contain, the manifest table holding
-# the edge. Each arm is its own case: a check that matched `None` but not `"build"`
-# would pass the normal case while letting a build edge through.
-DEV_ONLY_CASES: list[tuple[str, bool, str, str]] = [
-    ("dev_edge", True, "", "dev-dependencies"),
-    ("normal_edge", False, "has a normal edge", "dependencies"),
-    ("build_edge", False, "has a build edge", "build-dependencies"),
+DEV = "dev-dependencies"
+
+# name, expected ok/fail, a string the output must contain, the manifest table each
+# parent's edge sits in. Each arm is its own case: a check that matched `None` but not
+# `"build"` would pass the normal case while letting a build edge through.
+DEV_ONLY_CASES: list[tuple[str, bool, str, tuple[str, str]]] = [
+    ("dev_edge", True, "", (DEV, DEV)),
+    ("normal_edge", False, "sandbx-p has a normal edge", ("dependencies", DEV)),
+    ("build_edge", False, "sandbx-p has a build edge", ("build-dependencies", DEV)),
     # `kind` is null here as for a plain normal edge, with `target` set beside it, so a
     # check that skipped targeted edges would ship this one.
-    ("target_normal_edge", False, "has a normal edge",
-     "target.'cfg(unix)'.dependencies"),
+    ("target_normal_edge", False, "sandbx-p has a normal edge",
+     ("target.'cfg(unix)'.dependencies", DEV)),
+    # `sandbx-q` sorts second, so a check that stopped at the first offending parent
+    # would report `sandbx-p` and pass `sandbx-q` by.
+    ("second_shipped_parent", False, "sandbx-q has a build edge",
+     ("dependencies", "build-dependencies")),
 ]
 
-# A dev edge, so only the name guard can fail it.
-DEV_ONLY_TYPO_CASES: list[tuple[str, bool, str, str]] = [
-    ("dev_only_names_nothing", False, "is not a workspace package", "dev-dependencies"),
+# A correct workspace under a wrong list, so the list's own guards alone can fail it.
+DEV_ONLY_TYPO_CASES: list[tuple[str, bool, str, tuple[str, str]]] = [
+    ("dev_only_names_nothing", False, "is not a workspace package", (DEV, DEV)),
+]
+DEV_ONLY_UNLISTED_CASES: list[tuple[str, bool, str, tuple[str, str]]] = [
+    ("fixture_not_in_dev_only", False, "DEV_ONLY does not list it", (DEV, DEV)),
 ]
 
 
@@ -596,20 +614,22 @@ def self_test() -> int:
     root = pathlib.Path(tempfile.mkdtemp())
     failures = 0
     total = 0
-    # The first two families pass no dev-only list, since their fixtures have no such
-    # crate and the name guard would otherwise fail every case on the real one.
+    # The first two families pass no dev-only list: they have no `*-fixture` crate, and
+    # the name guard would fail every case on the real list.
     families = (
         (write_fixture, CASES, ()),
         (write_off_prefix_fixture, OFF_PREFIX_CASES, ()),
-        (write_dev_only_fixture, DEV_ONLY_CASES, ("sandbx-f",)),
-        (write_dev_only_fixture, DEV_ONLY_TYPO_CASES, ("sandbx-f-nope",)),
+        (write_dev_only_fixture, DEV_ONLY_CASES, ("sandbx-f-fixture",)),
+        (write_dev_only_fixture, DEV_ONLY_TYPO_CASES,
+         ("sandbx-f-fixture", "sandbx-nope-fixture")),
+        (write_dev_only_fixture, DEV_ONLY_UNLISTED_CASES, ()),
     )
     try:
         for build, cases, dev_only in families:
             for name, want_ok, want_text, body in cases:
                 total += 1
                 directory = root / name
-                build(directory, body.lstrip("\n"))
+                build(directory, body)
                 buffer = io.StringIO()
                 try:
                     compared = check(directory, buffer, dev_only)
@@ -659,7 +679,7 @@ def self_test() -> int:
     # Asserted, not just printed: a loop that silently iterated zero cases would
     # otherwise report success, which is the defect this whole script is about.
     expected = (len(CASES) + len(OFF_PREFIX_CASES) + len(DEV_ONLY_CASES)
-                + len(DEV_ONLY_TYPO_CASES) + 4)
+                + len(DEV_ONLY_TYPO_CASES) + len(DEV_ONLY_UNLISTED_CASES) + 4)
     if total != expected:
         print(f"::error::self-test ran {total} cases, expected {expected}")
         return 1
@@ -681,7 +701,9 @@ def main(argv: list[str]) -> int:
     compared = check(root, sys.stdout)
     if compared < 0:
         return 1
-    print(f"deny.toml: {compared} workspace-crate blocks match the graph")
+    # Every listed name is a package and every edge into it was read, or check 4 failed.
+    print(f"deny.toml: {compared} workspace-crate blocks match the graph;"
+          f" {len(DEV_ONLY)} dev-only crates have dev edges alone")
     return 0
 
 
