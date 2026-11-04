@@ -15,6 +15,10 @@ something depends on having no block at all ("omission reads as permission", whi
 no edge, which is `warning[unused-wrapper]` and passes while overstating who may depend
 on the crate.
 
+A third is one `cargo deny` cannot see at all: `wrappers` has no "only as a
+dev-dependency", so a listed parent turning its dev edge into a fixture crate into a
+normal one passes it (#465). `DEV_ONLY` names those crates and check 4 refuses the edge.
+
 Python rather than `/bin/sh` like its three neighbours, for one reason: this has to read
 TOML, and `/bin/sh` has no parser for it. An awk approximation was written first and a
 review found five ways to break it — a comment inside a multi-line array injecting a
@@ -51,14 +55,24 @@ import tomllib
 # fully checked.
 PREFIX = "sandbx-"
 
+# Check 4's input: crates no parent may reach except as a dev-dependency. A list because
+# nothing in a manifest marks a crate as a fixture, and cargo-deny has no key for it.
+DEV_ONLY = ("sandbx-helper-fixture", "sandbx-pty-fixture", "sandbx-turn-fixture")
 
-def read_graph(root: pathlib.Path) -> tuple[set[str], dict[str, set[str]]]:
-    """The workspace's package names, and `child -> {parents}` over internal edges.
+
+def read_graph(
+    root: pathlib.Path,
+) -> tuple[set[str], dict[str, set[str]], dict[str, set[tuple[str, str]]]]:
+    """The workspace's package names, `child -> {parents}` over internal edges, and
+    `child -> {(parent, kind)}` over the internal edges that are not dev.
 
     `--no-deps` needs no registry and no lockfile resolution, so the runner image's
     cargo is enough and no toolchain step precedes this in CI (`guide-ci.md`). Dev and
     build edges count: `wrappers` reads the whole graph, so a dev-dependency is a parent
     too — which `sandbx-core`'s own entry relies on.
+
+    Kind is read from `kind` alone. A `[target.'cfg(..)'.dependencies]` edge is `null`
+    there with `target` set, and it is as much a production edge as an unconditional one.
     """
     done = subprocess.run(
         ["cargo", "metadata", "--format-version", "1", "--no-deps"],
@@ -78,11 +92,15 @@ def read_graph(root: pathlib.Path) -> tuple[set[str], dict[str, set[str]]]:
         raise RuntimeError("cargo metadata reported no workspace packages")
 
     edges: dict[str, set[str]] = {}
+    shipped: dict[str, set[tuple[str, str]]] = {}
     for package in meta["packages"]:
         for dep in package.get("dependencies", []):
             if dep["name"] in packages:
                 edges.setdefault(dep["name"], set()).add(package["name"])
-    return packages, edges
+                kind = dep.get("kind") or "normal"
+                if kind != "dev":
+                    shipped.setdefault(dep["name"], set()).add((package["name"], kind))
+    return packages, edges, shipped
 
 
 def read_deny(path: pathlib.Path) -> dict:
@@ -99,14 +117,14 @@ def read_deny(path: pathlib.Path) -> dict:
 GRAPH_KEYS_THAT_HIDE_EDGES = ("exclude", "exclude-dev")
 
 
-def check(root: pathlib.Path, out) -> int:
+def check(root: pathlib.Path, out, dev_only: tuple[str, ...] = DEV_ONLY) -> int:
     """Checks the workspace at `root`. Writes `::error::` lines to `out`.
 
     Returns the number of blocks naming a workspace member that were compared, or -1
     on any failure, so the summary reports what was actually compared rather than how
     many blocks exist.
     """
-    packages, edges = read_graph(root)
+    packages, edges, shipped = read_graph(root)
     deny = read_deny(root / "deny.toml")
     blocks = deny.get("bans", {}).get("deny", [])
     failed = False
@@ -225,6 +243,23 @@ def check(root: pathlib.Path, out) -> int:
                 f"'{name}' lists the wrong parents in deny.toml.",
                 f"  graph:     {' '.join(sorted(want)) or '(none)'}",
                 f"  deny.toml: {' '.join(sorted(got)) or '(none)'}",
+            )
+
+    # 4. A dev-only crate is reached by dev edges alone. Check 3 cannot see this: the
+    #    parent set is the same whatever the kind. A name matching no package is refused
+    #    first, since it would leave its crate unchecked as silently as check 1's typo.
+    for crate in dev_only:
+        if crate not in packages:
+            error(
+                f"'{crate}' is listed as dev-only but is not a workspace package.",
+                "A name matching nothing leaves the crate it meant unchecked.",
+            )
+            continue
+        for parent, kind in sorted(shipped.get(crate, ())):
+            error(
+                f"'{crate}' may only be a dev-dependency, but {parent} has a {kind}"
+                " edge into it.",
+                "cargo-deny's wrappers read every kind, so it passes this edge.",
             )
 
     # A comparison of nothing is not a pass — `guide-ci.md`'s *A glob that matches
@@ -515,20 +550,69 @@ wrappers = ["sandbx-nobody-at-all"]
 ]
 
 
+def write_dev_only_fixture(root: pathlib.Path, table: str) -> None:
+    """`sandbx-p` depends on `sandbx-f` under `table`, and `deny.toml` is correct for it.
+
+    So the wrappers checks all pass, and check 4 is the only one with anything to say.
+    """
+    root.mkdir(parents=True)
+    (root / "Cargo.toml").write_text(
+        '[workspace]\nresolver = "3"\nmembers = ["p", "f"]\n'
+    )
+    for crate in ("p", "f"):
+        (root / crate / "src").mkdir(parents=True)
+        (root / crate / "src" / "lib.rs").write_text("")
+        (root / crate / "Cargo.toml").write_text(
+            f'[package]\nname = "sandbx-{crate}"\nversion = "0.0.0"\n'
+            'edition = "2024"\npublish = false\n'
+        )
+    with (root / "p" / "Cargo.toml").open("a") as handle:
+        handle.write(f'\n[{table}]\nsandbx-f = {{ path = "../f" }}\n')
+    (root / "deny.toml").write_text(
+        '[[bans.deny]]\nname = "sandbx-f"\nwrappers = ["sandbx-p"]\n'
+    )
+
+
+# name, expected ok/fail, a string the output must contain, the manifest table holding
+# the edge. Each arm is its own case: a check that matched `None` but not `"build"`
+# would pass the normal case while letting a build edge through.
+DEV_ONLY_CASES: list[tuple[str, bool, str, str]] = [
+    ("dev_edge", True, "", "dev-dependencies"),
+    ("normal_edge", False, "has a normal edge", "dependencies"),
+    ("build_edge", False, "has a build edge", "build-dependencies"),
+    # `kind` is null here as for a plain normal edge, with `target` set beside it, so a
+    # check that skipped targeted edges would ship this one.
+    ("target_normal_edge", False, "has a normal edge",
+     "target.'cfg(unix)'.dependencies"),
+]
+
+# A dev edge, so only the name guard can fail it.
+DEV_ONLY_TYPO_CASES: list[tuple[str, bool, str, str]] = [
+    ("dev_only_names_nothing", False, "is not a workspace package", "dev-dependencies"),
+]
+
+
 def self_test() -> int:
     root = pathlib.Path(tempfile.mkdtemp())
     failures = 0
     total = 0
+    # The first two families pass no dev-only list, since their fixtures have no such
+    # crate and the name guard would otherwise fail every case on the real one.
+    families = (
+        (write_fixture, CASES, ()),
+        (write_off_prefix_fixture, OFF_PREFIX_CASES, ()),
+        (write_dev_only_fixture, DEV_ONLY_CASES, ("sandbx-f",)),
+        (write_dev_only_fixture, DEV_ONLY_TYPO_CASES, ("sandbx-f-nope",)),
+    )
     try:
-        for build, cases in ((write_fixture, CASES),
-                             (write_off_prefix_fixture, OFF_PREFIX_CASES)):
+        for build, cases, dev_only in families:
             for name, want_ok, want_text, body in cases:
                 total += 1
                 directory = root / name
                 build(directory, body.lstrip("\n"))
                 buffer = io.StringIO()
                 try:
-                    compared = check(directory, buffer)
+                    compared = check(directory, buffer, dev_only)
                 except Exception as exc:  # a crash is a failure, not a verdict
                     print(f"::error::self-test '{name}': raised {exc!r}")
                     failures += 1
@@ -574,7 +658,8 @@ def self_test() -> int:
         return 1
     # Asserted, not just printed: a loop that silently iterated zero cases would
     # otherwise report success, which is the defect this whole script is about.
-    expected = len(CASES) + len(OFF_PREFIX_CASES) + 4
+    expected = (len(CASES) + len(OFF_PREFIX_CASES) + len(DEV_ONLY_CASES)
+                + len(DEV_ONLY_TYPO_CASES) + 4)
     if total != expected:
         print(f"::error::self-test ran {total} cases, expected {expected}")
         return 1
