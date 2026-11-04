@@ -153,17 +153,15 @@ def read_toml(path: pathlib.Path) -> dict:
 # than being replaced by it; `sandbx-core`'s entry rests entirely on a dev edge.
 GRAPH_KEYS_THAT_HIDE_EDGES = ("exclude", "exclude-dev")
 
-# Both of these swap a crate into the build behind a dependency's back. `--no-deps`
-# lists the dependency as declared (a root `[patch.crates-io]` onto a local shim still
-# reads as a registry crate), so the shim's own edges reach no check here.
+# Both swap a crate into the build behind a dependency's back: `--no-deps` lists the
+# dependency as declared (a root `[patch.crates-io]` onto a local shim reads as a
+# registry crate), so the shim's own edges reach no check.
 #
-# The manifest's are a list because the manifest format has exactly these two override
-# sections. Config has no such bound: `[patch]`, `paths`, `[source]` replacement, and an
-# `include` of another file holding any of them all swap a crate in, and a key list was
-# two short on review. This repo needs no config, so the file is refused whole; one that
-# becomes necessary means editing this check, which is the point. Only the root's are
-# read, as CI runs cargo from the root, and config from the runner's home or the
-# checkout's ancestors is out of a PR's reach.
+# The manifest has exactly these two override sections, so its key list is complete.
+# Config has no such bound — `[patch]`, `paths`, `[source]` replacement and `include`
+# each swap a crate in, and a key list missed the last two on review — so the file is
+# refused whole; this repo needs none. Only the root's: CI runs cargo from the root,
+# and config from the runner's home or the checkout's ancestors is out of a PR's reach.
 MANIFEST_KEYS_THAT_SWAP_CRATES = ("patch", "replace")
 CARGO_CONFIG_FILES = (".cargo/config.toml", ".cargo/config")
 
@@ -705,8 +703,8 @@ STRAY_SHAPES: dict[str, tuple[str, str, tuple[tuple[str, str | None], ...]]] = {
     "patch_in_manifest": (MEMBER_DEP, PATCH, ()),
     "replace_in_manifest": (
         MEMBER_DEP, '[replace]\n"sandbx-shim:0.0.0" = { path = "shim" }\n', ()),
-    # The two the review found past a key list: an `include` of a file holding the
-    # `[patch]`, and source replacement onto a directory in the checkout.
+    # Each gets past a key list: an `include` of a file holding the `[patch]`, and
+    # source replacement onto a directory in the checkout.
     "include_in_cargo_config": (MEMBER_DEP, "", (
         (".cargo/config.toml", 'include = ["patch.toml"]\n'),
         (".cargo/patch.toml", PATCH))),
