@@ -28,7 +28,10 @@ fn main() -> ExitCode {
         // command's stderr, which is forwarded verbatim, so a subscriber above would leak into
         // it. Helper mode has none; its hardening reports degradations over a pipe instead.
         if let Err(error) = sandbx_logging::init() {
-            eprintln!("sandbx: audit trail unavailable: {error}");
+            eprintln!(
+                "sandbx: audit trail unavailable: {}",
+                sandbx_cli::error_line(&error)
+            );
         }
 
         // `try_parse`, so the code for a refused command line is sandbx's choice rather
@@ -47,7 +50,7 @@ fn main() -> ExitCode {
         // Inside the closure so the flag is sandbx's own, not a sandboxed command's; after
         // parsing so a refusal exits with the subcommand's code, and nothing has spawned yet.
         if let Err(error) = sandbx_core::conceal_process_state() {
-            eprintln!("sandbx: {error}");
+            eprintln!("sandbx: {}", sandbx_cli::error_line(&error));
             return ExitCode::from(failure);
         }
 

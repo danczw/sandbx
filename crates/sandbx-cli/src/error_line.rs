@@ -19,29 +19,32 @@ use std::error::Error;
 /// dropped, and `\n` and `\t` are spelled, so the report stays the one line it reads as.
 #[must_use]
 pub fn error_line(error: &dyn Error) -> String {
-    let mut line = error.to_string();
-    let mut parent = line.clone();
+    let mut parent = error.to_string();
+    let mut line = String::with_capacity(parent.len());
+    push_inert(&mut line, &parent);
     let mut cause = error.source();
     while let Some(link) = cause {
         let text = link.to_string();
         if !parent.contains(&text) {
             line.push_str(": ");
-            line.push_str(&text);
+            push_inert(&mut line, &text);
         }
         parent = text;
         cause = link.source();
     }
+    line
+}
 
-    let mut out = String::with_capacity(line.len());
-    for c in line.chars() {
+/// `text` onto `line`, with everything that could rewrite the terminal replaced.
+fn push_inert(line: &mut String, text: &str) {
+    for c in text.chars() {
         match c {
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            c if c.is_control() || sandbx_text::invisible(c) => out.push('\u{fffd}'),
-            c => out.push(c),
+            '\n' => line.push_str("\\n"),
+            '\t' => line.push_str("\\t"),
+            c if c.is_control() || sandbx_text::invisible(c) => line.push('\u{fffd}'),
+            c => line.push(c),
         }
     }
-    out
 }
 
 #[cfg(test)]
