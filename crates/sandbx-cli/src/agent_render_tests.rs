@@ -284,6 +284,13 @@ fn a_reasoning_delta_cannot_rewrite_the_lines_around_it() {
     assert_eq!(reasoned(&["a\u{202e}b"]), "a\u{fffd}b");
 }
 
+/// `Zl` and `Zp` pass `is_control`; a viewer that breaks on them would show a line that
+/// reads as sandbx's own, so they become the newline they stand for.
+#[test]
+fn a_unicode_line_separator_becomes_a_newline() {
+    assert_eq!(reasoned(&["a\u{2028}b\u{2029}c"]), "a\nb\nc");
+}
+
 /// Not a blanket replacement: prose, its line breaks and its indentation pass whole.
 #[test]
 fn reasoning_that_renders_is_left_alone() {

@@ -100,6 +100,19 @@ fn no_link_can_carry_an_escape_to_the_terminal() {
     );
 }
 
+/// A literal `\` and `n` in a cause, and a Unicode line separator: the first must not read
+/// as the spelled newline, and the second must not break the line (#478).
+#[test]
+fn a_spelled_newline_is_told_from_a_literal_one() {
+    let hostile = chain(&["C:\\new\nline", "para\u{2029}graph"]);
+
+    assert_eq!(
+        error_line(&hostile),
+        "C:\\\\new\\nline: para\\u{2029}graph",
+        "a backslash or a line separator reached the report as written"
+    );
+}
+
 /// A chain of [`Link`]s, outermost first.
 fn chain(texts: &[&'static str]) -> Link {
     texts

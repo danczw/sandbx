@@ -1,4 +1,4 @@
-use super::invisible;
+use super::{invisible, line_separator};
 
 /// Every single arm, and *both* endpoints of every range, as literals rather than read
 /// off the table: one fixture per range pins only the end it names, so narrowing
@@ -33,4 +33,13 @@ fn text_that_renders_is_left_alone() {
     for c in outside.chars() {
         assert!(!invisible(c), "U+{:04X} refused", c as u32);
     }
+}
+
+/// Both separators, and neither neighbour: U+202A is in [`invisible`] too, so a range
+/// widened onto it changes no sink's output, and only this test would see it.
+#[test]
+fn only_the_two_separators_break_a_line() {
+    assert!(line_separator('\u{2028}') && line_separator('\u{2029}'));
+    assert!(!line_separator('\u{2027}') && !line_separator('\u{202a}'));
+    assert!(!line_separator('\n'), "`\\n` is each sink's own to spell");
 }

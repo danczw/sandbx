@@ -6,6 +6,9 @@
 //! would be a terminal-injection difference between two surfaces users read as the same.
 //! Each sink keeps its own replacement: only the hazard is shared.
 //!
+//! Two predicates, not one: U+2028 and U+2029 are line breaks rather than nothing, so a
+//! sink that spells `\n` spells them too, and one that keeps `\n` breaks on them (#478).
+//!
 //! Not `sandbx-core`, which is Linux-only, so a pure-Unicode predicate would be too — and
 //! it would add a terminal-UI → `core` edge. Not `sandbx-tui-transcript`, which would put
 //! a `char` predicate in a drawing crate's public API and have the gate read that crate
@@ -35,6 +38,15 @@ pub fn invisible(c: char) -> bool {
         | '\u{13430}'..='\u{1343f}'
         | '\u{e0000}'..='\u{e007f}'
         | '\u{e0100}'..='\u{e01ef}')
+}
+
+/// Whether `c` is LINE SEPARATOR or PARAGRAPH SEPARATOR.
+///
+/// `Zl` and `Zp`, so `char::is_control` misses both. A terminal does not break a line on
+/// either, but a log viewer or an IDE terminal may, and the second line would read as
+/// sandbx's own. NEL, VT, FF and CR are `Cc`, so `is_control` already has them.
+pub fn line_separator(c: char) -> bool {
+    matches!(c, '\u{2028}' | '\u{2029}')
 }
 
 #[cfg(test)]

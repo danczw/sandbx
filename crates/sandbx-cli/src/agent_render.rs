@@ -9,7 +9,7 @@ use std::{io, mem};
 
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_screen::Reasoning;
-use sandbx_text::invisible;
+use sandbx_text::{invisible, line_separator};
 
 use super::prompt::{APPROVE_CALL, account};
 use super::{Device, INCOMPLETE, NO_CONSENT};
@@ -302,7 +302,8 @@ impl<W: Write, E: Write> Render<W, E> {
 /// Reasoning is model-chosen, and under `--show-thinking` it shares the terminal with the
 /// gate's verdicts: `\x1b[8m` would conceal every one, `\x1b[A\x1b[2K` erase the one before
 /// it (#239). Replaced rather than dropped, for the gate's reason. `\n` and `\t` survive,
-/// reasoning being prose over many lines; uncapped, nothing being consented to on it.
+/// reasoning being prose over many lines, and U+2028 and U+2029 become the `\n` they
+/// stand for; uncapped, nothing being consented to on it.
 ///
 /// Per character, not per line, so streaming survives it: a delta is a `&str`, so an escape
 /// split across two deltas has its ESC whole in one of them, and what follows is inert text.
@@ -313,6 +314,7 @@ fn inert(delta: &str) -> String {
         .chars()
         .map(|c| match c {
             '\n' | '\t' => c,
+            c if line_separator(c) => '\n',
             c if c.is_control() || invisible(c) => '\u{fffd}',
             c => c,
         })

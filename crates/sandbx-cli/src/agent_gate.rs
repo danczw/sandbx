@@ -5,7 +5,7 @@
 //! became of a call.
 
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
-use sandbx_text::invisible;
+use sandbx_text::{invisible, line_separator};
 use sandbx_tools::{BuiltinTool, RiskLevel, ToolError};
 
 use super::prompt::{Operator, to_stderr};
@@ -206,14 +206,14 @@ fn subject(tool: BuiltinTool, input: &serde_json::Value) -> Option<String> {
     }))
 }
 
-/// One model-chosen field as it may be written to a terminal: stripped, and cut to length.
+/// One model-chosen field as it may be written to a terminal: spelled, and cut to length.
 ///
 /// The cap is per field rather than per line, so one long argument cannot push the words
 /// that frame it off the end.
 pub(super) fn printable(text: &str) -> String {
     let mut rest = text.chars();
     let head: String = rest.by_ref().take(SUBJECT_CAP).collect();
-    let mut out = stripped(&head);
+    let mut out = spelled(&head);
 
     // Marked, not silent: an operator who cannot see the whole argument can still refuse.
     if rest.next().is_some() {
@@ -223,27 +223,45 @@ pub(super) fn printable(text: &str) -> String {
     out
 }
 
-/// `text` with everything that could rewrite the line around it replaced.
+/// `text` as [`stripped`] would leave it, except that line breaks, tabs and `\` are spelled.
 ///
-/// An escape sequence in model-chosen text rewrites the surrounding line, which for the
-/// consent prompt is the question being answered. Replaced with U+FFFD rather than dropped:
-/// dropped, a hostile string reads as a plausible path. Idempotent, so the two layers
-/// compose.
-fn stripped(text: &str) -> String {
+/// Spelled, not replaced: a heredoc shown as a row of U+FFFD is a command consented to
+/// unread, which `SUBJECT_CAP` exists to avoid. `\` is spelled too, or a `bash` command
+/// holding a literal `\n` would read as one with a newline — two commands, not one (#478).
+/// The output holds nothing [`stripped`] changes, which is how the two layers compose.
+fn spelled(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
 
     for c in text.chars() {
         match c {
-            // Spelled, not replaced: a heredoc shown as a row of U+FFFD is a command
-            // consented to unread, which `SUBJECT_CAP` exists to avoid.
             '\n' => out.push_str("\\n"),
             '\t' => out.push_str("\\t"),
-            c if c.is_control() || invisible(c) => out.push('\u{fffd}'),
-            c => out.push(c),
+            '\\' => out.push_str("\\\\"),
+            c if line_separator(c) => out.extend(c.escape_unicode()),
+            c => out.push(replaced(c)),
         }
     }
 
     out
+}
+
+/// `text` with everything that could rewrite the line around it replaced.
+///
+/// An escape sequence in model-chosen text rewrites the surrounding line, which for the
+/// consent prompt is the question being answered. Replaced with U+FFFD rather than dropped:
+/// dropped, a hostile string reads as a plausible path. Replaced and never spelled, so it
+/// is idempotent: spelling `\` here would double what [`spelled`] already wrote.
+fn stripped(text: &str) -> String {
+    text.chars().map(replaced).collect()
+}
+
+/// `c`, or U+FFFD where it could rewrite or break the line.
+fn replaced(c: char) -> char {
+    if c.is_control() || invisible(c) || line_separator(c) {
+        '\u{fffd}'
+    } else {
+        c
+    }
 }
 
 /// Accept a tool `--allow-tool` can actually approve, and refuse anything else.

@@ -1,2 +1,3 @@
 pub mod sandbx_text
 pub fn sandbx_text::invisible(char) -> bool
+pub fn sandbx_text::line_separator(char) -> bool

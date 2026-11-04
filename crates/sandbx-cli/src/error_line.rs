@@ -16,7 +16,8 @@ use std::error::Error;
 /// Every link is escaped, the top one too: `SandboxError` writes a model-chosen path back,
 /// and a cause is text sandbx did not write — a certificate's names come through
 /// rustls-webpki raw. Each control or [`sandbx_text::invisible`] character becomes U+FFFD
-/// rather than dropped, and `\n` and `\t` are spelled, so the report stays one line.
+/// rather than dropped, and `\n`, `\t` and [`sandbx_text::line_separator`]s are spelled, so
+/// the report stays one line. `\` is spelled too, or a spelled `\n` could be a literal one.
 #[must_use]
 pub fn error_line(error: &dyn Error) -> String {
     let mut parent = error.to_string();
@@ -41,6 +42,8 @@ fn push_inert(line: &mut String, text: &str) {
         match c {
             '\n' => line.push_str("\\n"),
             '\t' => line.push_str("\\t"),
+            '\\' => line.push_str("\\\\"),
+            c if sandbx_text::line_separator(c) => line.extend(c.escape_unicode()),
             c if c.is_control() || sandbx_text::invisible(c) => line.push('\u{fffd}'),
             c => line.push(c),
         }
