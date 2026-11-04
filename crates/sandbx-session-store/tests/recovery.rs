@@ -9,10 +9,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use sandbx_session_error::SessionError;
-use sandbx_session_message::{CompletedTurn, Usage};
+use sandbx_session_message::{CompletedTurn, Content, Message, Role, TurnStop, Usage};
 use sandbx_session_store::SessionStore;
 
-use common::{exchange, store};
+use common::{exchange, said, store};
 
 /// One session with one turn in it, and the path it was written to.
 fn spoken_to(store: &SessionStore) -> Spoken {
@@ -22,6 +22,7 @@ fn spoken_to(store: &SessionStore) -> Spoken {
             messages: &exchange("a", "1"),
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .expect("the turn is appended");
 
@@ -113,6 +114,7 @@ fn a_turn_with_no_messages_still_records_what_it_cost() {
             messages: &[],
             observed: Some(observed),
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
     let id = session.id().clone();
@@ -121,4 +123,55 @@ fn a_turn_with_no_messages_still_records_what_it_cost() {
 
     assert_eq!(resumed.observed(), Some(observed));
     assert!(resumed.messages().is_empty());
+}
+
+/// An append torn after its results, before its `turn` line: the shape of a turn out of
+/// rounds with nothing to say it was one, which resume has to hedge (#226).
+#[test]
+fn results_torn_from_their_turn_line_record_no_stop() {
+    let fixture = store();
+    let store = fixture.store;
+    let Spoken { id, path } = spoken_to(&store);
+    let mut session = store.resume(&id).unwrap();
+    session
+        .append(CompletedTurn {
+            messages: &[
+                said(Role::User, "what is in /srv?"),
+                Message {
+                    role: Role::Assistant,
+                    content: vec![Content::ToolUse {
+                        id: "toolu_01".to_owned(),
+                        name: "ls".to_owned(),
+                        input: serde_json::json!({ "path": "/srv" }),
+                    }],
+                },
+                Message {
+                    role: Role::User,
+                    content: vec![Content::ToolResult {
+                        tool_use_id: "toolu_01".to_owned(),
+                        content: "notes.txt".to_owned(),
+                        is_error: None,
+                    }],
+                },
+            ],
+            observed: None,
+            withheld: 0,
+            stop: TurnStop::RoundLimit,
+        })
+        .unwrap();
+    // Not vacuous: whole, the transcript says why it stops where it does.
+    assert_eq!(
+        store.resume(&id).unwrap().last_stop(),
+        Some(TurnStop::RoundLimit)
+    );
+
+    let whole = fs::read_to_string(&path).unwrap();
+    let (kept, dropped) = whole.trim_end().rsplit_once('\n').unwrap();
+    assert!(dropped.contains("\"type\":\"turn\""), "got {dropped}");
+    fs::write(&path, format!("{kept}\n")).unwrap();
+
+    let resumed = store.resume(&id).unwrap();
+    assert!(resumed.pending_call());
+    // Not the first turn's `Answered`, which is the last `turn` line left on disk.
+    assert_eq!(resumed.last_stop(), None);
 }

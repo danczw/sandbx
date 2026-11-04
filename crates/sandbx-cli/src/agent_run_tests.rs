@@ -9,6 +9,7 @@ use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_pty_fixture::{Pty, pty};
+use sandbx_session_message::TurnStop as StoredStop;
 use sandbx_session_store::Session;
 use sandbx_tools::ExecutionContext;
 use std::path::Path;
@@ -616,12 +617,12 @@ fn a_discarded_wrap_up_round_owns_what_it_wrote() {
     let body = fs::read_to_string(&path).expect("the transcript exists");
     assert!(body.contains("looking"), "got {body}");
     assert!(!body.contains("here is what I found"), "got {body}");
-    assert!(
-        store
-            .resume(&only_session(&store))
-            .expect("a resumable turn")
-            .pending_call()
-    );
+    let stored = store
+        .resume(&only_session(&store))
+        .expect("a resumable turn");
+    assert!(stored.pending_call());
+    // The first turn's stop, the discarded round's not being stored.
+    assert_eq!(stored.last_stop(), Some(StoredStop::RoundLimit));
 }
 
 /// The two halves of #218 in one run: no further request is paid for, and the status
@@ -702,13 +703,15 @@ fn a_lost_terminal_still_stores_the_turn() {
     // The clause both channel reasons share, not either one: which of the drain and
     // the read fails first on a slave whose master is gone is platform detail.
     assert!(body.contains("no call can be approved"), "got {body}");
+    let stored = store
+        .resume(&only_session(&store))
+        .expect("a resumable turn");
     assert!(
-        store
-            .resume(&only_session(&store))
-            .expect("a resumable turn")
-            .pending_call(),
+        stored.pending_call(),
         "an aborted turn stored an answer it never got"
     );
+    // The shape a round limit leaves too, which only the record tells apart (#226).
+    assert_eq!(stored.last_stop(), Some(StoredStop::GateAborted));
 }
 
 /// A provider failure exits 1 with an empty stdout; this must not read as one (#178).
@@ -808,6 +811,7 @@ fn no_wrap_up_still_stores_what_the_cap_reached() {
     // The prompt, the round that asked for a tool, and its result.
     assert_eq!(stored.messages().len(), 3);
     assert!(stored.pending_call());
+    assert_eq!(stored.last_stop(), Some(StoredStop::RoundLimit));
 }
 
 /// The round trip is the assertion: a batch `append` takes but `resume` refuses would
@@ -829,6 +833,8 @@ fn a_turn_out_of_rounds_is_stored_and_resumable() {
     assert_eq!(stored.messages().len(), 4);
     let last = stored.messages().last().expect("a last message");
     assert_eq!(last.role, sandbx_session_message::Role::Assistant);
+    // The wrap-up round's stop, its prose being the answer.
+    assert_eq!(stored.last_stop(), Some(StoredStop::Answered));
 }
 
 /// A `?` here would report a provider failure and cost the turn its text.
@@ -856,6 +862,7 @@ fn a_failed_wrap_up_round_costs_the_turn_nothing() {
         .expect("a resumable turn");
     assert_eq!(stored.messages().len(), 3);
     assert!(stored.pending_call());
+    assert_eq!(stored.last_stop(), Some(StoredStop::RoundLimit));
 }
 
 /// The prompt joins the stored results rather than following them (#188).

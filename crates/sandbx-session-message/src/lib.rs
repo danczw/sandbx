@@ -1,8 +1,8 @@
 //! What a transcript line holds: one turn of the conversation, and what the request for it
 //! cost.
 //!
-//! Mirrors `sandbx_prompt`'s `RequestMessage`, `Role` and `ContentBlock`, and
-//! `sandbx_compact`'s `PromptUsage`, declared here rather than imported because a transcript
+//! Mirrors `sandbx_prompt`'s `RequestMessage`, `Role` and `ContentBlock`,
+//! `sandbx_compact`'s `PromptUsage` and `sandbx_turn`'s `TurnStop`, declared here rather than imported because a transcript
 //! is a file format, and one that moved whenever a request type moved would not be.
 //! `sandbx-session-bridge` translates, and fails to compile on a new block kind.
 //! `sandbx-session-store`'s `record` has the line format these sit in.
@@ -72,8 +72,23 @@ pub struct Usage {
     pub cache_creation_input_tokens: Option<u32>,
 }
 
-/// One turn's worth of everything a transcript records; the three travel together
-/// because threading two leaves accounting that describes a different conversation.
+/// How a stored turn came to an end, which its messages cannot always show: a turn out of
+/// rounds and one the gate aborted both end on tool calls the model never answered.
+///
+/// No payload, unlike `sandbx_turn`'s: resume says which stop it was, never the cap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnStop {
+    /// The model stopped asking for tools.
+    Answered,
+    /// The turn ran out of rounds.
+    RoundLimit,
+    /// The gate ended the turn, having lost whatever it decides with.
+    GateAborted,
+}
+
+/// One turn's worth of everything a transcript records; they travel together because
+/// threading them apart leaves accounting that describes a different conversation.
 #[derive(Debug, Clone, Copy)]
 pub struct CompletedTurn<'a> {
     /// The turns the call produced, oldest first.
@@ -83,6 +98,8 @@ pub struct CompletedTurn<'a> {
     /// How many leading messages were left out of the request to make it fit — an index
     /// into the history, exact only because a transcript is appended to.
     pub withheld: usize,
+    /// What ended the turn.
+    pub stop: TurnStop,
 }
 
 #[cfg(test)]

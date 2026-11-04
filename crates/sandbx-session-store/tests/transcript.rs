@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
-use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
+use sandbx_session_message::{CompletedTurn, Content, Message, Role, TurnStop, Usage};
 
 use common::{exchange, said, store};
 
@@ -84,6 +84,7 @@ fn a_stored_turn_comes_back_as_it_went_in() {
             messages: &messages,
             observed: Some(usage(1204)),
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
 
@@ -104,6 +105,7 @@ fn a_second_turn_appends_and_moves_nothing() {
             messages: &exchange("first", "one"),
             observed: Some(usage(10)),
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
 
@@ -113,6 +115,7 @@ fn a_second_turn_appends_and_moves_nothing() {
             messages: &exchange("second", "two"),
             observed: Some(usage(20)),
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
     let after = fs::read(session.path()).unwrap();
@@ -134,6 +137,7 @@ fn the_reloaded_cut_is_the_last_turns_cut() {
                 messages: &exchange(ask, reply),
                 observed: Some(usage(100)),
                 withheld,
+                stop: TurnStop::Answered,
             })
             .unwrap();
     }
@@ -153,6 +157,7 @@ fn a_turn_reporting_nothing_keeps_the_figure() {
             messages: &exchange("a", "1"),
             observed: Some(usage(1204)),
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
     session
@@ -160,6 +165,7 @@ fn a_turn_reporting_nothing_keeps_the_figure() {
             messages: &exchange("b", "2"),
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
     let id = session.id().clone();
@@ -183,6 +189,7 @@ fn a_turn_with_no_reply_is_refused_not_written() {
             messages: &[said(Role::User, "unanswered")],
             observed: Some(usage(10)),
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap_err();
 
@@ -203,6 +210,7 @@ fn a_turn_out_of_rounds_is_stored_and_read_back() {
             messages: &out_of_rounds("what is in /srv?", "toolu_01"),
             observed: Some(usage(1204)),
             withheld: 0,
+            stop: TurnStop::RoundLimit,
         })
         .unwrap();
 
@@ -212,6 +220,7 @@ fn a_turn_out_of_rounds_is_stored_and_read_back() {
         out_of_rounds("what is in /srv?", "toolu_01")
     );
     assert!(stored.pending_call());
+    assert_eq!(stored.last_stop(), Some(TurnStop::RoundLimit));
 }
 
 /// Two user turns in a row, legal only because the request merges them into one.
@@ -225,6 +234,7 @@ fn a_prompt_may_follow_the_call_it_answers_beside() {
             messages: &out_of_rounds("what is in /srv?", "toolu_01"),
             observed: None,
             withheld: 0,
+            stop: TurnStop::RoundLimit,
         })
         .unwrap();
 
@@ -233,6 +243,7 @@ fn a_prompt_may_follow_the_call_it_answers_beside() {
             messages: &exchange("what did you find?", "notes.txt"),
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
 
@@ -252,6 +263,7 @@ fn a_second_turn_of_results_is_still_refused() {
             messages: &out_of_rounds("what is in /srv?", "toolu_01"),
             observed: None,
             withheld: 0,
+            stop: TurnStop::RoundLimit,
         })
         .unwrap();
 
@@ -260,6 +272,7 @@ fn a_second_turn_of_results_is_still_refused() {
             messages: &[answered("toolu_02"), said(Role::Assistant, "both, then")],
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap_err();
 
@@ -285,6 +298,7 @@ fn a_second_turn_of_results_is_still_refused() {
             ],
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap_err();
 
@@ -307,6 +321,7 @@ fn a_turn_that_would_be_unreadable_is_refused() {
             messages: &exchange("hi", "hello"),
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
     let before = fs::read(session.path()).unwrap();
@@ -317,6 +332,7 @@ fn a_turn_that_would_be_unreadable_is_refused() {
             messages: &[said(Role::Assistant, "unprompted")],
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap_err();
 
@@ -330,6 +346,7 @@ fn a_turn_that_would_be_unreadable_is_refused() {
             ],
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap_err();
 
@@ -364,6 +381,7 @@ fn a_first_turn_may_not_open_on_the_models_reply() {
             ],
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap_err();
 
@@ -383,6 +401,7 @@ fn a_transcript_opening_on_a_reply_is_refused() {
             messages: &exchange("a", "1"),
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
     let id = session.id().clone();
@@ -514,6 +533,7 @@ fn an_unparsable_line_names_the_line_it_is_on() {
             messages: &exchange("a", "1"),
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
     let id = session.id().clone();
@@ -542,6 +562,7 @@ fn a_transcript_ending_on_a_user_turn_is_refused() {
             messages: &exchange("a", "1"),
             observed: None,
             withheld: 0,
+            stop: TurnStop::Answered,
         })
         .unwrap();
     let id = session.id().clone();

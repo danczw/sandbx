@@ -18,7 +18,7 @@ use sandbx_compact::PromptUsage;
 use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
-use sandbx_session_message::{Content, Message, Role as StoredRole, Usage};
+use sandbx_session_message::{Content, Message, Role as StoredRole, TurnStop, Usage};
 use sandbx_session_paths::sessions_directory;
 use sandbx_session_store::{Session, SessionStore};
 
@@ -62,13 +62,8 @@ pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> 
                 session.id(),
                 session.messages().len()
             );
-            // Beside, not after: the model sees its own unanswered work from a turn that
-            // ran out of rounds (#188).
-            if session.pending_call() {
-                eprintln!(
-                    "sandbx: its last turn ran out of rounds; this prompt goes to the \
-                     model beside a tool call it never answered"
-                );
+            if let Some(note) = resume_note(session.pending_call(), session.last_stop()) {
+                eprintln!("sandbx: {note}");
             }
             session
         }
@@ -83,6 +78,33 @@ pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> 
     }
 
     Ok(Some(session))
+}
+
+/// What resuming tells the operator about a conversation that breaks off on unanswered
+/// calls, or `None` when it does not.
+///
+/// Beside, not after: the model sees its own unanswered work (#188). The reason is read
+/// from the last `turn` line and hedged where there is none to read (#226).
+fn resume_note(pending: bool, stop: Option<TurnStop>) -> Option<&'static str> {
+    if !pending {
+        return None;
+    }
+    Some(match stop {
+        Some(TurnStop::RoundLimit) => {
+            "its last turn ran out of rounds; this prompt goes to the model beside a tool \
+             call it never answered"
+        }
+        Some(TurnStop::GateAborted) => {
+            "its last turn ended with no one left to approve a call; this prompt goes to \
+             the model beside a tool call it never answered"
+        }
+        // `Answered` beside an unanswered call is a hand edit; neither it nor no record
+        // says why the conversation stops where it does.
+        Some(TurnStop::Answered) | None => {
+            "its last turn ends on a tool call the model never answered, and the transcript \
+             does not say why; this prompt goes to the model beside it"
+        }
+    })
 }
 
 /// The store under this process's environment.

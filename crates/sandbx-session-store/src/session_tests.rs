@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::ErrorKind;
 
 use sandbx_session_error::SessionError;
-use sandbx_session_message::{CompletedTurn, Content, Message, Role, Usage};
+use sandbx_session_message::{CompletedTurn, Content, Message, Role, TurnStop, Usage};
 
 use crate::SessionStore;
 
@@ -41,6 +41,7 @@ fn a_turn_the_file_refused_is_not_counted() {
             messages: &exchange("a", "1"),
             observed: Some(usage(100)),
             withheld: 1,
+            stop: TurnStop::Answered,
         })
         .expect("the first turn is stored");
 
@@ -52,6 +53,7 @@ fn a_turn_the_file_refused_is_not_counted() {
         messages: &exchange("b", "2"),
         observed: Some(usage(900)),
         withheld: 5,
+        stop: TurnStop::Answered,
     });
 
     // The write's refusal and no other: a turn refused before the write would leave the

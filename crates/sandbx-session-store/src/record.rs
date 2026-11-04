@@ -6,12 +6,13 @@
 //! What a reader does not understand it refuses rather than reads on a best effort, since a
 //! dropped record changes the history the model is shown: an unknown version fails, and so
 //! does an unknown `type`, a line nobody can classify being possibly a message. An unknown
-//! *field* is ignored.
+//! *field* is ignored, and so is an unknown `stop`: a stop is a diagnosis, not history, and
+//! one a later build names reads as none recorded.
 
 use std::path::Path;
 
-use sandbx_session_message::{Message, Usage};
-use serde::{Deserialize, Serialize};
+use sandbx_session_message::{Message, TurnStop, Usage};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use sandbx_session_error::SessionError;
 
@@ -39,16 +40,28 @@ pub(crate) struct Header {
     pub(crate) created_at_millis: u64,
 }
 
-/// What one turn cost, and what it had to leave out.
+/// What one turn cost, what it had to leave out, and how it ended.
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub(crate) struct Accounting {
     pub(crate) observed: Option<Usage>,
     pub(crate) withheld: usize,
+    /// `None` on a line written before the field existed, which is why it tolerates a
+    /// missing key rather than bumping [`VERSION`]: a bump refuses every transcript to date.
+    #[serde(default, deserialize_with = "tolerant")]
+    pub(crate) stop: Option<TurnStop>,
+}
+
+/// A `stop` this build cannot name, read as none recorded rather than refusing the line.
+///
+/// Through a `Value`, so a failed parse leaves no half-read input behind.
+fn tolerant<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<TurnStop>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(TurnStop::deserialize(value).ok())
 }
 
 impl Accounting {
     /// Fold one turn's figures in: `observed` keeps the last figure reported, `withheld`
-    /// whatever the last turn cut. The one copy of the rule, which [`fold`] replays and
+    /// whatever the last turn cut, `stop` how the last turn ended. The one copy of the rule, which [`fold`] replays and
     /// `Session::append` applies, so a resumed session and a continued one agree.
     ///
     /// Nothing reads these figures while compaction is off, which it is by default. Do not
@@ -57,6 +70,7 @@ impl Accounting {
     pub(crate) fn absorb(&mut self, turn: Self) {
         self.observed = turn.observed.or(self.observed);
         self.withheld = turn.withheld;
+        self.stop = turn.stop;
     }
 }
 
@@ -111,7 +125,12 @@ pub(crate) fn fold(path: &Path, body: &str) -> Result<Replayed, SessionError> {
             (0, _) => {
                 return Err(SessionError::MissingHeader { path });
             }
-            (_, Record::Message(message)) => messages.push(message),
+            // Cleared, because a stop describes the messages before its line: an append
+            // torn after its results would otherwise carry the previous turn's.
+            (_, Record::Message(message)) => {
+                messages.push(message);
+                accounting.stop = None;
+            }
             (_, Record::Turn(turn)) => accounting.absorb(turn),
             // Its version was read above; nothing else a second header carries would
             // change what is replayed.

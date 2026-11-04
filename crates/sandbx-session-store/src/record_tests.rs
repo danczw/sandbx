@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use sandbx_session_error::SessionError;
-use sandbx_session_message::{Content, Message, Role, Usage};
+use sandbx_session_message::{Content, Message, Role, TurnStop, Usage};
 
 use super::{Accounting, Header, Record, fold};
 
@@ -14,6 +14,7 @@ fn a_turn_line_carries_its_own_type() {
             cache_creation_input_tokens: None,
         }),
         withheld: 2,
+        stop: Some(TurnStop::RoundLimit),
     });
 
     assert_eq!(
@@ -26,8 +27,65 @@ fn a_turn_line_carries_its_own_type() {
                 "cache_creation_input_tokens": null,
             },
             "withheld": 2,
+            "stop": "round_limit",
         })
     );
+}
+
+fn stop_of(line: &str) -> Option<TurnStop> {
+    match serde_json::from_str::<Record>(line).expect("a turn line") {
+        Record::Turn(turn) => turn.stop,
+        other => panic!("not a turn line: {other:?}"),
+    }
+}
+
+/// Every transcript written before the field existed has lines like the first.
+#[test]
+fn a_turn_line_with_no_stop_reads_as_none_recorded() {
+    assert_eq!(
+        stop_of(r#"{"type":"turn","observed":null,"withheld":0}"#),
+        None
+    );
+    assert_eq!(
+        stop_of(r#"{"type":"turn","observed":null,"withheld":0,"stop":"gate_aborted"}"#),
+        Some(TurnStop::GateAborted)
+    );
+}
+
+/// A later build's stop is a diagnosis this one cannot give, not a line it cannot read.
+#[test]
+fn a_stop_this_build_cannot_name_reads_as_none_recorded() {
+    for stop in [
+        r#""interrupted""#,
+        "null",
+        "7",
+        r#"{"round_limit":{"rounds":5}}"#,
+    ] {
+        let line = format!(r#"{{"type":"turn","observed":null,"withheld":3,"stop":{stop}}}"#);
+        let Record::Turn(turn) = serde_json::from_str::<Record>(&line).expect("a turn line") else {
+            panic!("not a turn line: {line}");
+        };
+        assert_eq!(turn.stop, None, "{line}");
+        // The rest of the line is still read, so nothing was skipped wholesale.
+        assert_eq!(turn.withheld, 3, "{line}");
+    }
+}
+
+/// A message after the last `turn` line is an append torn before its own: the stop on
+/// disk is the previous turn's, and names nothing about where the conversation ends.
+#[test]
+fn a_message_after_the_last_turn_line_clears_its_stop() {
+    let header = r#"{"type":"header","version":1,"id":"01k6n0","created_at_millis":0}"#;
+    let turn = r#"{"type":"turn","observed":null,"withheld":0,"stop":"round_limit"}"#;
+    let result = r#"{"type":"message","role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_02","content":"x"}]}"#;
+    let path = Path::new("/sessions/01k6n0.jsonl");
+
+    let torn = fold(path, &format!("{header}\n{turn}\n{result}\n")).unwrap();
+    let whole = fold(path, &format!("{header}\n{result}\n{turn}\n")).unwrap();
+
+    assert_eq!(torn.accounting.stop, None);
+    // Not vacuous: the same lines with the turn line last keep the stop it carries.
+    assert_eq!(whole.accounting.stop, Some(TurnStop::RoundLimit));
 }
 
 #[test]

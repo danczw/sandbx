@@ -20,7 +20,7 @@ use sandbx_screen::Reasoning;
 use sandbx_session_bridge::{self as session, Merged, SessionChoice};
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
-use sandbx_session_message::CompletedTurn;
+use sandbx_session_message::{CompletedTurn, TurnStop as StoredStop};
 use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
@@ -485,6 +485,12 @@ impl AgentRun {
             observed: outcome.usage.map(session::stored_usage),
             // Back out of the request's index space, which the merge moved.
             withheld: merged.unmerged(outcome.withheld),
+            // No `_` arm, so a fourth way to end cannot be stored as one of these three.
+            stop: match outcome.stop {
+                TurnStop::Answered => StoredStop::Answered,
+                TurnStop::RoundLimit { .. } => StoredStop::RoundLimit,
+                TurnStop::GateAborted => StoredStop::GateAborted,
+            },
         };
 
         match session.append(turn) {
