@@ -55,6 +55,7 @@ pub enum sandbx_session_message::TurnStop
 pub sandbx_session_message::TurnStop::Answered
 pub sandbx_session_message::TurnStop::GateAborted
 pub sandbx_session_message::TurnStop::RoundLimit
+pub sandbx_session_message::TurnStop::Summarised
 impl core::clone::Clone for sandbx_session_message::TurnStop
 pub fn sandbx_session_message::TurnStop::clone(&self) -> sandbx_session_message::TurnStop
 impl core::cmp::Eq for sandbx_session_message::TurnStop

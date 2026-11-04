@@ -97,9 +97,9 @@ fn resume_note(pending: bool, stop: Option<TurnStop>) -> Option<&'static str> {
             "its last turn ended with no one left to approve a call; this prompt goes to \
              the model beside a tool call it never answered"
         }
-        // `Answered` beside an unanswered call is a hand edit, so it says no more than no
+        // An answer beside an unanswered call is a hand edit, so it says no more than no
         // record does.
-        Some(TurnStop::Answered) | None => {
+        Some(TurnStop::Answered | TurnStop::Summarised) | None => {
             "its last turn ends on a tool call the model never answered, and the transcript \
              does not say why; this prompt goes to the model beside it"
         }

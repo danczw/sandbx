@@ -152,10 +152,11 @@ fn a_figure_nobody_reported_stays_unreported() {
 }
 
 /// Every stop, and none recorded.
-const STOPS: [Option<TurnStop>; 4] = [
+const STOPS: [Option<TurnStop>; 5] = [
     None,
     Some(TurnStop::Answered),
     Some(TurnStop::RoundLimit),
+    Some(TurnStop::Summarised),
     Some(TurnStop::GateAborted),
 ];
 
@@ -174,7 +175,7 @@ fn an_unanswered_call_is_explained_by_the_stop_recorded() {
 
     assert!(note(Some(TurnStop::RoundLimit)).contains("ran out of rounds"));
     assert!(note(Some(TurnStop::GateAborted)).contains("approve"));
-    for unknown in [None, Some(TurnStop::Answered)] {
+    for unknown in [None, Some(TurnStop::Answered), Some(TurnStop::Summarised)] {
         assert!(note(unknown).contains("does not say why"), "{unknown:?}");
     }
     // Each names one cause, so no reason is reported for another's.
