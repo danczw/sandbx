@@ -39,8 +39,7 @@ pub fn error_line(error: &dyn Error) -> String {
 /// breaks, tabs and `\` spelled.
 ///
 /// The gate's field spelling too, so the two one-line sinks cannot drift apart. `\` is
-/// spelled, or a spelled `\n` could be a literal one — for a `bash` command, two commands
-/// read as one (#478).
+/// spelled, or a literal `\` and `n` would read as a newline (#478).
 pub(crate) fn push_spelled(line: &mut String, text: &str) {
     for c in text.chars() {
         match c {
