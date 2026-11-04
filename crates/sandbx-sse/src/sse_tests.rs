@@ -1,3 +1,5 @@
+use std::io;
+
 use bytes::Bytes;
 use futures_util::{StreamExt, stream};
 use sandbx_provider::ProviderError;
@@ -5,8 +7,37 @@ use sandbx_provider::ProviderError;
 use super::{MAX_EVENT_BYTES, tokenize};
 
 async fn tokenize_all(chunks: Vec<&'static [u8]>) -> Vec<Result<String, ProviderError>> {
-    let byte_stream = stream::iter(chunks.into_iter().map(|c| Ok(Bytes::from_static(c))));
+    let byte_stream = stream::iter(
+        chunks
+            .into_iter()
+            .map(|c| Ok::<_, io::Error>(Bytes::from_static(c))),
+    );
     tokenize(byte_stream).collect().await
+}
+
+/// What tells a reset from a timeout is the source, so the boxing must keep it whole.
+#[tokio::test]
+async fn a_read_error_is_transport_with_it_as_the_source() {
+    let byte_stream = stream::iter(vec![
+        Ok(Bytes::from_static(b"data: {}\n\n")),
+        Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "reset by peer",
+        )),
+        Ok(Bytes::from_static(b"data: {}\n\n")),
+    ]);
+    let events: Vec<_> = tokenize(byte_stream).collect().await;
+
+    assert_eq!(events.len(), 2, "a frame surfaced after the read error");
+    assert_eq!(events[0].as_ref().unwrap(), "{}");
+    let Err(ProviderError::Transport { source, .. }) = &events[1] else {
+        panic!("{:?} is not a transport error", events[1]);
+    };
+    let source = source
+        .downcast_ref::<io::Error>()
+        .expect("the source is the stream's own error");
+    assert_eq!(source.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(source.to_string(), "reset by peer");
 }
 
 #[tokio::test]

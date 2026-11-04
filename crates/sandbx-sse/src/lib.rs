@@ -17,9 +17,15 @@ use sandbx_provider::ProviderError;
 ///
 /// `Send` is stated rather than left to leak out of the opaque type, so a non-`Send`
 /// field added to the state below fails here, not at the coercion in a client's `stream_chat`.
-pub fn tokenize(
-    bytes: impl Stream<Item = reqwest::Result<Bytes>> + Unpin + Send,
-) -> impl futures_util::stream::FusedStream<Item = Result<String, ProviderError>> + Send {
+///
+/// Any error and not reqwest's: a reqwest edge here is a second manifest whose
+/// `default-features` can swap the TLS provider under `sandbx-anthropic` silently (#456).
+pub fn tokenize<E>(
+    bytes: impl Stream<Item = Result<Bytes, E>> + Unpin + Send,
+) -> impl futures_util::stream::FusedStream<Item = Result<String, ProviderError>> + Send
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
     // `.fuse()`: `unfold` panics if polled after it returns `None`, and callers
     // drive this stream however they like.
     futures_util::StreamExt::fuse(futures_util::stream::unfold(
@@ -50,11 +56,12 @@ struct TokenizerState<S> {
     done: bool,
 }
 
-async fn next_event<S>(
+async fn next_event<S, E>(
     mut state: TokenizerState<S>,
 ) -> Option<(Result<String, ProviderError>, TokenizerState<S>)>
 where
-    S: Stream<Item = reqwest::Result<Bytes>> + Unpin,
+    S: Stream<Item = Result<Bytes, E>> + Unpin,
+    E: std::error::Error + Send + Sync + 'static,
 {
     // Checked before anything is drained: `done` is set only just before a terminal
     // item, so draining what is buffered behind one would emit frames after the error
