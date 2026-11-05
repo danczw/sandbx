@@ -4,9 +4,10 @@
 //! addresses across the argv the command reads. `helper::resolver` installs what this
 //! renders; `context/decision-port-allowlist.md` is why a hosts file and not a DNS responder.
 
-use std::fs;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::path::Path;
+use std::time::Duration;
+use std::{fs, thread};
 
 /// The allowlist itself, and the only one of the three whose body varies per run.
 const HOSTS: &str = "/etc/hosts";
@@ -102,7 +103,7 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<Resolved> {
         .iter()
         .map(|name| Lookup {
             name,
-            addresses: addresses(name),
+            addresses: retried_once(name, addresses, || thread::sleep(REWRITE_PAUSE)),
         })
         .collect();
 
@@ -137,12 +138,36 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<Resolved> {
     Some(Resolved { files, unresolved })
 }
 
+/// Between a lookup that came back empty and its one retry. Longer than a host rewriting
+/// `/etc/hosts` by truncate-and-write holds it empty, the same figure the resolver tests
+/// pause by: an unpaused retry would land in the window that failed the first.
+const REWRITE_PAUSE: Duration = Duration::from_millis(100);
+
+/// `lookup(name)`, and once more after `pause` if that found nothing, so a lookup that
+/// landed while the host's file was empty does not drop the name for the whole run. Once,
+/// not until it resolves: a name that does not resolve at all pays the pause and a second
+/// lookup on every run. A file that stays without the name leaves it unresolved, which fails
+/// closed and is reported as `UnresolvedDnsName`.
+fn retried_once(
+    name: &str,
+    mut lookup: impl FnMut(&str) -> Vec<IpAddr>,
+    pause: impl FnOnce(),
+) -> Vec<IpAddr> {
+    let found = lookup(name);
+    if !found.is_empty() {
+        return found;
+    }
+
+    pause();
+    lookup(name)
+}
+
 /// Every address `name` resolves to right now, in the order the resolver returned them.
 /// `getaddrinfo` through [`ToSocketAddrs`], so a name resolves exactly as it would for the
 /// command, with no DNS client of our own, and port 0 since only the address is wanted.
 /// Empty for a name that does not resolve, contributing no line rather than failing the
 /// run, as an absent path contributes no Landlock rule — a lookup that hangs is bounded by
-/// the run's own `timeout` and by nothing here. A link-local IPv6 address is dropped:
+/// the run's own `timeout` and by nothing here, twice over under [`retried_once`]. A link-local IPv6 address is dropped:
 /// `ip()` discards the `scope_id` that makes one routable, a hosts file has no column to
 /// carry it back, and `connect` to a scopeless `fe80::/10` address is `EINVAL`.
 fn addresses(name: &str) -> Vec<IpAddr> {

@@ -1,6 +1,6 @@
 use super::{
     Lookup, RESOLV_BODY, RESOLV_CONF, RESOLVER_FILES, bound_by_any, database, files, hosts_body,
-    nsswitch_body,
+    nsswitch_body, retried_once,
 };
 use std::fs;
 use std::os::unix::fs as unix_fs;
@@ -220,4 +220,68 @@ fn a_symlinked_entry_is_bound_under_the_name_the_bind_lands_on() {
         !bound_by_any(&bound, dir.path()),
         "the directory holding a bound file was reported, and a bind leaves its inode alone"
     );
+}
+
+/// [`retried_once`] over lookups answering `answers` in turn: what it found, how many lookups
+/// it made, and whether it paused. A lookup past the last answer panics, so a test scripting
+/// two answers also asserts there was no third.
+fn looked_up(answers: &[&[&str]]) -> (Vec<std::net::IpAddr>, usize, bool) {
+    let mut calls = 0;
+    let mut paused = false;
+
+    let found = retried_once(
+        "example.com",
+        |_| {
+            let answer = answers
+                .get(calls)
+                .expect("looked up more times than the test scripted");
+            calls += 1;
+            answer
+                .iter()
+                .map(|address| address.parse().expect("a test address"))
+                .collect()
+        },
+        || paused = true,
+    );
+
+    (found, calls, paused)
+}
+
+/// The host rewriting `/etc/hosts` empties it for a moment, and a lookup landing there misses.
+#[test]
+fn a_name_missed_once_resolves_on_the_retry() {
+    let (found, calls, paused) = looked_up(&[&[], &["93.184.216.34"]]);
+
+    assert_eq!(
+        found,
+        ["93.184.216.34"
+            .parse::<std::net::IpAddr>()
+            .expect("a test address")],
+        "a name the retry found was rendered without its address"
+    );
+    assert_eq!(
+        calls, 2,
+        "a name that came back empty was not looked up again"
+    );
+    assert!(
+        paused,
+        "the retry did not pause, so it lands in the window that failed the first"
+    );
+}
+
+#[test]
+fn a_resolved_name_is_looked_up_once() {
+    let (found, calls, paused) = looked_up(&[&["93.184.216.34"]]);
+
+    assert_eq!(found.len(), 1, "a resolved name lost its address");
+    assert_eq!(calls, 1, "a name that resolved was looked up again");
+    assert!(!paused, "a name that resolved paused the run");
+}
+
+#[test]
+fn a_name_that_never_resolves_is_looked_up_twice() {
+    let (found, calls, _) = looked_up(&[&[], &[]]);
+
+    assert!(found.is_empty(), "an unresolved name was given an address");
+    assert_eq!(calls, 2, "an unresolved name was not retried");
 }
