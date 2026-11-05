@@ -604,7 +604,8 @@ fn a_run_without_the_flag_resolves_as_it_did_before() {
             return Err(format!(
                 "a run with no --allow-dns could not resolve {name} out of /etc/hosts, so the \
                  flag narrowed a policy that never asked for it: {}\nhost as the resolve \
-                 ended: {facts}\n/etc/hosts read in the sandbox just after: {}{}",
+                 ended: {facts}\n/etc/hosts read in the sandbox just after: {}{}\nthe \
+                 host's own /etc/hosts just after that: {host_file}",
                 String::from_utf8_lossy(&resolved.stderr),
                 String::from_utf8_lossy(&hosts.stdout),
                 String::from_utf8_lossy(&hosts.stderr)
