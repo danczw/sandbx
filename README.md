@@ -125,10 +125,11 @@ $ sandbx sandbox-run --allow-read /srv -- /bin/true
 ```
 
 Two records per run, tied by `spawn`: one `spawned`, then exactly one of
-`exited` or `failed`. Under `sandbx tui` they arrive on stderr too, held back
-until the screen is given up so they do not interleave with the turn, and
-written ahead of the transcript printed after it. Seven fields do not read the
-way they look:
+`exited` or `failed`. Under `sandbx tui` they arrive on stderr too. A terminal
+stderr has them held back until the screen is given up, so they do not land
+under it, and written ahead of the transcript printed after it; a signal that
+kills `tui` before then loses them. Redirected, each is written as it happens.
+Seven fields do not read the way they look:
 
 | field | reads |
 |---|---|
