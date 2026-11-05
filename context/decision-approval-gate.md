@@ -151,11 +151,10 @@ Only the *result* channel may take the code, which is what separates the two
 subcommands. Under `agent-run` stdout carries the answer, so an answer that could
 not be written is a run with nothing to show and 1 is the honest report. Under
 `tui` the screen is not where the refusal was recorded: the line naming the lost
-operator goes out from `given_back`, in the transcript printed once the screen is
-gone and on stderr too where that is redirected, and the latch is read after the
-code is already decided — so a draw that stopped partway leaves that line
-standing and the earned 3 with it. Taking the code there reported a lost operator as a generic
-failure, which was the whole of #257.
+operator is never drawn and goes to stderr from `given_back`, and the latch is
+read after the code is already decided, so a draw that stopped partway leaves
+that line standing and the earned 3 with it. Taking the code there reported a
+lost operator as a generic failure, which was the whole of #257.
 
 Two of the three durable things are thinner under `tui`, which is worth naming
 here rather than leaving to be discovered. The per-call `settled` line is *drawn*
