@@ -2,7 +2,9 @@ use super::{
     Lookup, RESOLV_BODY, RESOLV_CONF, RESOLVER_FILES, bound_by_any, database, files, hosts_body,
     nsswitch_body, retried_once,
 };
+use std::cell::RefCell;
 use std::fs;
+use std::net::IpAddr;
 use std::os::unix::fs as unix_fs;
 use std::path::Path;
 
@@ -222,66 +224,109 @@ fn a_symlinked_entry_is_bound_under_the_name_the_bind_lands_on() {
     );
 }
 
-/// [`retried_once`] over lookups answering `answers` in turn: what it found, how many lookups
-/// it made, and whether it paused. A lookup past the last answer panics, so a test scripting
-/// two answers also asserts there was no third.
-fn looked_up(answers: &[&[&str]]) -> (Vec<std::net::IpAddr>, usize, bool) {
-    let mut calls = 0;
-    let mut paused = false;
+/// [`retried_once`] over `names`, each lookup answering from `answers` in turn: what it
+/// found, and every lookup and pause in the order they ran. A lookup past the last answer
+/// panics, so a test scripting two answers also asserts there was no third.
+fn looked_up(names: &[&str], answers: &[&[&str]]) -> (Vec<Vec<IpAddr>>, Vec<String>) {
+    let names: Vec<String> = names.iter().map(|name| name.to_string()).collect();
+    let events = RefCell::new(Vec::new());
 
     let found = retried_once(
-        "example.com",
-        |_| {
+        &names,
+        |name| {
+            let mut events = events.borrow_mut();
             let answer = answers
-                .get(calls)
+                .get(events.iter().filter(|event| *event != "pause").count())
                 .expect("looked up more times than the test scripted");
-            calls += 1;
-            answer
-                .iter()
-                .map(|address| address.parse().expect("a test address"))
-                .collect()
+            events.push(format!("lookup {name}"));
+            addresses(answer)
         },
-        || paused = true,
+        || events.borrow_mut().push("pause".to_string()),
     );
 
-    (found, calls, paused)
+    let found = found.into_iter().map(|lookup| lookup.addresses).collect();
+    (found, events.into_inner())
+}
+
+fn addresses(answer: &[&str]) -> Vec<IpAddr> {
+    answer
+        .iter()
+        .map(|address| address.parse().expect("a test address"))
+        .collect()
 }
 
 /// The host rewriting `/etc/hosts` empties it for a moment, and a lookup landing there misses.
 #[test]
 fn a_name_missed_once_resolves_on_the_retry() {
-    let (found, calls, paused) = looked_up(&[&[], &["93.184.216.34"]]);
+    let (found, events) = looked_up(&["example.com"], &[&[], &["93.184.216.34"]]);
 
     assert_eq!(
         found,
-        ["93.184.216.34"
-            .parse::<std::net::IpAddr>()
-            .expect("a test address")],
+        [addresses(&["93.184.216.34"])],
         "a name the retry found was rendered without its address"
     );
     assert_eq!(
-        calls, 2,
-        "a name that came back empty was not looked up again"
-    );
-    assert!(
-        paused,
-        "the retry did not pause, so it lands in the window that failed the first"
+        events,
+        ["lookup example.com", "pause", "lookup example.com"],
+        "the retry did not follow a pause, so it lands in the rewrite that failed the first"
     );
 }
 
 #[test]
 fn a_resolved_name_is_looked_up_once() {
-    let (found, calls, paused) = looked_up(&[&["93.184.216.34"]]);
+    let (found, events) = looked_up(&["example.com"], &[&["93.184.216.34"]]);
 
-    assert_eq!(found.len(), 1, "a resolved name lost its address");
-    assert_eq!(calls, 1, "a name that resolved was looked up again");
-    assert!(!paused, "a name that resolved paused the run");
+    assert_eq!(
+        found,
+        [addresses(&["93.184.216.34"])],
+        "a resolved name lost its address"
+    );
+    assert_eq!(
+        events,
+        ["lookup example.com"],
+        "a name that resolved was paused for or looked up again"
+    );
 }
 
 #[test]
 fn a_name_that_never_resolves_is_looked_up_twice() {
-    let (found, calls, _) = looked_up(&[&[], &[]]);
+    let (found, events) = looked_up(&["nowhere.invalid"], &[&[], &[]]);
 
-    assert!(found.is_empty(), "an unresolved name was given an address");
-    assert_eq!(calls, 2, "an unresolved name was not retried");
+    assert_eq!(
+        found,
+        [addresses(&[])],
+        "an unresolved name was given an address"
+    );
+    assert_eq!(
+        events,
+        ["lookup nowhere.invalid", "pause", "lookup nowhere.invalid"],
+        "an unresolved name was not retried once, after a pause"
+    );
+}
+
+/// A pause per name would multiply the run's start-up by the names that missed.
+#[test]
+fn misses_share_one_pause_and_hits_are_not_retried() {
+    let (found, events) = looked_up(
+        &["a.example", "b.example", "c.example"],
+        &[&[], &["192.0.2.2"], &[], &[], &["192.0.2.3"]],
+    );
+
+    assert_eq!(
+        found,
+        [vec![], addresses(&["192.0.2.2"]), addresses(&["192.0.2.3"])],
+        "a name was rendered with another's addresses, or the retry's were dropped"
+    );
+    assert_eq!(
+        events,
+        [
+            "lookup a.example",
+            "lookup b.example",
+            "lookup c.example",
+            "pause",
+            "lookup a.example",
+            "lookup c.example",
+        ],
+        "the misses did not share one pause, or a name that resolved was looked up again"
+    );
 }

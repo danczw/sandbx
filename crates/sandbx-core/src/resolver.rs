@@ -98,14 +98,9 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<Resolved> {
         return None;
     }
 
-    let resolved: Vec<_> = policy
-        .allowed_dns_names()
-        .iter()
-        .map(|name| Lookup {
-            name,
-            addresses: retried_once(name, addresses, || thread::sleep(REWRITE_PAUSE)),
-        })
-        .collect();
+    let resolved = retried_once(policy.allowed_dns_names(), addresses, || {
+        thread::sleep(REWRITE_PAUSE)
+    });
 
     let unresolved = resolved
         .iter()
@@ -138,28 +133,41 @@ pub(crate) fn files(policy: &crate::SandboxPolicy) -> Option<Resolved> {
     Some(Resolved { files, unresolved })
 }
 
-/// Between a lookup that came back empty and its one retry. Longer than a host rewriting
-/// `/etc/hosts` by truncate-and-write holds it empty, the same figure the resolver tests
-/// pause by: an unpaused retry would land in the window that failed the first.
+/// Between the lookups that came back empty and their retry, so the retry does not land in
+/// the rewrite that failed them. Not measured on any host: long enough for a truncate and one
+/// write, short enough to add to every run with an unresolvable name.
 const REWRITE_PAUSE: Duration = Duration::from_millis(100);
 
-/// `lookup(name)`, and once more after `pause` if that found nothing, so a lookup that
-/// landed while the host's file was empty does not drop the name for the whole run. Once,
-/// not until it resolves: a name that does not resolve at all pays the pause and a second
-/// lookup on every run. A file that stays without the name leaves it unresolved, which fails
-/// closed and is reported as `UnresolvedDnsName`.
-fn retried_once(
-    name: &str,
+/// What each of `names` resolves to by `lookup`, in order, with each name that found nothing
+/// looked up once more after one `pause`: a lookup landing while the host's file was empty
+/// would otherwise drop the name for the whole run. One pause shared by every name, and one
+/// retry, not until it resolves: a name that resolves nowhere pays both on every run. A file
+/// that stays without the name, or a host resolver that caches the empty read (nscd,
+/// systemd-resolved), leaves it unresolved, which fails closed as `UnresolvedDnsName`.
+fn retried_once<'a>(
+    names: &'a [String],
     mut lookup: impl FnMut(&str) -> Vec<IpAddr>,
     pause: impl FnOnce(),
-) -> Vec<IpAddr> {
-    let found = lookup(name);
-    if !found.is_empty() {
-        return found;
+) -> Vec<Lookup<'a>> {
+    let mut resolved: Vec<_> = names
+        .iter()
+        .map(|name| Lookup {
+            name,
+            addresses: lookup(name),
+        })
+        .collect();
+
+    if resolved.iter().any(|found| found.addresses.is_empty()) {
+        pause();
+        for missed in resolved
+            .iter_mut()
+            .filter(|found| found.addresses.is_empty())
+        {
+            missed.addresses = lookup(missed.name);
+        }
     }
 
-    pause();
-    lookup(name)
+    resolved
 }
 
 /// Every address `name` resolves to right now, in the order the resolver returned them.
@@ -167,9 +175,10 @@ fn retried_once(
 /// command, with no DNS client of our own, and port 0 since only the address is wanted.
 /// Empty for a name that does not resolve, contributing no line rather than failing the
 /// run, as an absent path contributes no Landlock rule — a lookup that hangs is bounded by
-/// the run's own `timeout` and by nothing here, twice over under [`retried_once`]. A link-local IPv6 address is dropped:
-/// `ip()` discards the `scope_id` that makes one routable, a hosts file has no column to
-/// carry it back, and `connect` to a scopeless `fe80::/10` address is `EINVAL`.
+/// the run's own `timeout` and by nothing here, and one that fails slowly is paid twice by
+/// [`retried_once`]. A link-local IPv6 address is dropped: `ip()` discards the `scope_id`
+/// that makes one routable, a hosts file has no column to carry it back, and `connect` to a
+/// scopeless `fe80::/10` address is `EINVAL`.
 fn addresses(name: &str) -> Vec<IpAddr> {
     let mut found = Vec::new();
 
