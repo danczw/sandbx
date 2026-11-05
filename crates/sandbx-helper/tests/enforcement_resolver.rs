@@ -1,11 +1,9 @@
 //! Does a name the allowlist does not hold fail to resolve, and does one it holds still work?
 //!
 //! The resolver half of the enforcement suite; `enforcement.rs` states the kernel floor all of
-//! these run on. Every name here is one this host's own `/etc/hosts` lists. The denial and
-//! the no-flag test also insist the name's own line maps it: a line with no address leaves
-//! the name to `dns`, which a sandboxed command never reaches, flag or not, so a denial of
-//! it is a run that was offline anyway. The allowlisted tests need not, since the helper
-//! resolves before the unshare.
+//! these run on. Every name here is one this host's own `/etc/hosts` lists, and the denial and
+//! the no-flag test also insist its line maps it: a name left to `dns` fails in any sandbox,
+//! flag or not, so a denial of it is a run that was offline anyway.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
@@ -66,10 +64,9 @@ fn host_forbids_the_mounts() -> bool {
     restricted
 }
 
-/// A name of `names` this host's `/etc/hosts` lists, and a listener on an address it
-/// resolves to.
-/// Derived, not written down — the one such name on a developer machine is the machine's own
-/// hostname, and hard-coding either would pass on one host and fail on the next.
+/// A name of `names` this host's `/etc/hosts` lists, and a listener on an address it resolves
+/// to. Derived, not written down — the one such name on a developer machine is the machine's
+/// own hostname, and hard-coding either would pass on one host and fail on the next.
 /// Looked for up to [`ATTEMPTS`] times, since a host rewriting the file leaves it empty for a
 /// moment and a look landing there finds no name. A test under [`retried_across_rewrites`]
 /// takes [`one_look_listener`] instead, so the wrapper's one retry covers the look too.
