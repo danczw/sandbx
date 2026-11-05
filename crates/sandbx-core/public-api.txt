@@ -23,9 +23,11 @@ impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Access
 impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Access
 pub enum sandbx_core::AuditEvent<'a>
 pub sandbx_core::AuditEvent::Absent
+pub sandbx_core::AuditEvent::Absent::session: &'a str
 pub sandbx_core::AuditEvent::Absent::subject: &'a str
 pub sandbx_core::AuditEvent::Absent::tool: &'a str
 pub sandbx_core::AuditEvent::Allowed
+pub sandbx_core::AuditEvent::Allowed::session: &'a str
 pub sandbx_core::AuditEvent::Allowed::subject: &'a str
 pub sandbx_core::AuditEvent::Allowed::tool: &'a str
 pub sandbx_core::AuditEvent::Degraded
@@ -35,6 +37,7 @@ pub sandbx_core::AuditEvent::Degraded::session: &'a str
 pub sandbx_core::AuditEvent::Degraded::spawn: &'a str
 pub sandbx_core::AuditEvent::Denied
 pub sandbx_core::AuditEvent::Denied::reason: &'a str
+pub sandbx_core::AuditEvent::Denied::session: &'a str
 pub sandbx_core::AuditEvent::Denied::subject: &'a str
 pub sandbx_core::AuditEvent::Denied::tool: &'a str
 pub sandbx_core::AuditEvent::Exited
@@ -63,10 +66,10 @@ pub sandbx_core::AuditEvent::Spawned::spawn: &'a str
 pub sandbx_core::AuditEvent::Spawned::unix_sockets: bool
 pub sandbx_core::AuditEvent::Spawned::writable: usize
 impl<'a> sandbx_core::AuditEvent<'a>
-pub fn sandbx_core::AuditEvent<'a>::absent(&'a str, &'a str) -> Self
-pub fn sandbx_core::AuditEvent<'a>::allowed(&'a str, &'a str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::absent(&'a str, core::option::Option<&'a str>, &'a str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::allowed(&'a str, core::option::Option<&'a str>, &'a str) -> Self
 pub fn sandbx_core::AuditEvent<'a>::degraded(&'a str, core::option::Option<&'a sandbx_core::SpawnId>, core::option::Option<&'a str>, &'a str) -> Self
-pub fn sandbx_core::AuditEvent<'a>::denied(&'a str, &'a str, &'a str) -> Self
+pub fn sandbx_core::AuditEvent<'a>::denied(&'a str, core::option::Option<&'a str>, &'a str, &'a str) -> Self
 pub fn sandbx_core::AuditEvent<'a>::emit(&self)
 pub fn sandbx_core::AuditEvent<'a>::exited(&'a str, &'a sandbx_core::SpawnId, core::option::Option<&'a str>, &std::process::ExitStatus) -> Self
 pub fn sandbx_core::AuditEvent<'a>::failed(&'a str, &'a sandbx_core::SpawnId, core::option::Option<&'a str>, &'static str) -> Self

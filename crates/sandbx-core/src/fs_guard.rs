@@ -37,6 +37,8 @@ const BENEATH: ResolveFlag = ResolveFlag::RESOLVE_BENEATH.union(ResolveFlag::RES
 pub struct FsGuard {
     readable: Vec<Root>,
     writable: Vec<Root>,
+    /// Named on every record this guard writes. An `Arc` for the reason [`Root::dir`] is one.
+    session: Option<Arc<str>>,
 }
 
 /// A granted root, and the descriptor a permitted access resolves beneath.
@@ -72,11 +74,11 @@ impl FsGuard {
         Self::with_rooting(policy, None, openat2_support())
     }
 
-    /// [`new`](Self::new), naming the session whose accesses this guard will bound.
+    /// [`new`](Self::new), naming the session whose accesses this guard will bound, on every
+    /// record it writes (#429).
     ///
-    /// Only the `rooted_access` degradation reads it, and only to say which session lost a
-    /// root's descriptor. A separate constructor rather than a setter because the record is
-    /// written *here*: a guard built first and told its session afterwards has already
+    /// A separate constructor rather than a setter because the `rooted_access` degradation
+    /// is written *here*: a guard built first and told its session afterwards has already
     /// reported, so the setter shape cannot be made correct (#249).
     pub fn for_session(policy: &SandboxPolicy, session: &str) -> Self {
         Self::with_rooting(policy, Some(session), openat2_support())
@@ -142,7 +144,15 @@ impl FsGuard {
             }
         }
 
-        Self { readable, writable }
+        Self {
+            readable,
+            writable,
+            session: session.map(Arc::from),
+        }
+    }
+
+    fn session(&self) -> Option<&str> {
+        self.session.as_deref()
     }
 
     /// Permit reading `path`, which must already exist, returning its resolved location.
@@ -157,7 +167,7 @@ impl FsGuard {
     /// because it hands back a path and so performs no access to root.
     fn permit_read(&self, path: &Path) -> Result<Permitted, SandboxError> {
         match path.canonicalize() {
-            Ok(resolved) => permit(resolved, &self.readable, path, Access::Read),
+            Ok(resolved) => permit(resolved, &self.readable, path, Access::Read, self.session()),
             // Why a path failed to resolve is information: ENOENT against EACCES over
             // arbitrary paths reads back as a map of the host.
             Err(source) => {
@@ -182,8 +192,9 @@ impl FsGuard {
         roots: &[Root],
         access: Access,
     ) -> SandboxError {
+        let session = self.session();
         if let Some(moved) = moved_root(requested, roots) {
-            return deny(Some(moved), requested, access);
+            return deny(Some(moved), requested, access, session);
         }
 
         let Area {
@@ -194,26 +205,26 @@ impl FsGuard {
         // The ancestor resolves, so what it reached is the substitute's choice too, and the
         // reason it would name is one the spelling above has already declined to give.
         if matches!(granted_area, Containment::Outside(_)) {
-            return deny(None, requested, access);
+            return deny(None, requested, access, session);
         }
 
         // Inside a confirmed root, where the ancestor still has to speak for the path below
         // it; a symlink or a `..` in between means it does not.
         if !ancestor.is_some_and(|ancestor| reaches_plainly(requested, ancestor)) {
-            return deny(None, requested, access);
+            return deny(None, requested, access, session);
         }
 
         let subject = requested.display().to_string();
         let failed = failed.to_path_buf();
         if names_nothing(&source) {
-            crate::AuditEvent::absent(access.operation(), &subject).emit();
+            crate::AuditEvent::absent(access.operation(), session, &subject).emit();
             return SandboxError::NotFound {
                 requested: failed,
                 source,
             };
         }
 
-        crate::AuditEvent::denied(access.operation(), &subject, UNRESOLVABLE).emit();
+        crate::AuditEvent::denied(access.operation(), session, &subject, UNRESOLVABLE).emit();
         SandboxError::Unresolvable {
             requested: failed,
             source,
@@ -234,6 +245,7 @@ impl FsGuard {
                 &permitted.resolved,
                 path,
                 Access::Read,
+                self.session(),
             );
         };
 
@@ -244,8 +256,14 @@ impl FsGuard {
             nix::sys::stat::Mode::empty(),
         );
 
-        record(opened.map(File::from), Access::Read, path, names_nothing)
-            .map_err(|source| classify(source, path))
+        record(
+            opened.map(File::from),
+            Access::Read,
+            path,
+            names_nothing,
+            self.session(),
+        )
+        .map_err(|source| classify(source, path))
     }
 
     /// Read the entries of `path`, refusing anything the policy does not allow. Here and not
@@ -266,6 +284,7 @@ impl FsGuard {
                 Access::Read,
                 path,
                 listed_nothing,
+                self.session(),
             ));
         };
 
@@ -281,6 +300,7 @@ impl FsGuard {
             Access::Read,
             path,
             listed_nothing,
+            self.session(),
         ))
     }
 
@@ -299,8 +319,14 @@ impl FsGuard {
                 nix::sys::stat::Mode::from_bits_truncate(0o666),
             );
 
-            return record(opened.map(File::from), Access::Write, path, names_nothing)
-                .map_err(|source| classify(source, path));
+            return record(
+                opened.map(File::from),
+                Access::Write,
+                path,
+                names_nothing,
+                self.session(),
+            )
+            .map_err(|source| classify(source, path));
         }
 
         let resolved = permitted.resolved;
@@ -309,6 +335,7 @@ impl FsGuard {
             &resolved,
             path,
             Access::Write,
+            self.session(),
         )
     }
 
@@ -350,6 +377,7 @@ impl FsGuard {
                 Err(source) if source.raw_os_error() == Some(libc::EXDEV) => {
                     crate::AuditEvent::denied(
                         Access::Read.operation(),
+                        self.session(),
                         &requested.display().to_string(),
                         ESCAPED,
                     )
@@ -362,8 +390,12 @@ impl FsGuard {
                 },
             };
 
-            crate::AuditEvent::allowed(Access::Read.operation(), &requested.display().to_string())
-                .emit();
+            crate::AuditEvent::allowed(
+                Access::Read.operation(),
+                self.session(),
+                &requested.display().to_string(),
+            )
+            .emit();
             return Ok(walked);
         }
 
@@ -405,6 +437,7 @@ impl FsGuard {
                         let reason = moved.map_or(Access::Read.outside(), |_| ROOT_REPLACED);
                         crate::AuditEvent::denied(
                             Access::Read.operation(),
+                            self.session(),
                             &link.display().to_string(),
                             reason,
                         )
@@ -437,8 +470,12 @@ impl FsGuard {
         files.sort();
         // Directly, not through `record`: the walk skips what it cannot read, so by here
         // there is no outcome but success left to sort.
-        crate::AuditEvent::allowed(Access::Read.operation(), &requested.display().to_string())
-            .emit();
+        crate::AuditEvent::allowed(
+            Access::Read.operation(),
+            self.session(),
+            &requested.display().to_string(),
+        )
+        .emit();
         Ok(ReadableWalk { files, truncated })
     }
 
@@ -543,6 +580,7 @@ impl FsGuard {
             let reason = moved.map_or(Access::Read.outside(), |_| ROOT_REPLACED);
             crate::AuditEvent::denied(
                 Access::Read.operation(),
+                self.session(),
                 &link.display().to_string(),
                 reason,
             )
@@ -570,6 +608,7 @@ impl FsGuard {
                 let refuse = |reason| {
                     crate::AuditEvent::denied(
                         Access::Write.operation(),
+                        self.session(),
                         &path.display().to_string(),
                         reason,
                     )
@@ -583,7 +622,7 @@ impl FsGuard {
                 // The root answers first: both reasons below are chosen by what sits at the
                 // path, so under a substituted root they report what the substitute holds.
                 if let Some(moved) = moved_root(path, &self.writable) {
-                    return Err(deny(Some(moved), path, Access::Write));
+                    return Err(deny(Some(moved), path, Access::Write, self.session()));
                 }
 
                 // `canonicalize` fails the same way on a nonexistent path and a dangling
@@ -615,7 +654,13 @@ impl FsGuard {
             }
         };
 
-        permit(resolved, &self.writable, path, Access::Write)
+        permit(
+            resolved,
+            &self.writable,
+            path,
+            Access::Write,
+            self.session(),
+        )
     }
 }
 
@@ -1141,7 +1186,12 @@ fn contains(resolved: &Path, roots: &[Root]) -> Containment {
 /// Refuse `requested`, recording which of the two reasons the gate decided on. One
 /// function for both, so a path under a substituted root answers alike whether or not it
 /// exists — present and absent reading apart would be a one-bit oracle.
-fn deny(moved: Option<Replacement>, requested: &Path, access: Access) -> SandboxError {
+fn deny(
+    moved: Option<Replacement>,
+    requested: &Path,
+    access: Access,
+    session: Option<&str>,
+) -> SandboxError {
     let subject = requested.display().to_string();
 
     let Some(Replacement {
@@ -1150,14 +1200,14 @@ fn deny(moved: Option<Replacement>, requested: &Path, access: Access) -> Sandbox
         opened,
     }) = moved
     else {
-        crate::AuditEvent::denied(access.operation(), &subject, access.outside()).emit();
+        crate::AuditEvent::denied(access.operation(), session, &subject, access.outside()).emit();
         return SandboxError::PathNotAllowed {
             requested: requested.to_path_buf(),
             access,
         };
     };
 
-    crate::AuditEvent::denied(access.operation(), &subject, ROOT_REPLACED).emit();
+    crate::AuditEvent::denied(access.operation(), session, &subject, ROOT_REPLACED).emit();
     SandboxError::RootReplaced {
         granted,
         vetted,
@@ -1175,18 +1225,19 @@ fn permit(
     roots: &[Root],
     requested: &Path,
     access: Access,
+    session: Option<&str>,
 ) -> Result<Permitted, SandboxError> {
     // Before the resolution is judged: a link out of a substituted root lands wherever the
     // substitute points, and an `Ok` there beside an absent name's refusal is a bit about it.
     if let Some(moved) = moved_root(requested, roots) {
-        return Err(deny(Some(moved), requested, access));
+        return Err(deny(Some(moved), requested, access, session));
     }
 
     // And no reason comes off the resolution: a link planted in a root that *confirms*
     // resolves into one that does not, which is the same bit the other way round.
     match contains(&resolved, roots) {
         Containment::Inside(root) => Ok(Permitted { resolved, root }),
-        Containment::Outside(_) => Err(deny(None, requested, access)),
+        Containment::Outside(_) => Err(deny(None, requested, access, session)),
     }
 }
 
@@ -1199,14 +1250,15 @@ fn record<T>(
     access: Access,
     requested: &Path,
     absent: fn(&io::Error) -> bool,
+    session: Option<&str>,
 ) -> io::Result<T> {
     let subject = requested.display().to_string();
     let tool = access.operation();
 
     match &outcome {
-        Ok(_) => crate::AuditEvent::allowed(tool, &subject).emit(),
-        Err(source) if absent(source) => crate::AuditEvent::absent(tool, &subject).emit(),
-        Err(source) => crate::AuditEvent::denied(tool, &subject, reason(source)).emit(),
+        Ok(_) => crate::AuditEvent::allowed(tool, session, &subject).emit(),
+        Err(source) if absent(source) => crate::AuditEvent::absent(tool, session, &subject).emit(),
+        Err(source) => crate::AuditEvent::denied(tool, session, &subject, reason(source)).emit(),
     }
 
     outcome
@@ -1232,12 +1284,14 @@ fn open(
     resolved: &Path,
     requested: &Path,
     access: Access,
+    session: Option<&str>,
 ) -> Result<File, SandboxError> {
     use std::os::unix::fs::OpenOptionsExt;
 
     let opened = options.custom_flags(libc::O_NOFOLLOW).open(resolved);
 
-    record(opened, access, requested, names_nothing).map_err(|source| classify(source, requested))
+    record(opened, access, requested, names_nothing, session)
+        .map_err(|source| classify(source, requested))
 }
 
 /// Sort an error from an already-approved access into absence or refusal.
