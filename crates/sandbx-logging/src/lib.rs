@@ -93,7 +93,7 @@ impl tracing_subscriber::fmt::MakeWriter<'_> for Audit {
 ///
 /// What it costs. The trail sits in memory until the guard drops, which under `tui` is the
 /// moment the screen is given back, and a signal before then runs no `Drop` and loses it
-/// all. So `tui` holds only a terminal stderr: `2>` a file is written each record as it is
+/// all. So `tui` holds only a terminal stderr: `2>` a file gets each record as it is
 /// emitted, and loses none of them to a signal (#485). Over a terminal the window is the
 /// turn, and `SECURITY.md` states it; no handler closes it, `SIGKILL` admitting none. A
 /// closed terminal window is in it too, the `SIGHUP` it raises killing the process. A
