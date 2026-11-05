@@ -322,7 +322,8 @@ architecture the filter gates on.
   prompt and not the part of the answer you read — and an interrupt and a
   hung-up terminal discard it alike, while a tool call already running still
   finishes. What the turn showed is printed back to the terminal once the screen
-  is gone, the running call named among it but never its result
+  is gone, and the running call is named on stderr but never its result. Where
+  the terminal is what went away, only a redirected stderr still has either
   ([#271](https://github.com/danczw/sandbx/issues/271)).
 
   Ownership and integrity are enforced, not secrecy: directory `0700`, transcript

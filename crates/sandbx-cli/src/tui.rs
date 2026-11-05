@@ -64,9 +64,11 @@ impl Tui {
         self.drawable(Device::of(&io::stdout()))?;
 
         let approved = gate::approved_line(self.run.allow_tool.as_deref());
-        // Before the screen as well as on it, and only drawn there, so a redirected log
-        // carries it once and ahead of every call it approved.
-        Stderr.note(&approved);
+        // Before the screen as well as on it, so a redirected log has it ahead of every call
+        // it approved. Not on a terminal stderr, where the reprint already carries it.
+        if Device::of(&io::stderr()) == Device::Redirected {
+            Stderr.note(&approved);
+        }
 
         // Ahead of the policy, for `AgentRun::execute`'s reason and with its trade: nothing
         // may sit between the vet and the pin, and this call writes a directory and can
@@ -212,7 +214,9 @@ impl Tui {
             .into_inner()
             .expect("a paint that panicked unwinds past this frame");
 
-        let (code, outcome, account) = match outcome {
+        // Owed after the turn and never drawn: the screen is about to go, and a paint here
+        // is a write that can stall on a paused terminal while the trail is still held.
+        let (code, outcome, mut owed) = match outcome {
             Err(stopped) => {
                 let (code, said) = match stopped {
                     Stopped::Pressed => (INCOMPLETE, interrupted()),
@@ -234,25 +238,20 @@ impl Tui {
                 let Ending { code, said } = ending(&outcome);
                 (Ok(code), Some(outcome), said)
             }
-            Ok(Err(error)) => {
-                // Drawn before it is returned: the operator reads the reason in the
-                // transcript printed below rather than only in what follows it.
-                let line = format!("sandbx: {}", crate::error_line(&error));
-                (Err(AgentError::from(error)), None, vec![line])
-            }
+            // No line of its own: `main` prints the error once it is returned.
+            Ok(Err(error)) => (Err(AgentError::from(error)), None, Vec::new()),
         };
 
-        for line in &account {
-            pane.note(line);
-        }
-
-        if let Some(outcome) = outcome
-            && let Some(session) = session
-        {
+        // Not `?`: a store that refused the turn must still leave the transcript and the
+        // trail, the answer being on the screen and nowhere else.
+        let saved = match (outcome, session) {
             // `None`: no wrap-up round is sent here.
-            self.run
-                .save(session, &asked, outcome, None, &merged, &mut pane)?;
-        }
+            (Some(outcome), Some(session)) => self
+                .run
+                .save(session, &asked, outcome, None, &merged, &mut owed),
+            _ => Ok(()),
+        };
+        let code = saved.and(code);
 
         let Pane {
             mut screen, said, ..
@@ -271,8 +270,11 @@ impl Tui {
         given_back(
             code,
             failed,
-            &printed,
-            &said,
+            Remains {
+                printed: &printed,
+                said: &said,
+                owed: &owed,
+            },
             shown,
             &mut io::stdout(),
             &mut stderr,
@@ -297,14 +299,25 @@ fn lost() -> String {
         .to_string()
 }
 
+/// What a finished `tui` run has to say once the screen is gone. Not `Account`, for the
+/// reason [`ending`]'s local gives.
+struct Remains<'a> {
+    /// The transcript as the screen drew it.
+    printed: &'a str,
+    /// The lines drawn during the turn, which `printed` already carries.
+    said: &'a [String],
+    /// The lines owed after the turn, which nothing drew.
+    owed: &'a [String],
+}
+
 /// Write what the run has to say on a terminal the screen has given back, and report the
 /// code.
 ///
 /// The transcript first and always, the alternate screen having taken every row with it,
-/// the answer among them; a turn that failed outright then stops, its own error being the
-/// rest of the account. `said` again only where `shown` is redirected, the reprint already
-/// carrying it on a terminal. A latched draw failure is one more line and not the code: the
-/// code answers what the turn did, which a failed draw is not (#257). `agent-run` does the
+/// the answer among them. `said` again where `shown` is redirected or the reprint could not
+/// be written, a failed turn owing it as much as a finished one; `owed` always, nothing
+/// having drawn it. A latched draw failure is one more line and not the code: the code
+/// answers what the turn did, which a failed draw is not (#257). `agent-run` does the
 /// opposite with a stdout it could not write, that being the channel the answer came back
 /// on. The writers are arguments so the order is a unit test.
 ///
@@ -314,21 +327,28 @@ fn lost() -> String {
 fn given_back(
     code: Result<i32, AgentError>,
     failed: Option<io::Error>,
-    printed: &str,
-    said: &[String],
+    remains: Remains<'_>,
     shown: Device,
     out: &mut impl Write,
     err: &mut impl Write,
 ) -> Result<i32, AgentError> {
-    let _ = out.write_all(printed.as_bytes()).and_then(|()| out.flush());
+    let reprinted = out
+        .write_all(remains.printed.as_bytes())
+        .and_then(|()| out.flush())
+        .is_ok();
 
+    let said = if shown == Device::Redirected || !reprinted {
+        remains.said
+    } else {
+        &[]
+    };
+    for line in said.iter().chain(remains.owed) {
+        let _ = writeln!(err, "{line}");
+    }
+
+    // After the account: a failed turn's own error is the last line, and `main`'s.
     let code = code?;
 
-    if shown == Device::Redirected {
-        for line in said {
-            let _ = writeln!(err, "{line}");
-        }
-    }
     // Through the variant and `error_line`, so the line is the one `main` would have
     // printed had this stayed the return value.
     if let Some(error) = failed {
@@ -411,7 +431,7 @@ struct Ending {
 /// The screen, and the account drawn on it.
 struct Pane {
     screen: Screen,
-    /// Every line noted, in order, for a redirected stderr once the screen is gone.
+    /// Every line drawn during the turn, in order, for a stderr the reprint does not reach.
     said: Vec<String>,
     running: Running,
 }
@@ -421,6 +441,13 @@ impl Notes for Pane {
     fn note(&mut self, line: &str) {
         self.screen.paint(|transcript| transcript.note(line));
         self.said.push(line.to_string());
+    }
+}
+
+/// Lines owed once the turn is over: kept for stderr, never drawn.
+impl Notes for Vec<String> {
+    fn note(&mut self, line: &str) {
+        self.push(line.to_string());
     }
 }
 
