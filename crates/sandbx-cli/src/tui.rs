@@ -2,9 +2,9 @@
 //!
 //! Every flag, the policy and the session are `agent-run`'s; what differs is where the
 //! turn is reported and that an operator can end one mid-flight. `--approve call` is
-//! refused rather than downgraded (#225), and every line of the account goes through the
-//! screen rather than to a stderr it covers. The transcript is printed once the screen is
-//! given back, the alternate screen keeping nothing it showed (#224).
+//! refused rather than downgraded (#225), and no line of the account reaches the stderr the
+//! screen covers: the transcript is printed once the screen is given back, the alternate
+//! screen keeping nothing it showed (#224).
 //!
 //! The drawing crates — `sandbx-tui-transcript`, `sandbx-screen` and `sandbx-tui-input` —
 //! take events and give back keys, and hold no policy, provider, session or gate: a renderer
@@ -12,9 +12,9 @@
 //! `deny.toml` refuses them a provider edge (#365).
 //!
 //! Light by intent, each a limit an operator meets: single-shot, the prompt from argv;
-//! auto-follow with no scroll keys, so a line that scrolled off is back only in the reprint;
-//! repainted only on an event, so the screen is still for a tool call; no wrap-up round
-//! (#232).
+//! auto-follow with no scroll keys, so a line that scrolled off is back only in the
+//! reprint; repainted only on an event, so the screen is still for a tool call; no wrap-up
+//! round (#232).
 
 use std::io::{self, Write};
 use std::mem;
@@ -199,7 +199,7 @@ impl Tui {
             );
 
             // The whole of the interrupt: the turn's future is dropped where it stood, so
-            // the loop gains no stop of its own. What that costs is drawn below — a running
+            // the loop gains no stop of its own. What that costs is said below — a running
             // tool still finishes, and the process waits on it, `Runtime::drop` having no
             // timeout (#26).
             tokio::select! {
@@ -282,7 +282,6 @@ impl Tui {
     }
 }
 
-/// The account of an interrupt.
 fn interrupted() -> String {
     "sandbx: interrupted. Nothing of this turn is stored, and a tool call already running \
      finishes unseen: the process waits for it before it exits (#26)"
