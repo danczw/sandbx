@@ -65,6 +65,12 @@ impl Screen {
         self.draw();
     }
 
+    /// Apply `change` to the transcript without drawing it, for a screen about to go: the
+    /// change reaches [`Screen::plain`], and no write can stall on the way.
+    pub fn amend(&mut self, change: impl FnOnce(&mut Transcript)) {
+        change(&mut self.transcript);
+    }
+
     /// The transcript as drawn so far, unstyled, to print once the screen is given back.
     pub fn plain(&self) -> String {
         plain(&self.transcript)

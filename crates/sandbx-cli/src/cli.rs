@@ -93,7 +93,7 @@ pub enum Command {
     /// ctrl-c or escape ends the turn where it stands. When the turn ends the
     /// screen goes, and what it showed is printed in its place.
     ///
-    /// Interrupting costs two things, which sandbx says again when it happens:
+    /// Interrupting costs two things, which sandbx prints again once the screen goes:
     /// nothing of that turn is stored, even under `--session`, and a tool
     /// already running finishes — sandbx cannot cancel one mid-call, and the
     /// process waits for it before it exits.

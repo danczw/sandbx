@@ -1,5 +1,5 @@
 use super::super::{Device, INCOMPLETE, NO_CONSENT, gate};
-use super::{Ending, Remains, Running, Tui, ending, given_back, lost};
+use super::{Ending, Running, Tui, ending, given_back, lost};
 use crate::{AgentError, Cli, Command};
 use clap::Parser;
 use sandbx_approval::{ApprovalDecision, ToolCall};
@@ -154,52 +154,47 @@ impl io::Write for Dead {
     }
 }
 
-/// [`given_back`] over a working stdout, `said` drawn and `owed` not.
+/// [`given_back`] over a working stdout.
 fn given(
     code: Result<i32, AgentError>,
     failed: Option<io::Error>,
     said: &[String],
-    owed: &[String],
     shown: Device,
 ) -> Given {
     let mut out = Vec::new();
-    let mut given = given_to(&mut out, code, failed, said, owed, shown);
-    given.out = String::from_utf8(out).expect("utf-8");
-    given
+    let (err, code) = given_to(&mut out, code, failed, said, shown);
+
+    Given {
+        out: String::from_utf8(out).expect("utf-8"),
+        err,
+        code,
+    }
 }
 
+/// [`given_back`] over `out`, and what it wrote to stderr.
 fn given_to(
     out: &mut impl io::Write,
     code: Result<i32, AgentError>,
     failed: Option<io::Error>,
     said: &[String],
-    owed: &[String],
     shown: Device,
-) -> Given {
+) -> (String, Result<i32, AgentError>) {
     let mut err = Vec::new();
-    let remains = Remains {
-        printed: "> a prompt\n",
-        said,
-        owed,
-    };
-    let code = given_back(code, failed, remains, shown, out, &mut err);
+    let code = given_back(code, failed, "> a prompt\n", said, shown, out, &mut err);
 
-    Given {
-        out: String::new(),
-        err: String::from_utf8(err).expect("utf-8"),
-        code,
-    }
+    (String::from_utf8(err).expect("utf-8"), code)
 }
 
-/// The screen took every row with it, so the transcript is printed whatever the turn did;
-/// what it drew follows on stderr only where the reprint did not reach, and what it owed
-/// after the turn always does.
+/// The screen took every row with it, so the transcript is printed whatever the turn did,
+/// and the account follows on stderr only where the reprint did not reach.
 #[test]
 fn the_transcript_comes_back_and_the_account_only_where_it_did_not_reach() {
-    let said = ["sandbx: ls /work — ran".to_string()];
-    let owed = ["sandbx: out of rounds after 8".to_string()];
+    let said = [
+        "sandbx: ls /work — ran".to_string(),
+        "sandbx: out of rounds after 8".to_string(),
+    ];
 
-    let logged = given(Ok(0), None, &said, &owed, Device::Redirected);
+    let logged = given(Ok(0), None, &said, Device::Redirected);
     assert_eq!(logged.out, "> a prompt\n");
     assert_eq!(
         logged.err,
@@ -207,14 +202,15 @@ fn the_transcript_comes_back_and_the_account_only_where_it_did_not_reach() {
     );
     assert!(matches!(logged.code, Ok(0)));
 
-    // On a terminal the reprint already carries the drawn line, so it is not said twice.
-    let shown = given(Ok(0), None, &said, &owed, Device::Terminal);
+    // On a terminal the reprint already carries every line, so none is said twice.
+    let shown = given(Ok(0), None, &said, Device::Terminal);
     assert_eq!(shown.out, "> a prompt\n");
-    assert_eq!(shown.err, "sandbx: out of rounds after 8\n");
+    assert_eq!(shown.err, "");
 
-    // Unless the reprint never landed: then stderr is the only sink the line has left.
-    let lost = given_to(&mut Dead, Ok(0), None, &said, &[], Device::Terminal);
-    assert_eq!(lost.err, "sandbx: ls /work — ran\n");
+    // Unless the reprint never landed: then stderr is the only sink the line has left, and
+    // a terminal one is owed the reset `prompt::account` writes.
+    let (lost, _) = given_to(&mut Dead, Ok(0), None, &said[..1], Device::Terminal);
+    assert_eq!(lost, "\x1b[0msandbx: ls /work — ran\n");
 }
 
 /// A turn that failed outright still owes a log every call it made: the error is `main`'s
@@ -227,7 +223,6 @@ fn a_failed_turn_still_gives_back_what_it_ran() {
         Err(AgentError::from(TurnError::StreamEndedWithoutStop)),
         None,
         &said,
-        &[],
         Device::Redirected,
     );
 
@@ -243,7 +238,7 @@ fn a_failed_turn_still_gives_back_what_it_ran() {
 #[test]
 fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
     let latched = || Some(io::Error::from(io::ErrorKind::BrokenPipe));
-    let kept = |code| given(Ok(code), latched(), &[], &[], Device::Redirected).code;
+    let kept = |code| given(Ok(code), latched(), &[], Device::Redirected).code;
 
     assert!(matches!(kept(NO_CONSENT), Ok(3)));
     assert!(matches!(kept(INCOMPLETE), Ok(2)));
@@ -254,7 +249,7 @@ fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
     let failed = || AgentError::from(TurnError::StreamEndedWithoutStop);
     for screen in [latched(), None] {
         assert!(matches!(
-            given(Err(failed()), screen, &[], &[], Device::Redirected).code,
+            given(Err(failed()), screen, &[], Device::Redirected).code,
             Err(AgentError::Turn(TurnError::StreamEndedWithoutStop))
         ));
     }
@@ -266,7 +261,7 @@ fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
 /// The code as a literal, for the reason the test above it gives.
 #[test]
 fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
-    let given = given(Ok(NO_CONSENT), None, &[], &[lost()], Device::Redirected);
+    let given = given(Ok(NO_CONSENT), None, &[lost()], Device::Redirected);
     assert!(matches!(given.code, Ok(3)));
     assert!(given.err.contains("terminal went away"), "{}", given.err);
 
