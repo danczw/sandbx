@@ -255,7 +255,6 @@ fn addresses(answer: &[&str]) -> Vec<IpAddr> {
         .collect()
 }
 
-/// The host rewriting `/etc/hosts` empties it for a moment, and a lookup landing there misses.
 #[test]
 fn a_name_missed_once_resolves_on_the_retry() {
     let (found, events) = looked_up(&["example.com"], &[&[], &["93.184.216.34"]]);
