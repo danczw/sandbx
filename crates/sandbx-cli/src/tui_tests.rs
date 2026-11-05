@@ -259,8 +259,14 @@ fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
 /// hold there would leave every record to a signal (#485).
 #[test]
 fn only_a_terminal_stderr_holds_the_audit_trail() {
-    assert!(held(Device::Redirected).is_none());
-    assert!(held(Device::Terminal).is_some());
+    assert!(
+        held(Device::Redirected).is_none(),
+        "a redirected stderr was held, so a signal mid-turn would lose its records"
+    );
+    assert!(
+        held(Device::Terminal).is_some(),
+        "a terminal stderr was not held, so its records would land under the screen"
+    );
 }
 
 /// A terminal that went away is accounted for as itself, not as an interrupt the
