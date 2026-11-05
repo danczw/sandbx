@@ -1,5 +1,5 @@
 use super::{
-    ESCAPED, FsGuard, Openat2, ReadableWalk, UNRESOLVABLE, collapsed, open, openat2_support_from,
+    ESCAPED, FsGuard, Openat2, ReadableWalk, UNRESOLVABLE, collapsed, openat2_support_from,
     probe_subject, reason,
 };
 use crate::{Access, SandboxError, SandboxPolicy, VettedPath};
@@ -46,14 +46,9 @@ fn an_absent_approved_path_opens_as_not_found() {
     let root = tempfile::tempdir().unwrap();
     let gone = root.path().join("deleted-after-the-check");
 
-    let error = open(
-        OpenOptions::new().read(true),
-        &gone,
-        &gone,
-        Access::Read,
-        None,
-    )
-    .unwrap_err();
+    let error = FsGuard::new(&SandboxPolicy::default())
+        .open(OpenOptions::new().read(true), &gone, &gone, Access::Read)
+        .unwrap_err();
 
     assert!(
         matches!(error, SandboxError::NotFound { .. }),
@@ -71,14 +66,9 @@ fn a_swapped_leaf_opens_as_unresolvable() {
     let link = root.path().join("swapped");
     unix_fs::symlink(&target, &link).unwrap();
 
-    let error = open(
-        OpenOptions::new().read(true),
-        &link,
-        &link,
-        Access::Read,
-        None,
-    )
-    .unwrap_err();
+    let error = FsGuard::new(&SandboxPolicy::default())
+        .open(OpenOptions::new().read(true), &link, &link, Access::Read)
+        .unwrap_err();
 
     assert!(
         matches!(error, SandboxError::Unresolvable { .. }),

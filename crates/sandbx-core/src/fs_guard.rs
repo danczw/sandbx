@@ -37,8 +37,9 @@ const BENEATH: ResolveFlag = ResolveFlag::RESOLVE_BENEATH.union(ResolveFlag::RES
 pub struct FsGuard {
     readable: Vec<Root>,
     writable: Vec<Root>,
-    /// Named on every record this guard writes. An `Arc` for the reason [`Root::dir`] is one.
-    session: Option<Arc<str>>,
+    /// Named on every record this guard writes, through [`allowed`](Self::allowed),
+    /// [`absent`](Self::absent) and [`denied`](Self::denied).
+    session: Option<String>,
 }
 
 /// A granted root, and the descriptor a permitted access resolves beneath.
@@ -147,12 +148,8 @@ impl FsGuard {
         Self {
             readable,
             writable,
-            session: session.map(Arc::from),
+            session: session.map(str::to_owned),
         }
-    }
-
-    fn session(&self) -> Option<&str> {
-        self.session.as_deref()
     }
 
     /// Permit reading `path`, which must already exist, returning its resolved location.
@@ -167,7 +164,7 @@ impl FsGuard {
     /// because it hands back a path and so performs no access to root.
     fn permit_read(&self, path: &Path) -> Result<Permitted, SandboxError> {
         match path.canonicalize() {
-            Ok(resolved) => permit(resolved, &self.readable, path, Access::Read, self.session()),
+            Ok(resolved) => self.permit(resolved, &self.readable, path, Access::Read),
             // Why a path failed to resolve is information: ENOENT against EACCES over
             // arbitrary paths reads back as a map of the host.
             Err(source) => {
@@ -192,9 +189,8 @@ impl FsGuard {
         roots: &[Root],
         access: Access,
     ) -> SandboxError {
-        let session = self.session();
         if let Some(moved) = moved_root(requested, roots) {
-            return deny(Some(moved), requested, access, session);
+            return self.deny(Some(moved), requested, access);
         }
 
         let Area {
@@ -205,26 +201,26 @@ impl FsGuard {
         // The ancestor resolves, so what it reached is the substitute's choice too, and the
         // reason it would name is one the spelling above has already declined to give.
         if matches!(granted_area, Containment::Outside(_)) {
-            return deny(None, requested, access, session);
+            return self.deny(None, requested, access);
         }
 
         // Inside a confirmed root, where the ancestor still has to speak for the path below
         // it; a symlink or a `..` in between means it does not.
         if !ancestor.is_some_and(|ancestor| reaches_plainly(requested, ancestor)) {
-            return deny(None, requested, access, session);
+            return self.deny(None, requested, access);
         }
 
         let subject = requested.display().to_string();
         let failed = failed.to_path_buf();
         if names_nothing(&source) {
-            crate::AuditEvent::absent(access.operation(), session, &subject).emit();
+            self.absent(access, &subject);
             return SandboxError::NotFound {
                 requested: failed,
                 source,
             };
         }
 
-        crate::AuditEvent::denied(access.operation(), session, &subject, UNRESOLVABLE).emit();
+        self.denied(access, &subject, UNRESOLVABLE);
         SandboxError::Unresolvable {
             requested: failed,
             source,
@@ -240,12 +236,11 @@ impl FsGuard {
         let permitted = self.permit_read(path)?;
 
         let Some(root) = &permitted.root else {
-            return open(
+            return self.open(
                 OpenOptions::new().read(true),
                 &permitted.resolved,
                 path,
                 Access::Read,
-                self.session(),
             );
         };
 
@@ -256,14 +251,8 @@ impl FsGuard {
             nix::sys::stat::Mode::empty(),
         );
 
-        record(
-            opened.map(File::from),
-            Access::Read,
-            path,
-            names_nothing,
-            self.session(),
-        )
-        .map_err(|source| classify(source, path))
+        self.record(opened.map(File::from), Access::Read, path, names_nothing)
+            .map_err(|source| classify(source, path))
     }
 
     /// Read the entries of `path`, refusing anything the policy does not allow. Here and not
@@ -279,12 +268,11 @@ impl FsGuard {
         let permitted = self.permit_read(path)?;
 
         let Some(root) = &permitted.root else {
-            return Ok(record(
+            return Ok(self.record(
                 fs::read_dir(&permitted.resolved).and_then(listing_by_path),
                 Access::Read,
                 path,
                 listed_nothing,
-                self.session(),
             ));
         };
 
@@ -295,13 +283,7 @@ impl FsGuard {
             nix::sys::stat::Mode::empty(),
         );
 
-        Ok(record(
-            opened.and_then(listing),
-            Access::Read,
-            path,
-            listed_nothing,
-            self.session(),
-        ))
+        Ok(self.record(opened.and_then(listing), Access::Read, path, listed_nothing))
     }
 
     /// Open `path` for writing, creating or truncating it; closes the check-to-open window
@@ -319,23 +301,17 @@ impl FsGuard {
                 nix::sys::stat::Mode::from_bits_truncate(0o666),
             );
 
-            return record(
-                opened.map(File::from),
-                Access::Write,
-                path,
-                names_nothing,
-                self.session(),
-            )
-            .map_err(|source| classify(source, path));
+            return self
+                .record(opened.map(File::from), Access::Write, path, names_nothing)
+                .map_err(|source| classify(source, path));
         }
 
         let resolved = permitted.resolved;
-        open(
+        self.open(
             OpenOptions::new().write(true).create(true).truncate(true),
             &resolved,
             path,
             Access::Write,
-            self.session(),
         )
     }
 
@@ -375,13 +351,7 @@ impl FsGuard {
             let walked = match top {
                 Ok(top) => self.walk_beneath(top, &permitted.resolved, max_files),
                 Err(source) if source.raw_os_error() == Some(libc::EXDEV) => {
-                    crate::AuditEvent::denied(
-                        Access::Read.operation(),
-                        self.session(),
-                        &requested.display().to_string(),
-                        ESCAPED,
-                    )
-                    .emit();
+                    self.denied(Access::Read, &requested.display().to_string(), ESCAPED);
                     return Err(classify(source, requested));
                 }
                 Err(_) => ReadableWalk {
@@ -390,12 +360,7 @@ impl FsGuard {
                 },
             };
 
-            crate::AuditEvent::allowed(
-                Access::Read.operation(),
-                self.session(),
-                &requested.display().to_string(),
-            )
-            .emit();
+            self.allowed(Access::Read, &requested.display().to_string());
             return Ok(walked);
         }
 
@@ -435,13 +400,7 @@ impl FsGuard {
                     };
                     if let Containment::Outside(moved) = placement {
                         let reason = moved.map_or(Access::Read.outside(), |_| ROOT_REPLACED);
-                        crate::AuditEvent::denied(
-                            Access::Read.operation(),
-                            self.session(),
-                            &link.display().to_string(),
-                            reason,
-                        )
-                        .emit();
+                        self.denied(Access::Read, &link.display().to_string(), reason);
                         continue;
                     }
                     if resolved.is_file() {
@@ -470,12 +429,7 @@ impl FsGuard {
         files.sort();
         // Directly, not through `record`: the walk skips what it cannot read, so by here
         // there is no outcome but success left to sort.
-        crate::AuditEvent::allowed(
-            Access::Read.operation(),
-            self.session(),
-            &requested.display().to_string(),
-        )
-        .emit();
+        self.allowed(Access::Read, &requested.display().to_string());
         Ok(ReadableWalk { files, truncated })
     }
 
@@ -578,13 +532,7 @@ impl FsGuard {
 
         if let Containment::Outside(moved) = placement {
             let reason = moved.map_or(Access::Read.outside(), |_| ROOT_REPLACED);
-            crate::AuditEvent::denied(
-                Access::Read.operation(),
-                self.session(),
-                &link.display().to_string(),
-                reason,
-            )
-            .emit();
+            self.denied(Access::Read, &link.display().to_string(), reason);
             return None;
         }
 
@@ -606,13 +554,7 @@ impl FsGuard {
             Ok(existing) => existing,
             Err(_) => {
                 let refuse = |reason| {
-                    crate::AuditEvent::denied(
-                        Access::Write.operation(),
-                        self.session(),
-                        &path.display().to_string(),
-                        reason,
-                    )
-                    .emit();
+                    self.denied(Access::Write, &path.display().to_string(), reason);
                     SandboxError::PathNotAllowed {
                         requested: path.to_path_buf(),
                         access: Access::Write,
@@ -622,7 +564,7 @@ impl FsGuard {
                 // The root answers first: both reasons below are chosen by what sits at the
                 // path, so under a substituted root they report what the substitute holds.
                 if let Some(moved) = moved_root(path, &self.writable) {
-                    return Err(deny(Some(moved), path, Access::Write, self.session()));
+                    return Err(self.deny(Some(moved), path, Access::Write));
                 }
 
                 // `canonicalize` fails the same way on a nonexistent path and a dangling
@@ -654,13 +596,7 @@ impl FsGuard {
             }
         };
 
-        permit(
-            resolved,
-            &self.writable,
-            path,
-            Access::Write,
-            self.session(),
-        )
+        self.permit(resolved, &self.writable, path, Access::Write)
     }
 }
 
@@ -1183,87 +1119,6 @@ fn contains(resolved: &Path, roots: &[Root]) -> Containment {
     }
 }
 
-/// Refuse `requested`, recording which of the two reasons the gate decided on. One
-/// function for both, so a path under a substituted root answers alike whether or not it
-/// exists — present and absent reading apart would be a one-bit oracle.
-fn deny(
-    moved: Option<Replacement>,
-    requested: &Path,
-    access: Access,
-    session: Option<&str>,
-) -> SandboxError {
-    let subject = requested.display().to_string();
-
-    let Some(Replacement {
-        granted,
-        vetted,
-        opened,
-    }) = moved
-    else {
-        crate::AuditEvent::denied(access.operation(), session, &subject, access.outside()).emit();
-        return SandboxError::PathNotAllowed {
-            requested: requested.to_path_buf(),
-            access,
-        };
-    };
-
-    crate::AuditEvent::denied(access.operation(), session, &subject, ROOT_REPLACED).emit();
-    SandboxError::RootReplaced {
-        granted,
-        vetted,
-        opened,
-    }
-}
-
-/// Allow `resolved` only if it sits inside one of `roots`, recording a refusal. Only a
-/// refusal: passing the gate is not yet an access, so the `allowed` belongs to the entry
-/// point that performs one, and a bare check that succeeds records nothing (#182). `roots`
-/// has to be the set `access` names: a denial reports the access, so handing it the other
-/// axis's roots would record a true verdict with a false reason.
-fn permit(
-    resolved: PathBuf,
-    roots: &[Root],
-    requested: &Path,
-    access: Access,
-    session: Option<&str>,
-) -> Result<Permitted, SandboxError> {
-    // Before the resolution is judged: a link out of a substituted root lands wherever the
-    // substitute points, and an `Ok` there beside an absent name's refusal is a bit about it.
-    if let Some(moved) = moved_root(requested, roots) {
-        return Err(deny(Some(moved), requested, access, session));
-    }
-
-    // And no reason comes off the resolution: a link planted in a root that *confirms*
-    // resolves into one that does not, which is the same bit the other way round.
-    match contains(&resolved, roots) {
-        Containment::Inside(root) => Ok(Permitted { resolved, root }),
-        Containment::Outside(_) => Err(deny(None, requested, access, session)),
-    }
-}
-
-/// Record what an approved path's access actually did, and nothing about the verdict.
-/// Which errnos count as absence is the caller's — `names_nothing` for a path lookup,
-/// `listed_nothing` for a directory read — so the record and the error the caller returns
-/// cannot disagree about whether the path was there.
-fn record<T>(
-    outcome: io::Result<T>,
-    access: Access,
-    requested: &Path,
-    absent: fn(&io::Error) -> bool,
-    session: Option<&str>,
-) -> io::Result<T> {
-    let subject = requested.display().to_string();
-    let tool = access.operation();
-
-    match &outcome {
-        Ok(_) => crate::AuditEvent::allowed(tool, session, &subject).emit(),
-        Err(source) if absent(source) => crate::AuditEvent::absent(tool, session, &subject).emit(),
-        Err(source) => crate::AuditEvent::denied(tool, session, &subject, reason(source)).emit(),
-    }
-
-    outcome
-}
-
 /// The `reason=` an access on an approved path carries when it did not happen: `ELOOP` is
 /// the leaf swapped since the check, the one post-gate failure that really is a resolution
 /// failure, the rest having found the path and stopped there.
@@ -1275,23 +1130,117 @@ fn reason(source: &io::Error) -> &'static str {
     }
 }
 
-/// Open an already-approved path without following a symlink at the leaf, which — the
-/// path having been canonical when checked — was swapped in after the check. The path is
-/// proven inside a root by now, so there is nothing left to conceal: a file deleted since
-/// the check is an absence, while `ELOOP` from `O_NOFOLLOW` is the swap.
-fn open(
-    options: &mut OpenOptions,
-    resolved: &Path,
-    requested: &Path,
-    access: Access,
-    session: Option<&str>,
-) -> Result<File, SandboxError> {
-    use std::os::unix::fs::OpenOptionsExt;
+impl FsGuard {
+    /// Record a permitted access. This and its two siblings are the only way the guard
+    /// writes an access record, so none can leave out the session (#429).
+    fn allowed(&self, access: Access, subject: &str) {
+        crate::AuditEvent::allowed(access.operation(), self.session.as_deref(), subject).emit();
+    }
 
-    let opened = options.custom_flags(libc::O_NOFOLLOW).open(resolved);
+    /// Record an access to a name that denotes nothing.
+    fn absent(&self, access: Access, subject: &str) {
+        crate::AuditEvent::absent(access.operation(), self.session.as_deref(), subject).emit();
+    }
 
-    record(opened, access, requested, names_nothing, session)
-        .map_err(|source| classify(source, requested))
+    /// Record a refusal and its reason.
+    fn denied(&self, access: Access, subject: &str, reason: &str) {
+        crate::AuditEvent::denied(access.operation(), self.session.as_deref(), subject, reason)
+            .emit();
+    }
+
+    /// Refuse `requested`, recording which of the two reasons the gate decided on. One
+    /// function for both, so a path under a substituted root answers alike whether or not it
+    /// exists — present and absent reading apart would be a one-bit oracle.
+    fn deny(&self, moved: Option<Replacement>, requested: &Path, access: Access) -> SandboxError {
+        let subject = requested.display().to_string();
+
+        let Some(Replacement {
+            granted,
+            vetted,
+            opened,
+        }) = moved
+        else {
+            self.denied(access, &subject, access.outside());
+            return SandboxError::PathNotAllowed {
+                requested: requested.to_path_buf(),
+                access,
+            };
+        };
+
+        self.denied(access, &subject, ROOT_REPLACED);
+        SandboxError::RootReplaced {
+            granted,
+            vetted,
+            opened,
+        }
+    }
+
+    /// Allow `resolved` only if it sits inside one of `roots`, recording a refusal. Only a
+    /// refusal: passing the gate is not yet an access, so the `allowed` belongs to the entry
+    /// point that performs one, and a bare check that succeeds records nothing (#182). `roots`
+    /// has to be the set `access` names: a denial reports the access, so handing it the other
+    /// axis's roots would record a true verdict with a false reason.
+    fn permit(
+        &self,
+        resolved: PathBuf,
+        roots: &[Root],
+        requested: &Path,
+        access: Access,
+    ) -> Result<Permitted, SandboxError> {
+        // Before the resolution is judged: a link out of a substituted root lands wherever the
+        // substitute points, and an `Ok` there beside an absent name's refusal is a bit about it.
+        if let Some(moved) = moved_root(requested, roots) {
+            return Err(self.deny(Some(moved), requested, access));
+        }
+
+        // And no reason comes off the resolution: a link planted in a root that *confirms*
+        // resolves into one that does not, which is the same bit the other way round.
+        match contains(&resolved, roots) {
+            Containment::Inside(root) => Ok(Permitted { resolved, root }),
+            Containment::Outside(_) => Err(self.deny(None, requested, access)),
+        }
+    }
+
+    /// Record what an approved path's access actually did, and nothing about the verdict.
+    /// Which errnos count as absence is the caller's — `names_nothing` for a path lookup,
+    /// `listed_nothing` for a directory read — so the record and the error the caller returns
+    /// cannot disagree about whether the path was there.
+    fn record<T>(
+        &self,
+        outcome: io::Result<T>,
+        access: Access,
+        requested: &Path,
+        absent: fn(&io::Error) -> bool,
+    ) -> io::Result<T> {
+        let subject = requested.display().to_string();
+
+        match &outcome {
+            Ok(_) => self.allowed(access, &subject),
+            Err(source) if absent(source) => self.absent(access, &subject),
+            Err(source) => self.denied(access, &subject, reason(source)),
+        }
+
+        outcome
+    }
+
+    /// Open an already-approved path without following a symlink at the leaf, which — the
+    /// path having been canonical when checked — was swapped in after the check. The path is
+    /// proven inside a root by now, so there is nothing left to conceal: a file deleted since
+    /// the check is an absence, while `ELOOP` from `O_NOFOLLOW` is the swap.
+    fn open(
+        &self,
+        options: &mut OpenOptions,
+        resolved: &Path,
+        requested: &Path,
+        access: Access,
+    ) -> Result<File, SandboxError> {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let opened = options.custom_flags(libc::O_NOFOLLOW).open(resolved);
+
+        self.record(opened, access, requested, names_nothing)
+            .map_err(|source| classify(source, requested))
+    }
 }
 
 /// Sort an error from an already-approved access into absence or refusal.
