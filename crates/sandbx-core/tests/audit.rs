@@ -997,9 +997,8 @@ fn a_run_under_a_session_records_its_id() {
     }
 }
 
-/// One access per road a guard's record leaves by — `record`, `conceal_unless_granted`,
-/// `deny`, the walk's own, `check_write`'s closure — run under `guard`, with the decision
-/// each must have taken. Six of the seven built-ins leave no other record (#429).
+/// Each entry point that records, run under `guard`, with the decision each must have taken.
+/// Six of the seven built-ins leave no record but these (#429).
 fn guard_accesses(guard: impl FnOnce(&Path) -> FsGuard) -> Vec<(String, &'static str)> {
     let root = tempfile::tempdir().expect("a directory to grant");
     let file = root.path().join("present.txt");
@@ -1012,6 +1011,10 @@ fn guard_accesses(guard: impl FnOnce(&Path) -> FsGuard) -> Vec<(String, &'static
         guard
             .open_write(&root.path().join("out.txt"))
             .expect("a granted write");
+        guard
+            .read_dir(root.path())
+            .expect("a granted listing")
+            .expect("a listable directory");
         let _ = guard.check_read(&root.path().join("absent.txt"));
         let _ = guard.check_read(&elsewhere.path().join("nope.txt"));
         let _ = guard.check_write(&root.path().join("nodir").join(".."));
@@ -1021,7 +1024,7 @@ fn guard_accesses(guard: impl FnOnce(&Path) -> FsGuard) -> Vec<(String, &'static
     });
 
     let decisions = [
-        "allowed", "allowed", "absent", "denied", "denied", "allowed",
+        "allowed", "allowed", "allowed", "absent", "denied", "denied", "allowed",
     ];
     assert_eq!(lines.len(), decisions.len(), "got: {lines:?}");
     for (line, decision) in lines.iter().zip(decisions) {
