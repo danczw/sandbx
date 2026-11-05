@@ -1,11 +1,13 @@
 //! Does a name the allowlist does not hold fail to resolve, and does one it holds still work?
 //!
 //! The resolver half of the enforcement suite; `enforcement.rs` states the kernel floor all of
-//! these run on. Every name here is one this host already resolves out of its own
-//! `/etc/hosts`, so no test needs a network and no denial is a run that was offline anyway.
+//! these run on. Every name here is one this host's own `/etc/hosts` lists, so no denial is
+//! a run that was offline anyway. Only the no-flag test insists the file also maps it: a
+//! line with no address leaves the name to `dns`, which the other tests reach before the
+//! unshare and a sandboxed command never does.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
-use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::process::Output;
 use std::thread::JoinHandle;
@@ -63,9 +65,9 @@ fn host_forbids_the_mounts() -> bool {
     restricted
 }
 
-/// A name this host resolves with no nameserver, and a listener on the address it resolves
-/// to. Derived, not written down — the one such name on a developer machine is the
-/// machine's own hostname, and hard-coding either would pass on one host and fail on the next.
+/// A name this host's `/etc/hosts` lists, and a listener on an address it resolves to.
+/// Derived, not written down — the one such name on a developer machine is the machine's own
+/// hostname, and hard-coding either would pass on one host and fail on the next.
 /// Looked for up to [`ATTEMPTS`] times, since a host rewriting the file leaves it empty for a
 /// moment and a look landing there finds no name. A test under [`retried_across_rewrites`]
 /// takes [`one_look_listener`] instead, so the wrapper's one retry covers the look too.
@@ -87,7 +89,7 @@ const NO_NAME: &str = "no name in /etc/hosts resolves to an address this test ca
 
 /// One look for [`local_listener`]'s name, `None` when it finds none.
 fn one_look_listener(payload: &'static str) -> Option<LocalListener> {
-    let (name, address, listener) = bindable_name()?;
+    let (name, address, listener) = bindable_name(false)?;
 
     let accepting = thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
@@ -104,17 +106,26 @@ fn one_look_listener(payload: &'static str) -> Option<LocalListener> {
 }
 
 /// One look through `/etc/hosts` for [`local_listener`]'s name, and the listener it bound.
-fn bindable_name() -> Option<(String, SocketAddr, TcpListener)> {
+/// `mapped` keeps only an address the name's own line starts with. Without it, a line with no
+/// address, as a runner writes its hostname before it knows its IP, yields a name that
+/// resolves through `dns` alone (#472).
+fn bindable_name(mapped: bool) -> Option<(String, SocketAddr, TcpListener)> {
     let hosts = fs::read_to_string("/etc/hosts").ok()?;
 
     hosts
         .lines()
         .map(|line| line.split('#').next().unwrap_or_default())
-        .flat_map(|line| line.split_whitespace().skip(1))
-        .filter(|name| !LOOPBACK_NAMES.contains(name))
-        .flat_map(|name| {
+        .flat_map(|line| {
+            let mut fields = line.split_whitespace();
+            let listed = fields.next().and_then(|field| field.parse::<IpAddr>().ok());
+            fields.map(move |name| (name, listed))
+        })
+        .filter(|(name, _)| !LOOPBACK_NAMES.contains(name))
+        .flat_map(|(name, listed)| {
             let addresses = (name, 0u16).to_socket_addrs().into_iter().flatten();
-            addresses.map(move |address| (name, address))
+            addresses
+                .filter(move |address| !mapped || listed == Some(address.ip()))
+                .map(move |address| (name, address))
         })
         .find_map(|(name, address)| {
             TcpListener::bind(address).ok().map(|listener| {
@@ -581,15 +592,17 @@ fn the_host_etc_survives_a_bounded_run() {
 #[test]
 fn a_run_without_the_flag_resolves_as_it_did_before() {
     retried_across_rewrites(|| {
-        let Some(LocalListener {
-            name,
-            address,
-            accepting,
-        }) = one_look_listener("UNUSED")
-        else {
-            return Err(NO_NAME.into());
+        let Some((name, address, _listener)) = bindable_name(true) else {
+            if bindable_name(false).is_none() {
+                return Err(NO_NAME.into());
+            }
+            eprintln!(
+                "SKIPPED: every name /etc/hosts lists sits on a line with no address of its \
+                 own, so each resolves through `dns`, which no sandboxed command reaches, \
+                 flag or not. The claim is untested on this run."
+            );
+            return Ok(());
         };
-        drain(address, accepting);
 
         let policy = SandboxPolicy::default()
             .allow_read(vetted("/etc"))
