@@ -255,8 +255,8 @@ fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
     }
 }
 
-/// Only a terminal stderr is held: a redirected one has nothing the screen covers, and a
-/// hold there would leave every record to a signal (#485).
+/// Asserted here alone: `drive`, which takes the hold, needs a terminal to draw on, and
+/// no test reaches it (#485).
 #[test]
 fn only_a_terminal_stderr_holds_the_audit_trail() {
     assert!(
