@@ -342,9 +342,9 @@ architecture the filter gates on.
 - **Under `tui`, a terminal stderr's audit trail is held until the screen goes.**
   Every `sandbx::audit` record of the turn waits in memory until the screen is
   given back, so none lands under the alternate screen; any terminal is held, not
-  only the one drawn on. A signal that kills the process in that window loses
-  all of them, a `spawned` for a command that ran included: `SIGTERM`,
-  `SIGQUIT`, `SIGKILL`, and the `SIGHUP` of a terminal window closed mid-turn. No
+  only the one drawn on. A signal that kills the process in that window
+  (`SIGTERM`, `SIGQUIT`, `SIGKILL`, or the `SIGHUP` of a terminal window closed
+  mid-turn) loses all of them, a `spawned` for a command that ran included. No
   handler is installed, and none could catch `SIGKILL`. With stderr redirected
   nothing is held, and `2>` a file has each record as it happens
   ([#485](https://github.com/danczw/sandbx/issues/485)).

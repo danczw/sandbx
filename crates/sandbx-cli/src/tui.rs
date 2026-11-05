@@ -169,7 +169,8 @@ impl Tui {
             withheld: merged.withheld,
         };
 
-        // Before the screen, dropped after it.
+        // Before the screen: a record written once it is up lands in the pane and dies
+        // with it.
         let shown = Device::of(&io::stderr());
         let audit = held(shown);
 
