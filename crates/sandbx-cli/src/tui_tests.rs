@@ -1,5 +1,5 @@
 use super::super::{Device, INCOMPLETE, NO_CONSENT, gate};
-use super::{Ending, Running, Tui, ending, given_back, lost};
+use super::{Ending, Running, Tui, ending, given_back, held, lost};
 use crate::{AgentError, Cli, Command};
 use clap::Parser;
 use sandbx_approval::{ApprovalDecision, ToolCall};
@@ -253,6 +253,14 @@ fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
             Err(AgentError::Turn(TurnError::StreamEndedWithoutStop))
         ));
     }
+}
+
+/// Only a terminal stderr is held: a redirected one has nothing the screen covers, and a
+/// hold there would leave every record to a signal (#485).
+#[test]
+fn only_a_terminal_stderr_holds_the_audit_trail() {
+    assert!(held(Device::Redirected).is_none());
+    assert!(held(Device::Terminal).is_some());
 }
 
 /// A terminal that went away is accounted for as itself, not as an interrupt the

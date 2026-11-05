@@ -93,12 +93,13 @@ impl tracing_subscriber::fmt::MakeWriter<'_> for Audit {
 ///
 /// What it costs. The trail sits in memory until the guard drops, which under `tui` is the
 /// moment the screen is given back, and a signal before then runs no `Drop` and loses it
-/// all. So `tui` holds only a terminal stderr, the one the screen covers: `2>` a file is
-/// written each record as it is emitted, and loses none of them to a signal (#485). Over a
-/// terminal the window is the turn, and `SECURITY.md` states it; no handler closes it,
-/// `SIGKILL` admitting none. A hangup runs the `Drop`, but where stderr is the descriptor
-/// that died the one write fails: the trail is released, not delivered. `tracing` alone is
-/// held, so `tui` routes every other line through its screen.
+/// all. So `tui` holds only a terminal stderr: `2>` a file is written each record as it is
+/// emitted, and loses none of them to a signal (#485). Over a terminal the window is the
+/// turn, and `SECURITY.md` states it; no handler closes it, `SIGKILL` admitting none. A
+/// closed terminal window is in it too, its `SIGHUP` killing at 129. A hangup that raises no
+/// signal runs the `Drop`, but where stderr is the descriptor that died the one write
+/// fails: the trail is released, not delivered. `tracing` alone is held, so `tui` routes
+/// every other line through its screen.
 pub fn hold() -> Held {
     *HELD.lock().expect(UNPOISONED) = Some(Vec::new());
     Held(())
