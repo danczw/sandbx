@@ -169,13 +169,9 @@ impl Tui {
             withheld: merged.withheld,
         };
 
-        // Before the screen, dropped after it, and only over a terminal stderr: the
-        // alternate screen neither redirects it nor gives back what was written to it, so
-        // each audit record would land in the pane and die with it. A redirected stderr is
-        // not under the screen, and a record written there at once is one a signal cannot
-        // take back (#485).
+        // Before the screen, dropped after it.
         let shown = Device::of(&io::stderr());
-        let audit = (shown == Device::Terminal).then(sandbx_logging::hold);
+        let audit = held(shown);
 
         // The screen before the keys: without raw mode ctrl-c is a signal, and the reader
         // would never see the key that is supposed to stop the turn. One lock because the
@@ -282,9 +278,9 @@ impl Tui {
         let printed = screen.plain();
         drop(screen);
 
-        // Released the moment there is a stderr with no screen over it, and ahead of the
-        // reprint: a stdout the terminal has paused would hold the trail behind it, and a
-        // signal there would lose it (#224).
+        // A held trail is released the moment there is a stderr with no screen over it, and
+        // ahead of the reprint: a stdout the terminal has paused would hold the trail behind
+        // it, and a signal there would lose it (#224).
         drop(audit);
 
         given_back(
@@ -297,6 +293,16 @@ impl Tui {
             &mut io::stderr(),
         )
     }
+}
+
+/// The hold a turn takes on the audit trail, or `None` where stderr is not a terminal.
+///
+/// The alternate screen neither redirects a terminal stderr nor gives back what was
+/// written to it, so a record would land in the pane and die with it. Any terminal is
+/// held, not only the one drawn on. Anything else gets each record as it is emitted,
+/// where a signal cannot take it back (#485).
+fn held(stderr: Device) -> Option<sandbx_logging::Held> {
+    (stderr == Device::Terminal).then(sandbx_logging::hold)
 }
 
 fn interrupted() -> String {
