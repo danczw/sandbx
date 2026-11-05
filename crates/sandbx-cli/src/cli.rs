@@ -90,7 +90,8 @@ pub enum Command {
     /// Takes every flag `agent-run` takes and bounds a tool call the same way.
     /// What differs is the reporting: the answer, the model's reasoning and the
     /// verdict on each tool call are drawn in one pane as they arrive, and
-    /// ctrl-c or escape ends the turn where it stands.
+    /// ctrl-c or escape ends the turn where it stands. When the turn ends the
+    /// screen goes, and what it showed is printed in its place.
     ///
     /// Interrupting costs two things, which the screen says again at the time:
     /// nothing of that turn is stored, even under `--session`, and a tool

@@ -14,8 +14,8 @@ use ratatui::backend::{Backend, ClearType, CrosstermBackend, WindowSize};
 use ratatui::buffer::Cell;
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
-use ratatui::layout::{Position, Rect, Size};
-use sandbx_tui_transcript::{Hint, draw};
+use ratatui::layout::{Position, Size};
+use sandbx_tui_transcript::{draw, plain};
 
 /// Re-exported, not left to the caller: every entry point here takes or returns a
 /// [`Transcript`], and building one takes a [`Reasoning`] (#352).
@@ -62,36 +62,20 @@ impl Screen {
     /// is applied even once a draw has failed, so the transcript stays whole.
     pub fn paint(&mut self, change: impl FnOnce(&mut Transcript)) {
         change(&mut self.transcript);
-        self.draw(Hint::Running);
+        self.draw();
     }
 
-    /// Apply `change`, then repaint every cell for the finished turn: ratatui flushes only the
-    /// diff between its buffers, so a cell stderr wrote under the alternate screen survives
-    /// unless the back buffer is discarded. By `resize`, never `Terminal::clear`, whose cursor
-    /// query takes crossterm's one reader lock that `sandbx_tui_input::Keys` may hold, or races
-    /// it for the reply. A same-size resize asks the terminal nothing only on the fullscreen
-    /// viewport `Terminal::new` gives; an inline one recomputes its origin from the cursor,
-    /// which is that query again.
-    pub fn finish(&mut self, change: impl FnOnce(&mut Transcript)) {
-        change(&mut self.transcript);
+    /// The transcript as drawn so far, unstyled, to print once the screen is given back.
+    pub fn plain(&self) -> String {
+        plain(&self.transcript)
+    }
+
+    fn draw(&mut self) {
         if self.failed.is_some() {
             return;
         }
 
-        match cleared(&mut self.terminal) {
-            Ok(()) => self.draw(Hint::Done),
-            Err(error) => self.failed = Some(error),
-        }
-    }
-
-    fn draw(&mut self, hint: Hint) {
-        if self.failed.is_some() {
-            return;
-        }
-
-        let drawn = self
-            .terminal
-            .draw(|frame| draw(frame, &self.transcript, hint));
+        let drawn = self.terminal.draw(|frame| draw(frame, &self.transcript));
         if let Err(error) = drawn {
             self.failed = Some(error);
         }
@@ -103,13 +87,6 @@ impl Screen {
     pub fn failure(&mut self) -> Option<io::Error> {
         self.failed.take()
     }
-}
-
-/// Every cell discarded and the screen cleared, at the size the window is now.
-///
-/// Fails, and writes nothing, on a window [`Measured`] cannot read.
-fn cleared<B: Backend>(terminal: &mut Terminal<B>) -> Result<(), B::Error> {
-    terminal.resize(Rect::from(terminal.size()?))
 }
 
 /// `ratatui::try_init`'s three fallible statements, without the hook it installs first, and

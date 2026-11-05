@@ -1,28 +1,17 @@
+use std::io;
 use std::io::Write;
 use std::os::fd::AsFd;
-use std::task::{Context, Waker};
 use std::time::{Duration, Instant};
-use std::{io, pin};
 
 use nix::poll::{PollFlags, PollTimeout};
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use sandbx_pty_fixture::{Pty, pty, wait_readable};
 use tokio::sync::watch;
 
-use super::{Keys, Seen, Source, Stopped, hangup, hung_up, interrupts, pressed, read, stopped};
+use super::{Seen, Source, Stopped, hangup, hung_up, interrupts, pressed, read, stopped};
 
 fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
     KeyEvent::new(code, modifiers)
-}
-
-/// Whether `future` finishes without ever being woken. No runtime, because what is under
-/// test is that `press` answers from the value the channel already holds rather than from
-/// a notification — which is exactly one poll with a waker nothing can call.
-fn ready(future: impl Future<Output = ()>) -> bool {
-    let mut future = pin::pin!(future);
-    let mut polling = Context::from_waker(Waker::noop());
-
-    future.as_mut().poll(&mut polling).is_ready()
 }
 
 #[test]
@@ -52,18 +41,13 @@ fn an_interrupt_survives_a_later_keypress() {
     }
 
     assert!(seen.stop);
-    assert_eq!(seen.presses, 2);
 }
 
 /// A hangup ends the turn, where a closed channel does not — and a key the operator
 /// really pressed is still accounted to them rather than to the terminal.
 #[test]
 fn a_hangup_stops_the_turn_and_a_keypress_outranks_it() {
-    let seen = |stop, gone| Seen {
-        presses: 0,
-        stop,
-        gone,
-    };
+    let seen = |stop, gone| Seen { stop, gone };
 
     // The first case is what keeps the rest honest: a reader that has seen nothing
     // leaves the turn running.
@@ -216,38 +200,6 @@ fn a_reader_on_a_live_terminal_reads_its_source() {
 
     assert_eq!(source.asked, 2, "the gate held up a live terminal");
     let seen = seen.borrow();
-    assert_eq!((seen.presses, seen.stop), (1, true));
+    assert!(seen.stop, "the interrupt was not read");
     assert!(!seen.gone, "a live terminal was reported as hung up");
-}
-
-/// The finished screen is not held on a terminal that already went away. The sender
-/// stays alive, so what resolves `press` is the hangup and not a closed channel — which
-/// is the real shape: the wedged reader holds its sender forever.
-#[test]
-fn a_hangup_releases_a_screen_waiting_on_the_final_key() {
-    let (sender, seen) = watch::channel(Seen {
-        presses: 0,
-        stop: false,
-        gone: true,
-    });
-    let mut keys = Keys { seen };
-
-    assert!(
-        ready(keys.press()),
-        "a finished screen outlived its terminal"
-    );
-
-    drop(sender);
-}
-
-/// The pair: with no hangup recorded the wait stands, so the test above is the flag and
-/// not a `press` that waits for nothing.
-#[test]
-fn a_live_terminal_still_holds_it() {
-    let (sender, seen) = watch::channel(Seen::default());
-    let mut keys = Keys { seen };
-
-    assert!(!ready(keys.press()), "the screen was dropped unread");
-
-    drop(sender);
 }

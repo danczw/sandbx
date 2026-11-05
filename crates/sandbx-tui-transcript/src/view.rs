@@ -19,17 +19,8 @@ pub(crate) const GUTTER_MARK: char = '│';
 /// [`GUTTER_MARK`] as it is drawn: the mark, then the space separating it from the row.
 const GUTTER: &str = "│ ";
 
-/// What the status bar says the operator can do now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Hint {
-    /// The turn is streaming, and a key can still stop it.
-    Running,
-    /// The turn is over and the screen is held so its last rounds can be read.
-    Done,
-}
-
 /// Draw one frame: the whole transcript, tail-aligned, and the status bar under it.
-pub fn draw(frame: &mut Frame, transcript: &Transcript, hint: Hint) {
+pub fn draw(frame: &mut Frame, transcript: &Transcript) {
     let [body, bar] =
         Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
 
@@ -41,26 +32,51 @@ pub fn draw(frame: &mut Frame, transcript: &Transcript, hint: Hint) {
     let scroll = u16::try_from(rows.saturating_sub(usize::from(body.height))).unwrap_or(u16::MAX);
 
     frame.render_widget(paragraph.scroll((scroll, 0)), body);
-    frame.render_widget(status(transcript, hint), bar);
+    frame.render_widget(status(transcript), bar);
+}
+
+/// The transcript as the screen drew it, unstyled, for a terminal the screen has given
+/// back: the alternate screen takes every row with it, the answer among them.
+pub fn plain(transcript: &Transcript) -> String {
+    let mut out = String::new();
+
+    for (_, row) in rows(transcript) {
+        out.push_str(&row);
+        out.push('\n');
+    }
+
+    out
 }
 
 /// The transcript as rows, one blank row between entries.
 fn text(transcript: &Transcript) -> Text<'static> {
-    let mut rows: Vec<Line<'static>> = Vec::new();
+    Text::from(
+        rows(transcript)
+            .map(|(kind, row)| match kind {
+                Some(kind) => Line::from(Span::styled(row, style(kind))),
+                None => Line::default(),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
 
-    for entry in transcript.entries() {
-        if !rows.is_empty() {
-            rows.push(Line::default());
-        }
+/// Every row with its gutter, and the kind it is styled as; `None` for the blank row between
+/// two entries. One builder for both renderings, so [`plain`] cannot lose the gutter.
+fn rows(transcript: &Transcript) -> impl Iterator<Item = (Option<Kind>, String)> {
+    transcript
+        .entries()
+        .iter()
+        .enumerate()
+        .flat_map(|(at, entry)| {
+            let gap = (at > 0).then(|| (None, String::new()));
+            let body = entry
+                .text
+                .split('\n')
+                .enumerate()
+                .map(|(n, row)| (Some(entry.kind), format!("{}{row}", gutter(entry.kind, n))));
 
-        let style = style(entry.kind);
-        for (n, row) in entry.text.split('\n').enumerate() {
-            let row = format!("{}{row}", gutter(entry.kind, n));
-            rows.push(Line::from(Span::styled(row, style)));
-        }
-    }
-
-    Text::from(rows)
+            gap.into_iter().chain(body)
+        })
 }
 
 /// What marks row `n` of an entry as the harness speaking, or as something it was told.
@@ -95,7 +111,7 @@ fn style(kind: Kind) -> Style {
 }
 
 /// The status bar: what the turn has spent, and what a key does.
-fn status(transcript: &Transcript, hint: Hint) -> Paragraph<'static> {
+fn status(transcript: &Transcript) -> Paragraph<'static> {
     let mut fields = vec![format!("rounds {}", transcript.rounds())];
 
     // Each is absent until reported, never a zero: `0 in` would read as a turn that sent
@@ -112,11 +128,7 @@ fn status(transcript: &Transcript, hint: Hint) -> Paragraph<'static> {
         fields.push(spend.join(" / "));
     }
 
-    let hint = match hint {
-        Hint::Running => "ctrl-c interrupts",
-        Hint::Done => "any key leaves",
-    };
-    fields.push(hint.to_string());
+    fields.push("ctrl-c interrupts".to_string());
 
     Paragraph::new(Line::from(fields.join(" · ")))
         .style(Style::new().add_modifier(Modifier::REVERSED))
