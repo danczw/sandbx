@@ -37,8 +37,6 @@ const BENEATH: ResolveFlag = ResolveFlag::RESOLVE_BENEATH.union(ResolveFlag::RES
 pub struct FsGuard {
     readable: Vec<Root>,
     writable: Vec<Root>,
-    /// Named on every record this guard writes, through [`allowed`](Self::allowed),
-    /// [`absent`](Self::absent) and [`denied`](Self::denied).
     session: Option<String>,
 }
 
