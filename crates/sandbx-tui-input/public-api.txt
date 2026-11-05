@@ -21,7 +21,6 @@ impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_input::Stopped
 pub struct sandbx_tui_input::Keys
 impl sandbx_tui_input::Keys
 pub fn sandbx_tui_input::Keys::listen() -> Self
-pub async fn sandbx_tui_input::Keys::press(&mut self)
 pub async fn sandbx_tui_input::Keys::stop(&mut self) -> sandbx_tui_input::Stopped
 impl core::marker::Freeze for sandbx_tui_input::Keys
 impl core::marker::Send for sandbx_tui_input::Keys

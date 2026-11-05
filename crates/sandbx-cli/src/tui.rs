@@ -2,8 +2,9 @@
 //!
 //! Every flag, the policy and the session are `agent-run`'s; what differs is where the
 //! turn is reported and that an operator can end one mid-flight. `--approve call` is
-//! refused rather than downgraded (#225), and the per-call account is drawn on the screen
-//! instead of written to stderr, which the alternate screen does not redirect (#224).
+//! refused rather than downgraded (#225), and every line of the account goes through the
+//! screen rather than to a stderr it covers. The transcript is printed once the screen is
+//! given back, the alternate screen keeping nothing it showed (#224).
 //!
 //! The drawing crates — `sandbx-tui-transcript`, `sandbx-screen` and `sandbx-tui-input` —
 //! take events and give back keys, and hold no policy, provider, session or gate: a renderer
@@ -11,10 +12,12 @@
 //! `deny.toml` refuses them a provider edge (#365).
 //!
 //! Light by intent, each a limit an operator meets: single-shot, the prompt from argv;
-//! auto-follow with no scroll keys, so a line that scrolled off is gone; repainted only on an
-//! event, so the screen is still for a tool call; no wrap-up round (#232).
+//! auto-follow with no scroll keys, so a line that scrolled off is back only in the reprint;
+//! repainted only on an event, so the screen is still for a tool call; no wrap-up round
+//! (#232).
 
 use std::io::{self, Write};
+use std::mem;
 use std::sync::Mutex;
 
 use sandbx_anthropic::AnthropicClient;
@@ -28,8 +31,8 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Keys, Stopped};
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
-use super::render::Answer;
 use super::prompt::{Notes, Stderr};
+use super::render::Answer;
 use super::{AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
 
@@ -61,8 +64,8 @@ impl Tui {
         self.drawable(Device::of(&io::stdout()))?;
 
         let approved = gate::approved_line(self.run.allow_tool.as_deref());
-        // On stderr as well as on the screen: the screen is gone the moment the process
-        // ends, and this is the line a redirected log needs most (#224).
+        // Before the screen as well as on it, and only drawn there, so a redirected log
+        // carries it once and ahead of every call it approved.
         Stderr.note(&approved);
 
         // Ahead of the policy, for `AgentRun::execute`'s reason and with its trade: nothing
@@ -173,7 +176,11 @@ impl Tui {
         // would never see the key that is supposed to stop the turn. One lock because the
         // turn hands out two writers, `observe` and the gate's `settled`, that meet at the
         // same transcript; a `Mutex`, not a `RefCell`, so the turn's future stays `Send`.
-        let pane = Mutex::new(Screen::enter(transcript).map_err(AgentError::Screen)?);
+        let pane = Mutex::new(Pane {
+            screen: Screen::enter(transcript).map_err(AgentError::Screen)?,
+            said: Vec::new(),
+            running: Running::default(),
+        });
         let mut keys = Keys::listen();
         paint(&pane, |_| {});
 
@@ -206,59 +213,78 @@ impl Tui {
             .expect("a paint that panicked unwinds past this frame");
 
         let (code, outcome, account) = match outcome {
-            Err(Stopped::Pressed) => (
-                Ok(INCOMPLETE),
-                None,
-                vec![
-                    "sandbx: interrupted. Nothing of this turn is stored, a tool call \
-                     already running finishes unseen, and any key leaves — after which \
-                     the process waits for that call before it exits (#26)"
-                        .to_string(),
-                ],
-            ),
-            // 3 and not 2, the code a lost gate already takes: a turn nobody could see is
-            // one nobody watched, and that is not the recoverable stop an interrupt is.
-            Err(Stopped::Gone) => (Ok(NO_CONSENT), None, vec![lost()]),
+            Err(stopped) => {
+                let (code, said) = match stopped {
+                    Stopped::Pressed => (INCOMPLETE, interrupted()),
+                    // 3 and not 2, the code a lost gate already takes: a turn nobody could
+                    // see is one nobody watched, and that is not the recoverable stop an
+                    // interrupt is.
+                    Stopped::Gone => (NO_CONSENT, lost()),
+                };
+                // The call the dropped future stood on never settles, so this is the only
+                // line it gets.
+                let running = mem::take(&mut pane.running).stopped();
+                (
+                    Ok(code),
+                    None,
+                    [Some(said), running].into_iter().flatten().collect(),
+                )
+            }
             Ok(Ok(outcome)) => {
                 let Ending { code, said } = ending(&outcome);
                 (Ok(code), Some(outcome), said)
             }
             Ok(Err(error)) => {
-                // Drawn before it is returned: the operator reads the reason on the screen
-                // rather than in what scrolls past after it is torn down.
+                // Drawn before it is returned: the operator reads the reason in the
+                // transcript printed below rather than only in what follows it.
                 let line = format!("sandbx: {}", crate::error_line(&error));
                 (Err(AgentError::from(error)), None, vec![line])
             }
         };
 
-        // Before the key, not after: the hold ends on an operator who may not come back,
-        // and a hangup there would lose a finished turn that was already paid for.
+        for line in &account {
+            pane.note(line);
+        }
+
         if let Some(outcome) = outcome
             && let Some(session) = session
         {
             // `None`: no wrap-up round is sent here.
-            self.run.save(session, &asked, outcome, None, &merged, &mut Stderr)?;
+            self.run
+                .save(session, &asked, outcome, None, &merged, &mut pane)?;
         }
 
-        // Held until a key: the alternate screen takes the transcript with it, and a turn
-        // whose last rounds nobody read was not watched. Every cell and not the changed
-        // ones, because `save` writes to a stderr the screen does not redirect. What the
-        // wait costs the held trail is #224.
-        pane.finish(|transcript| {
-            for line in &account {
-                transcript.note(line);
-            }
-        });
-        keys.press().await;
-        let failed = pane.failure();
-        drop(pane);
+        let Pane {
+            mut screen, said, ..
+        } = pane;
+        let failed = screen.failure();
+        let printed = screen.plain();
+        drop(screen);
 
-        // Only now is there a stderr with no screen over it, which is why the trail is
-        // dropped here: in emission order, ahead of everything `reported` writes.
+        // Released the moment there is a stderr with no screen over it, and ahead of the
+        // reprint: a stdout the terminal has paused would hold the trail behind it, and a
+        // signal there would lose it (#224).
         drop(audit);
 
-        reported(code, failed, &account)
+        let mut stderr = io::stderr();
+        let shown = Device::of(&stderr);
+        given_back(
+            code,
+            failed,
+            &printed,
+            &said,
+            shown,
+            &mut io::stdout(),
+            &mut stderr,
+        )
     }
+}
+
+/// The account of an interrupt.
+fn interrupted() -> String {
+    "sandbx: interrupted. Nothing of this turn is stored, and a tool call already running \
+     finishes unseen: the process waits for it before it exits (#26)"
+        .to_string()
 }
 
 /// The account of a terminal that went away mid-turn.
@@ -271,37 +297,43 @@ fn lost() -> String {
         .to_string()
 }
 
-/// Write what the run has to say on a stderr with no screen over it, and report the code.
+/// Write what the run has to say on a terminal the screen has given back, and report the
+/// code.
 ///
-/// The account again, the pane having gone with the screen and a redirected log needing the
-/// line that says why a run exited 3 rather than 2 (#224). A latched draw failure is one
-/// more line and not the code: the code answers what the turn did, which a failed draw is
-/// not (#257). `agent-run` does the opposite with a stdout it could not write, that being the
-/// channel the answer came back on. What a latched screen does lose is the answer, drawn
-/// there and nowhere else, so without `--session` such a run exits 0 with it gone (#224).
-/// Apart from `execute` so the precedence is a unit test: `Screen` needs a
-/// terminal no test has, and the latch is private with no setter.
+/// The transcript first and always, the alternate screen having taken every row with it,
+/// the answer among them; a turn that failed outright then stops, its own error being the
+/// rest of the account. `said` again only where `shown` is redirected, the reprint already
+/// carrying it on a terminal. A latched draw failure is one more line and not the code: the
+/// code answers what the turn did, which a failed draw is not (#257). `agent-run` does the
+/// opposite with a stdout it could not write, that being the channel the answer came back
+/// on. The writers are arguments so the order is a unit test.
 ///
-/// `writeln!` and not `eprintln!`: when the screen was the terminal that hung up, stderr is
+/// `writeln!` and not `eprintln!`: when the screen was the terminal that hung up, both are
 /// the same dead descriptor, and a panicking macro here would lose the code the turn earned
 /// (#264).
-fn reported(
+fn given_back(
     code: Result<i32, AgentError>,
     failed: Option<io::Error>,
-    account: &[String],
+    printed: &str,
+    said: &[String],
+    shown: Device,
+    out: &mut impl Write,
+    err: &mut impl Write,
 ) -> Result<i32, AgentError> {
-    // First, so a turn that failed outright prints neither: its own error is the account.
-    let code = code?;
-    let mut stderr = io::stderr();
+    let _ = out.write_all(printed.as_bytes()).and_then(|()| out.flush());
 
-    for line in account {
-        let _ = writeln!(stderr, "{line}");
+    let code = code?;
+
+    if shown == Device::Redirected {
+        for line in said {
+            let _ = writeln!(err, "{line}");
+        }
     }
     // Through the variant and `error_line`, so the line is the one `main` would have
     // printed had this stayed the return value.
     if let Some(error) = failed {
         let _ = writeln!(
-            stderr,
+            err,
             "sandbx: {}",
             crate::error_line(&AgentError::Screen(error))
         );
@@ -376,13 +408,55 @@ struct Ending {
     said: Vec<String>,
 }
 
+/// The screen, and the account drawn on it.
+struct Pane {
+    screen: Screen,
+    /// Every line noted, in order, for a redirected stderr once the screen is gone.
+    said: Vec<String>,
+    running: Running,
+}
+
+impl Notes for Pane {
+    /// Drawn, and kept: the screen takes the line with it when it goes.
+    fn note(&mut self, line: &str) {
+        self.screen.paint(|transcript| transcript.note(line));
+        self.said.push(line.to_string());
+    }
+}
+
+/// The call the gate let through and that has not settled yet.
+///
+/// Apart from [`Pane`] so a test can drive it without a screen.
+#[derive(Default)]
+struct Running(Option<String>);
+
+impl Running {
+    /// Set on `Allow` alone: a refused call settles before anything runs.
+    fn approved(&mut self, call: ToolCall<'_>, verdict: &ApprovalDecision) {
+        if matches!(verdict, ApprovalDecision::Allow) {
+            self.0 = Some(gate::describe(call.tool, call.input));
+        }
+    }
+
+    fn settled(&mut self) {
+        self.0 = None;
+    }
+
+    /// The line a stop owes the call it stood on, if one was running.
+    fn stopped(self) -> Option<String> {
+        self.0.map(|call| {
+            format!("sandbx: {call} — still running when the turn stopped, and finishes unseen")
+        })
+    }
+}
+
 /// Change the transcript and redraw, or do nothing at all.
 ///
 /// A poisoned lock is a panic already unwinding, whose terminal `Screen::drop` is about to
 /// restore; panicking again here would replace that account with this one.
-fn paint(pane: &Mutex<Screen>, change: impl FnOnce(&mut Transcript)) {
+fn paint(pane: &Mutex<Pane>, change: impl FnOnce(&mut Transcript)) {
     if let Ok(mut pane) = pane.lock() {
-        pane.paint(change);
+        pane.screen.paint(change);
     }
 }
 
@@ -390,21 +464,28 @@ fn paint(pane: &Mutex<Screen>, change: impl FnOnce(&mut Transcript)) {
 struct Gate<'a> {
     /// `agent-run`'s gate with no terminal, which is the whole of the decision.
     argv: gate::ArgvGate<'a, Terminal>,
-    pane: &'a Mutex<Screen>,
+    pane: &'a Mutex<Pane>,
 }
 
 impl CallGate for Gate<'_> {
     /// Delegated, never re-derived: one `--allow-tool` approving two different sets across
     /// two subcommands is the divergence nobody notices until a `bash` runs.
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
-        self.argv.approve(call)
+        let verdict = self.argv.approve(call);
+        if let Ok(mut pane) = self.pane.lock() {
+            pane.running.approved(call, &verdict);
+        }
+        verdict
     }
 
-    /// The same line `agent-run` writes, drawn instead of printed: `ArgvGate::settled` puts
-    /// it on stderr, which the alternate screen neither redirects nor gives back.
+    /// The same line `agent-run` writes, through the pane: `ArgvGate::settled` puts it on
+    /// stderr, which the alternate screen neither redirects nor gives back.
     fn settled(&mut self, call: Settled<'_>) {
         let line = gate::line(call);
-        paint(self.pane, |transcript| transcript.note(&line));
+        if let Ok(mut pane) = self.pane.lock() {
+            pane.running.settled();
+            pane.note(&line);
+        }
     }
 }
 

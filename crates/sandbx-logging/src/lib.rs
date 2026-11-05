@@ -91,11 +91,12 @@ impl tracing_subscriber::fmt::MakeWriter<'_> for Audit {
 /// would land in the pane and be lost with it. Not reentrant: a second `hold` discards
 /// the first's records, so there is one caller.
 ///
-/// What it costs. The trail sits in memory until the guard drops, which under `tui` waits on
-/// the final keypress, and a signal there runs no `Drop` and loses it all (#224). A hangup
-/// runs the `Drop`, but where stderr is the descriptor that died the one write fails: the
-/// trail is released, not delivered, and `2>` a file is what keeps it. `tracing` alone is
-/// held, so a bare `eprintln!` reached under the screen still lands on it.
+/// What it costs. The trail sits in memory until the guard drops, which under `tui` is the
+/// moment the screen is given back, and a signal before then runs no `Drop` and loses it
+/// all: the window is the turn, and no longer a wait on the operator after it (#224). A
+/// hangup runs the `Drop`, but where stderr is the descriptor that died the one write
+/// fails: the trail is released, not delivered, and `2>` a file is what keeps it. `tracing`
+/// alone is held, so `tui` routes every other line through its screen.
 pub fn hold() -> Held {
     *HELD.lock().expect(UNPOISONED) = Some(Vec::new());
     Held(())

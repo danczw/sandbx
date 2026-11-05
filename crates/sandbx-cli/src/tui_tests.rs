@@ -1,8 +1,10 @@
 use super::super::{Device, INCOMPLETE, NO_CONSENT, gate};
-use super::{Ending, Tui, ending, lost, reported};
+use super::{Ending, Running, Tui, ending, given_back, lost};
 use crate::{AgentError, Cli, Command};
 use clap::Parser;
+use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_event::StopReason;
+use sandbx_tools::BuiltinTool;
 use sandbx_turn::{TurnError, TurnOutcome, TurnStop};
 use std::io;
 
@@ -132,6 +134,63 @@ fn a_stop_that_is_not_an_answer_says_why() {
     }
 }
 
+/// What [`given_back`] wrote to stdout and to stderr, and the code it returned.
+struct Given {
+    out: String,
+    err: String,
+    code: Result<i32, AgentError>,
+}
+
+fn given(
+    code: Result<i32, AgentError>,
+    failed: Option<io::Error>,
+    said: &[String],
+    shown: Device,
+) -> Given {
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let code = given_back(
+        code,
+        failed,
+        "> a prompt\n",
+        said,
+        shown,
+        &mut out,
+        &mut err,
+    );
+
+    Given {
+        out: String::from_utf8(out).expect("utf-8"),
+        err: String::from_utf8(err).expect("utf-8"),
+        code,
+    }
+}
+
+/// The screen took every row with it, so the transcript is printed whatever the turn did,
+/// a failed one included; the account follows on stderr only where it went elsewhere.
+#[test]
+fn the_transcript_comes_back_and_the_account_only_to_a_redirected_stderr() {
+    let said = ["sandbx: ls /work — ran".to_string()];
+
+    let logged = given(Ok(0), None, &said, Device::Redirected);
+    assert_eq!(logged.out, "> a prompt\n");
+    assert_eq!(logged.err, "sandbx: ls /work — ran\n");
+    assert!(matches!(logged.code, Ok(0)));
+
+    // On a terminal the reprint already carries the line, so it is not said twice.
+    let shown = given(Ok(0), None, &said, Device::Terminal);
+    assert_eq!(shown.out, "> a prompt\n");
+    assert_eq!(shown.err, "");
+
+    let failed = given(
+        Err(AgentError::from(TurnError::StreamEndedWithoutStop)),
+        None,
+        &said,
+        Device::Redirected,
+    );
+    assert_eq!(failed.out, "> a prompt\n");
+    assert_eq!(failed.err, "", "a failed turn's error is its own account");
+}
+
 /// A finished turn keeps the code it earned, whatever the screen did last.
 ///
 /// Codes as literals, so a const renumbered under a claim `README.md` and `SECURITY.md`
@@ -139,7 +198,7 @@ fn a_stop_that_is_not_an_answer_says_why() {
 #[test]
 fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
     let latched = || Some(io::Error::from(io::ErrorKind::BrokenPipe));
-    let kept = |code| reported(Ok(code), latched(), &[]);
+    let kept = |code| given(Ok(code), latched(), &[], Device::Redirected).code;
 
     assert!(matches!(kept(NO_CONSENT), Ok(3)));
     assert!(matches!(kept(INCOMPLETE), Ok(2)));
@@ -150,7 +209,7 @@ fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
     let failed = || AgentError::from(TurnError::StreamEndedWithoutStop);
     for screen in [latched(), None] {
         assert!(matches!(
-            reported(Err(failed()), screen, &[]),
+            given(Err(failed()), screen, &[], Device::Redirected).code,
             Err(AgentError::Turn(TurnError::StreamEndedWithoutStop))
         ));
     }
@@ -162,7 +221,9 @@ fn a_latched_screen_failure_does_not_replace_a_code_the_turn_earned() {
 /// The code as a literal, for the reason the test above it gives.
 #[test]
 fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
-    assert!(matches!(reported(Ok(NO_CONSENT), None, &[lost()]), Ok(3)));
+    let given = given(Ok(NO_CONSENT), None, &[lost()], Device::Redirected);
+    assert!(matches!(given.code, Ok(3)));
+    assert!(given.err.contains("terminal went away"), "{}", given.err);
 
     let said = lost();
     assert!(said.starts_with("sandbx: "), "{said}");
@@ -190,4 +251,38 @@ fn the_approved_tools_are_what_the_same_flags_approve_under_agent_run() {
     assert_eq!(approved, gate::approved_tools(run.allow_tool.as_deref()));
     assert!(approved.contains(&"write"), "{approved:?}");
     assert!(!approved.contains(&"bash"), "{approved:?}");
+}
+
+/// The call a stop lands on never settles, so the tracker is the only account it gets; one
+/// the gate refused settled before it could be running.
+#[test]
+fn only_a_call_let_through_and_unsettled_is_named_on_a_stop() {
+    let input = serde_json::json!({ "command": "sleep 20" });
+    let call = ToolCall {
+        tool: BuiltinTool::Bash,
+        id: "toolu_1",
+        input: &input,
+    };
+
+    let mut running = Running::default();
+    running.approved(call, &ApprovalDecision::Allow);
+    let named = running.stopped().expect("an approved call is running");
+    assert!(
+        named.starts_with("sandbx: bash sleep 20 — still running"),
+        "{named}"
+    );
+
+    let mut refused = Running::default();
+    refused.approved(
+        call,
+        &ApprovalDecision::Deny {
+            reason: "no".to_string(),
+        },
+    );
+    assert_eq!(refused.stopped(), None);
+
+    let mut finished = Running::default();
+    finished.approved(call, &ApprovalDecision::Allow);
+    finished.settled();
+    assert_eq!(finished.stopped(), None);
 }

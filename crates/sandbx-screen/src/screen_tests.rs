@@ -8,9 +8,9 @@ use std::rc::Rc;
 use nix::errno::Errno;
 use ratatui::Terminal;
 use sandbx_pty_fixture::{Pty, WINDOW, Window, pty};
-use sandbx_tui_transcript::{Hint, Reasoning, Transcript, draw};
+use sandbx_tui_transcript::{Reasoning, Transcript, draw};
 
-use super::{Measured, cleared};
+use super::Measured;
 
 /// A pty slave, counting the writes that reach it: a draw that was attempted wrote.
 struct Counted {
@@ -80,28 +80,14 @@ fn a_hung_up_terminal_is_not_drawn_on() {
     let transcript = Transcript::new("a prompt", Reasoning::Hidden);
     drop(master);
 
-    let drawn = terminal.draw(|frame| draw(frame, &transcript, Hint::Running));
+    let drawn = terminal.draw(|frame| draw(frame, &transcript));
 
     assert_unmeasured(drawn.map(drop));
     assert_eq!(writes.get(), 0, "the draw was attempted");
 }
 
-/// And `finish`'s clear, which asks for the size itself rather than through a draw.
-#[test]
-fn a_hung_up_terminal_is_not_cleared() {
-    let Fixture {
-        master,
-        mut terminal,
-        writes,
-    } = screen();
-    drop(master);
-
-    assert_unmeasured(cleared(&mut terminal));
-    assert_eq!(writes.get(), 0, "the clear was attempted");
-}
-
-/// The pair: a live pty is measured off its own descriptor, then cleared and drawn on,
-/// so the two above are the hangup and not a backend that refuses everything.
+/// The pair: a live pty is measured off its own descriptor, then drawn on, so the test
+/// above is the hangup and not a backend that refuses everything.
 #[test]
 fn a_live_terminal_is_drawn_at_its_own_size() {
     let Fixture {
@@ -118,9 +104,8 @@ fn a_live_terminal_is_drawn_at_its_own_size() {
     };
     assert_eq!(window, WINDOW);
 
-    cleared(&mut terminal).expect("a live pty is cleared");
     terminal
-        .draw(|frame| draw(frame, &transcript, Hint::Running))
+        .draw(|frame| draw(frame, &transcript))
         .expect("a live pty is drawn on");
     assert!(writes.get() > 0, "nothing reached a live pty");
 }
@@ -134,7 +119,7 @@ fn hidden_then_hung_up() -> Terminal<Measured<Counted>> {
     } = screen();
     let transcript = Transcript::new("a prompt", Reasoning::Hidden);
     terminal
-        .draw(|frame| draw(frame, &transcript, Hint::Running))
+        .draw(|frame| draw(frame, &transcript))
         .expect("a live pty is drawn on");
     drop(master);
     terminal

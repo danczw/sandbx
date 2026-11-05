@@ -26,7 +26,6 @@ const GONE: PollFlags = PollFlags::POLLHUP
 /// losing either unread otherwise.
 #[derive(Debug, Clone, Copy, Default)]
 struct Seen {
-    presses: u64,
     stop: bool,
     gone: bool,
 }
@@ -96,21 +95,6 @@ impl Keys {
                 future::pending::<()>().await;
             }
         }
-    }
-
-    /// Resolves on the next key of any kind, for holding a finished screen; at once if the
-    /// terminal is gone, since with no key able to arrive, waiting would hold the alternate
-    /// screen until the process was killed.
-    ///
-    /// Off `gone` and not off the channel closing: where only the watch saw the hangup, the
-    /// reader is wedged inside crossterm holding its sender, and the channel never closes.
-    /// The borrow marks the value seen, so a hangup landing after it still wakes the wait.
-    pub async fn press(&mut self) {
-        if self.seen.borrow_and_update().gone {
-            return;
-        }
-
-        let _ = self.seen.changed().await;
     }
 }
 
@@ -278,7 +262,6 @@ fn hung_up(
 
 /// Fold one keypress into what the reader has seen.
 fn pressed(seen: &mut Seen, key: KeyEvent) {
-    seen.presses += 1;
     seen.stop |= interrupts(key);
 }
 

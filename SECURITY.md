@@ -321,7 +321,8 @@ architecture the filter gates on.
   no deletion. A turn stopped on `tui`'s screen writes nothing at all — not the
   prompt and not the part of the answer you read — and an interrupt and a
   hung-up terminal discard it alike, while a tool call already running still
-  finished, and what it did is only on the screen you stopped
+  finishes. What the turn showed is printed back to the terminal once the screen
+  is gone, the running call named among it but never its result
   ([#271](https://github.com/danczw/sandbx/issues/271)).
 
   Ownership and integrity are enforced, not secrecy: directory `0700`, transcript

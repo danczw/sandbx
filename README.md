@@ -126,8 +126,9 @@ $ sandbx sandbox-run --allow-read /srv -- /bin/true
 
 Two records per run, tied by `spawn`: one `spawned`, then exactly one of
 `exited` or `failed`. Under `sandbx tui` they arrive on stderr too, held back
-until the screen is given up so they follow the turn rather than interleave with
-it. Seven fields do not read the way they look:
+until the screen is given up so they do not interleave with the turn, and
+written ahead of the transcript printed after it. Seven fields do not read the
+way they look:
 
 | field | reads |
 |---|---|
@@ -303,9 +304,11 @@ leave you answering one call blind.
 One question, one answer, then the process ends. `sandbx tui` takes the same
 flags and draws that turn on a screen instead of streaming it, where ctrl-c or
 escape ends it mid-flight — storing nothing of that turn and leaving a running
-tool call to finish unseen. It needs a terminal on stdout, so it refuses a piped
-run, and it refuses `--approve call`, whose question wants the terminal the
-screen has taken ([#225](https://github.com/danczw/sandbx/issues/225)):
+tool call to finish unseen. When the turn ends the screen goes and the
+transcript is printed in its place, so the answer stays in your scrollback. It
+needs a terminal on stdout, so it refuses a piped run, and it refuses
+`--approve call`, whose question wants the terminal the screen has taken
+([#225](https://github.com/danczw/sandbx/issues/225)):
 
 ```sh
 sandbx tui --allow-tool bash -- "what is in this directory?"
