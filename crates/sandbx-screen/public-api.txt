@@ -3,6 +3,7 @@ pub use sandbx_screen::Reasoning
 pub use sandbx_screen::Transcript
 pub struct sandbx_screen::Screen
 impl sandbx_screen::Screen
+pub fn sandbx_screen::Screen::amend(&mut self, impl core::ops::function::FnOnce(&mut sandbx_tui_transcript::transcript::Transcript))
 pub fn sandbx_screen::Screen::enter(sandbx_tui_transcript::transcript::Transcript) -> core::io::error::Result<Self>
 pub fn sandbx_screen::Screen::failure(&mut self) -> core::option::Option<core::io::error::Error>
 pub fn sandbx_screen::Screen::paint(&mut self, impl core::ops::function::FnOnce(&mut sandbx_tui_transcript::transcript::Transcript))
