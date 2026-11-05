@@ -85,9 +85,9 @@ fn local_listener(payload: &'static str, names: Names) -> LocalListener {
 }
 
 /// Why no test here can run without a [`local_listener`] name.
-const NO_NAME: &str = "no name in /etc/hosts resolves to an address this test can bind, so \
-                       there is no name that resolves without a nameserver and the denials \
-                       below would be vacuous";
+const NO_NAME: &str = "no name of the kind this test takes in /etc/hosts resolves to an address \
+                       it can bind, so it has nothing to resolve. For a test needing a name the \
+                       file itself maps, a hostname line with no address is enough (#472)";
 
 /// One look for [`local_listener`]'s name, `None` when it finds none.
 fn one_look_listener(payload: &'static str, names: Names) -> Option<LocalListener> {
@@ -111,9 +111,10 @@ fn one_look_listener(payload: &'static str, names: Names) -> Option<LocalListene
 /// Which of `/etc/hosts`'s names [`bindable_name`] may take.
 #[derive(Clone, Copy, PartialEq)]
 enum Names {
-    /// Any but a loopback name, on a line with no address too. A runner writes its hostname
-    /// that way before it knows its IP (#472), leaving the name to `dns`: enough only where
-    /// the helper resolves it, before the unshare.
+    /// Any but a loopback name, on a line with no address too, its first field taken for the
+    /// address all the same. A runner writes its hostname that way before it knows its IP
+    /// (#472), leaving the name to `dns`: enough only where the helper resolves it, before the
+    /// unshare.
     Listed,
     /// A non-loopback name its own line maps to the address it resolves to, so it resolves
     /// with no nameserver.

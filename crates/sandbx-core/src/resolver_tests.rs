@@ -239,7 +239,7 @@ fn looked_up(names: &[&str], answers: &[&[&str]]) -> (Vec<Vec<IpAddr>>, Vec<Stri
                 .get(events.iter().filter(|event| *event != "pause").count())
                 .expect("looked up more times than the test scripted");
             events.push(format!("lookup {name}"));
-            addresses(answer)
+            parsed(answer)
         },
         || events.borrow_mut().push("pause".to_string()),
     );
@@ -248,7 +248,7 @@ fn looked_up(names: &[&str], answers: &[&[&str]]) -> (Vec<Vec<IpAddr>>, Vec<Stri
     (found, events.into_inner())
 }
 
-fn addresses(answer: &[&str]) -> Vec<IpAddr> {
+fn parsed(answer: &[&str]) -> Vec<IpAddr> {
     answer
         .iter()
         .map(|address| address.parse().expect("a test address"))
@@ -261,7 +261,7 @@ fn a_name_missed_once_resolves_on_the_retry() {
 
     assert_eq!(
         found,
-        [addresses(&["93.184.216.34"])],
+        [parsed(&["93.184.216.34"])],
         "a name the retry found was rendered without its address"
     );
     assert_eq!(
@@ -277,7 +277,7 @@ fn a_resolved_name_is_looked_up_once() {
 
     assert_eq!(
         found,
-        [addresses(&["93.184.216.34"])],
+        [parsed(&["93.184.216.34"])],
         "a resolved name lost its address"
     );
     assert_eq!(
@@ -293,7 +293,7 @@ fn a_name_that_never_resolves_is_looked_up_twice() {
 
     assert_eq!(
         found,
-        [addresses(&[])],
+        [parsed(&[])],
         "an unresolved name was given an address"
     );
     assert_eq!(
@@ -313,7 +313,7 @@ fn misses_share_one_pause_and_hits_are_not_retried() {
 
     assert_eq!(
         found,
-        [vec![], addresses(&["192.0.2.2"]), addresses(&["192.0.2.3"])],
+        [vec![], parsed(&["192.0.2.2"]), parsed(&["192.0.2.3"])],
         "a name was rendered with another's addresses, or the retry's were dropped"
     );
     assert_eq!(
