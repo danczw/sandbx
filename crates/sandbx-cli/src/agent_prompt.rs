@@ -176,6 +176,23 @@ pub(super) fn to_stderr(line: &str) {
     let _ = err.write_all(account(Device::of(&err), line).as_bytes());
 }
 
+/// Where one line of the run's account goes. One route, so a renderer that owns the screen
+/// takes every line rather than have one land on a stderr it covers (#224).
+///
+/// Not `Account`: CodeQL's `rust/cleartext-logging` reads that name as a credential (#461).
+pub(super) trait Notes {
+    fn note(&mut self, line: &str);
+}
+
+/// The account straight to stderr, for a run with nothing drawn over it.
+pub(super) struct Stderr;
+
+impl Notes for Stderr {
+    fn note(&mut self, line: &str) {
+        to_stderr(line);
+    }
+}
+
 /// The operator, as the gate reaches them: asked about a call, then told what became of
 /// it.
 ///

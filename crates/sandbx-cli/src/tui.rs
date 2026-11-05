@@ -29,6 +29,7 @@ use sandbx_tui_input::{Keys, Stopped};
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
 use super::render::Answer;
+use super::prompt::{Notes, Stderr};
 use super::{AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation};
 use crate::AgentError;
 
@@ -59,10 +60,10 @@ impl Tui {
         // must not read a credential on the way to finding that out.
         self.drawable(Device::of(&io::stdout()))?;
 
-        let approved = gate::approved_tools(self.run.allow_tool.as_deref()).join(", ");
+        let approved = gate::approved_line(self.run.allow_tool.as_deref());
         // On stderr as well as on the screen: the screen is gone the moment the process
         // ends, and this is the line a redirected log needs most (#224).
-        eprintln!("sandbx: tools approved: {approved}");
+        Stderr.note(&approved);
 
         // Ahead of the policy, for `AgentRun::execute`'s reason and with its trade: nothing
         // may sit between the vet and the pin, and this call writes a directory and can
@@ -130,7 +131,7 @@ impl Tui {
         session: Option<Session>,
     ) -> Result<i32, AgentError> {
         let mut transcript = Transcript::new(&prompt, self.run.reasoning());
-        transcript.note(&format!("sandbx: tools approved: {approved}"));
+        transcript.note(approved);
 
         let asked = RequestMessage {
             role: Role::User,
@@ -236,7 +237,7 @@ impl Tui {
             && let Some(session) = session
         {
             // `None`: no wrap-up round is sent here.
-            self.run.save(session, &asked, outcome, None, &merged)?;
+            self.run.save(session, &asked, outcome, None, &merged, &mut Stderr)?;
         }
 
         // Held until a key: the alternate screen takes the transcript with it, and a turn

@@ -28,7 +28,7 @@ use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 use crate::{AgentError, Grants, PolicyError};
 
 use super::gate::{self, tool_name};
-use super::prompt::{APPROVE_CALL, Approve, Terminal};
+use super::prompt::{APPROVE_CALL, Approve, Notes, Stderr, Terminal};
 use super::render::{Answer, Render, Unfinished};
 use super::{Device, orientation, wrapup};
 
@@ -269,10 +269,7 @@ impl AgentRun {
         // refused, so neither is opened for a turn that will not happen.
         let terminal = self.terminal()?;
 
-        eprintln!(
-            "sandbx: tools approved: {}",
-            gate::approved_tools(self.allow_tool.as_deref()).join(", ")
-        );
+        Stderr.note(&gate::approved_line(self.allow_tool.as_deref()));
 
         // Ahead of the policy, and that placement is the whole point. The context needs a
         // session — it is what `rooted_access` names — and nothing may sit between
@@ -337,18 +334,18 @@ impl AgentRun {
                     Terminal::open().map_err(|source| AgentError::NoTerminal { source })?;
                 // After the open: claiming the run will ask would be false for one that couldn't.
                 if gate::asks_about_anything(self.allow_tool.as_deref()) {
-                    eprintln!(
+                    Stderr.note(
                         "sandbx: each call that writes or runs a program will be asked for \
-                         on this terminal"
+                         on this terminal",
                     );
                 } else {
                     // Inert, not wrong: argv is the ceiling. Said plainly, or silence reads
                     // as consent.
-                    eprintln!(
+                    Stderr.note(&format!(
                         "sandbx: nothing in this run will be asked for: `{APPROVE_CALL}` \
                          asks only about the tools `{}` approved, and none was",
                         gate::ALLOW_TOOL
-                    );
+                    ));
                 }
                 Ok(Some(terminal))
             }
@@ -458,7 +455,7 @@ impl AgentRun {
         let outcome = outcome?;
 
         if let Some(session) = session {
-            self.save(session, &asked, outcome, ending, &merged)?;
+            self.save(session, &asked, outcome, ending, &merged, &mut render)?;
         }
 
         // Last: an append still happens for a closed stdout — the transcript is the
@@ -470,7 +467,8 @@ impl AgentRun {
     ///
     /// `asked` has to be passed back in: `TurnOutcome::messages` is what the turn
     /// produced, so a transcript built from the outcome alone would hold the model's
-    /// replies with nothing it replied to.
+    /// replies with nothing it replied to. `notes` takes the one line a turn with nothing to
+    /// store is owed, which under `tui` must not reach the stderr the screen covers.
     pub(super) fn save(
         &self,
         mut session: Session,
@@ -478,6 +476,7 @@ impl AgentRun {
         outcome: TurnOutcome,
         ending: Option<Unfinished>,
         merged: &Merged,
+        notes: &mut impl Notes,
     ) -> Result<(), AgentError> {
         let mut messages = session::stored_messages(slice::from_ref(asked));
         messages.extend(session::stored_messages(&outcome.messages));
@@ -494,10 +493,10 @@ impl AgentRun {
             // Not an error: the turn's own exit code already says what happened, and a
             // turn that produced nothing at all has nothing to add.
             Err(SessionError::IncompleteTurn) => {
-                eprintln!(
+                notes.note(&format!(
                     "sandbx: the turn produced nothing to store; session {} is unchanged",
                     session.id()
-                );
+                ));
                 Ok(())
             }
             Err(error) => Err(error.into()),

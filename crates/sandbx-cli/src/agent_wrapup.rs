@@ -25,6 +25,7 @@ use sandbx_provider::{EventStream, ProviderError};
 use sandbx_tools::ExecutionContext;
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
+use super::prompt::Notes;
 use super::{Render, gate};
 
 /// What the model is told in place of the tools it may no longer call.
@@ -106,10 +107,10 @@ pub(super) async fn run<W: Write, E: Write>(
         // Reported, not propagated: a `?` here would turn a turn that did real work
         // into exit 1 with its text already written.
         Err(error) => {
-            eprintln!(
+            render.note(&format!(
                 "sandbx: the wrap-up request failed: {}",
                 crate::error_line(&error)
-            );
+            ));
             WrapUp {
                 outcome: first,
                 summarised: false,
@@ -119,14 +120,14 @@ pub(super) async fn run<W: Write, E: Write>(
         // already streamed is `Unfinished::Discarded`. Reading every non-answer stop as a tool
         // asked for is sound only while `RefuseAll` cannot abort.
         Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => {
-            eprintln!(
+            render.note(&format!(
                 "sandbx: the wrap-up round {}",
                 if second.messages.is_empty() {
                     "replied with nothing"
                 } else {
                     "asked for a tool instead of answering"
                 }
-            );
+            ));
             WrapUp {
                 outcome: first,
                 summarised: false,

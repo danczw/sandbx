@@ -103,10 +103,12 @@ fn runtime() -> tokio::runtime::Runtime {
         .expect("a current-thread runtime")
 }
 
-/// What a scripted run reports: every request it sent, its stdout, and its exit code.
+/// What a scripted run reports: every request it sent, its stdout, its stderr account,
+/// and its exit code.
 struct Driven {
     sent: Vec<Prompt>,
     written: String,
+    said: String,
     code: Result<i32, AgentError>,
 }
 
@@ -142,6 +144,7 @@ fn under(
     let mut sent = Vec::new();
     let mut rounds = rounds.into_iter();
     let mut out = Vec::new();
+    let mut err = Vec::new();
 
     let code = runtime().block_on(args.drive(
         |request| {
@@ -154,7 +157,7 @@ fn under(
         system,
         Channels {
             out: &mut out,
-            err: Vec::new(),
+            err: &mut err,
             err_device: Device::Redirected,
             terminal: None,
         },
@@ -164,6 +167,7 @@ fn under(
     Driven {
         sent,
         written: String::from_utf8(out).expect("utf-8"),
+        said: String::from_utf8(err).expect("utf-8"),
         code,
     }
 }
@@ -209,6 +213,7 @@ fn asked_on(
     let mut sent = Vec::new();
     let mut rounds = rounds.into_iter();
     let mut out = Vec::new();
+    let mut err = Vec::new();
 
     let code = runtime().block_on(args.drive(
         |request| {
@@ -221,7 +226,7 @@ fn asked_on(
         system,
         Channels {
             out: &mut out,
-            err: Vec::new(),
+            err: &mut err,
             err_device: Device::Redirected,
             terminal: Some(terminal),
         },
@@ -231,6 +236,7 @@ fn asked_on(
     Driven {
         sent,
         written: String::from_utf8(out).expect("utf-8"),
+        said: String::from_utf8(err).expect("utf-8"),
         code,
     }
 }
@@ -290,6 +296,7 @@ fn the_prompt_is_the_whole_request_history() {
         sent,
         written,
         code,
+        ..
     } = one_round(
         &args,
         &args.to_prompt(),
@@ -509,7 +516,7 @@ fn a_turn_with_no_reply_keeps_the_turns_own_exit_code() {
     let store = fixture.store;
     let session = fixture.session;
 
-    let Driven { code, .. } = one_round(
+    let Driven { code, said, .. } = one_round(
         &args,
         &args.to_prompt(),
         vec![stop(StopReason::MaxTokens)],
@@ -517,8 +524,13 @@ fn a_turn_with_no_reply_keeps_the_turns_own_exit_code() {
     );
 
     // `IncompleteTurn` is a stderr line, not an error: the cut-short code is what a
-    // script consuming stdout has to see.
+    // script consuming stdout has to see. On the renderer's stderr, the route `tui` swaps
+    // for its screen (#224).
     assert_eq!(code.expect("a reported turn"), INCOMPLETE);
+    assert!(
+        said.contains("the turn produced nothing to store"),
+        "{said}"
+    );
     assert!(
         store
             .resume(&only_session(&store))
@@ -606,6 +618,7 @@ fn a_discarded_wrap_up_round_owns_what_it_wrote() {
         sent,
         written,
         code,
+        ..
     } = capped(&args, stranding_text(), Some(session));
 
     assert_eq!(sent.len(), 2, "the cap should have bought a wrap-up round");
@@ -649,6 +662,7 @@ fn a_lost_terminal_exits_three_without_asking_again() {
         sent,
         written,
         code,
+        ..
     } = asked_on(&args, policy, hung_up(), asking_to_write(&file), None);
 
     assert_eq!(code.expect("a reported turn"), 3);
@@ -723,6 +737,7 @@ fn a_turn_out_of_rounds_exits_two_with_an_answer() {
         sent,
         written,
         code,
+        ..
     } = capped(&args, summarising(), None);
 
     assert_eq!(sent.len(), 2, "the cap should have bought a wrap-up round");
@@ -793,6 +808,7 @@ fn no_wrap_up_still_stores_what_the_cap_reached() {
         sent,
         written,
         code,
+        ..
     } = under(
         SandboxPolicy::default(),
         &args,
@@ -850,11 +866,13 @@ fn a_failed_wrap_up_round_costs_the_turn_nothing() {
     let Driven {
         sent,
         written,
+        said,
         code,
     } = capped(&args, Vec::new(), Some(session));
 
     assert_eq!(sent.len(), 2, "the wrap-up round should have been tried");
     assert_eq!(written, "looking\n");
+    assert!(said.contains("the wrap-up request failed"), "{said}");
     assert_eq!(code.expect("a reported turn"), INCOMPLETE);
 
     let stored = store
