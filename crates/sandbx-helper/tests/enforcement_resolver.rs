@@ -1,10 +1,11 @@
 //! Does a name the allowlist does not hold fail to resolve, and does one it holds still work?
 //!
 //! The resolver half of the enforcement suite; `enforcement.rs` states the kernel floor all of
-//! these run on. Every name here is one this host's own `/etc/hosts` lists, so no denial is
-//! a run that was offline anyway. Only the no-flag test insists the file also maps it: a
-//! line with no address leaves the name to `dns`, which the other tests reach before the
-//! unshare and a sandboxed command never does.
+//! these run on. Every name here is one this host's own `/etc/hosts` lists. The denial and
+//! the no-flag test also insist the name's own line maps it: a line with no address leaves
+//! the name to `dns`, which a sandboxed command never reaches, flag or not, so a denial of
+//! it is a run that was offline anyway. The allowlisted tests need not, since the helper
+//! resolves before the unshare.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
@@ -65,19 +66,20 @@ fn host_forbids_the_mounts() -> bool {
     restricted
 }
 
-/// A name this host's `/etc/hosts` lists, and a listener on an address it resolves to.
+/// A name of `names` this host's `/etc/hosts` lists, and a listener on an address it
+/// resolves to.
 /// Derived, not written down — the one such name on a developer machine is the machine's own
 /// hostname, and hard-coding either would pass on one host and fail on the next.
 /// Looked for up to [`ATTEMPTS`] times, since a host rewriting the file leaves it empty for a
 /// moment and a look landing there finds no name. A test under [`retried_across_rewrites`]
 /// takes [`one_look_listener`] instead, so the wrapper's one retry covers the look too.
-fn local_listener(payload: &'static str) -> LocalListener {
+fn local_listener(payload: &'static str, names: Names) -> LocalListener {
     (0..ATTEMPTS)
         .find_map(|retry| {
             if retry > 0 {
                 thread::sleep(REWRITE_PAUSE);
             }
-            one_look_listener(payload)
+            one_look_listener(payload, names)
         })
         .expect(NO_NAME)
 }
@@ -88,8 +90,9 @@ const NO_NAME: &str = "no name in /etc/hosts resolves to an address this test ca
                        below would be vacuous";
 
 /// One look for [`local_listener`]'s name, `None` when it finds none.
-fn one_look_listener(payload: &'static str) -> Option<LocalListener> {
-    let (name, address, listener) = bindable_name(false)?;
+fn one_look_listener(payload: &'static str, names: Names) -> Option<LocalListener> {
+    let hosts = fs::read_to_string("/etc/hosts").ok()?;
+    let (name, address, listener) = bindable_name(&hosts, names)?;
 
     let accepting = thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
@@ -105,13 +108,22 @@ fn one_look_listener(payload: &'static str) -> Option<LocalListener> {
     })
 }
 
-/// One look through `/etc/hosts` for [`local_listener`]'s name, and the listener it bound.
-/// `mapped` keeps only an address the name's own line starts with. Without it, a line with no
-/// address, as a runner writes its hostname before it knows its IP, yields a name that
-/// resolves through `dns` alone (#472).
-fn bindable_name(mapped: bool) -> Option<(String, SocketAddr, TcpListener)> {
-    let hosts = fs::read_to_string("/etc/hosts").ok()?;
+/// Which of `/etc/hosts`'s names [`bindable_name`] may take.
+#[derive(Clone, Copy, PartialEq)]
+enum Names {
+    /// Any but a loopback name, on a line with no address too. A runner writes its hostname
+    /// that way before it knows its IP (#472), leaving the name to `dns`: enough only where
+    /// the helper resolves it, before the unshare.
+    Listed,
+    /// A non-loopback name its own line maps to the address it resolves to, so it resolves
+    /// with no nameserver.
+    Mapped,
+    /// A loopback name its own line maps, as for [`Names::Mapped`].
+    Loopback,
+}
 
+/// One look through `hosts` for [`local_listener`]'s name, and the listener it bound.
+fn bindable_name(hosts: &str, names: Names) -> Option<(String, SocketAddr, TcpListener)> {
     hosts
         .lines()
         .map(|line| line.split('#').next().unwrap_or_default())
@@ -120,11 +132,15 @@ fn bindable_name(mapped: bool) -> Option<(String, SocketAddr, TcpListener)> {
             let listed = fields.next().and_then(|field| field.parse::<IpAddr>().ok());
             fields.map(move |name| (name, listed))
         })
-        .filter(|(name, _)| !LOOPBACK_NAMES.contains(name))
+        .filter(|(name, listed)| match names {
+            Names::Listed => !LOOPBACK_NAMES.contains(name),
+            Names::Mapped => listed.is_some() && !LOOPBACK_NAMES.contains(name),
+            Names::Loopback => listed.is_some() && LOOPBACK_NAMES.contains(name),
+        })
         .flat_map(|(name, listed)| {
             let addresses = (name, 0u16).to_socket_addrs().into_iter().flatten();
             addresses
-                .filter(move |address| !mapped || listed == Some(address.ip()))
+                .filter(move |address| names == Names::Listed || listed == Some(address.ip()))
                 .map(move |address| (name, address))
         })
         .find_map(|(name, address)| {
@@ -268,7 +284,7 @@ fn an_allowlisted_name_resolves_and_is_reached() {
             name,
             address,
             accepting,
-        }) = one_look_listener("ALLOWLISTED-NAME-ANSWERED")
+        }) = one_look_listener("ALLOWLISTED-NAME-ANSWERED", Names::Listed)
         else {
             return Err(NO_NAME.into());
         };
@@ -297,8 +313,9 @@ fn an_allowlisted_name_resolves_and_is_reached() {
     });
 }
 
-/// The denial. `local_listener` resolved the name in this process, so it resolves outside the
-/// sandbox by construction, and the port it answers on is allowlisted.
+/// The denial. `local_listener` resolved the name in this process out of the host's own file,
+/// so it resolves outside the sandbox with no nameserver, and the port it answers on is
+/// allowlisted.
 #[test]
 fn a_name_the_allowlist_does_not_hold_does_not_resolve() {
     if host_forbids_the_mounts() {
@@ -309,7 +326,7 @@ fn a_name_the_allowlist_does_not_hold_does_not_resolve() {
         name,
         address,
         accepting,
-    } = local_listener("SECRET-BEHIND-THE-NAME");
+    } = local_listener("SECRET-BEHIND-THE-NAME", Names::Mapped);
 
     // `localhost` as the one allowlisted name: it bounds resolution without bounding it to
     // the name under test.
@@ -351,7 +368,7 @@ fn the_hosts_file_the_command_reads_holds_only_allowlisted_names() {
             name,
             address,
             accepting,
-        }) = one_look_listener("UNUSED")
+        }) = one_look_listener("UNUSED", Names::Listed)
         else {
             return Err(NO_NAME.into());
         };
@@ -406,7 +423,7 @@ fn a_bound_file_reads_back_under_the_path_it_was_mounted_on() {
         name,
         address,
         accepting,
-    } = local_listener("UNUSED");
+    } = local_listener("UNUSED", Names::Listed);
     drain(address, accepting);
 
     // `/proc` read is the probe's own need, `/proc/self/fd` being where the kernel answers.
@@ -442,7 +459,7 @@ fn the_command_is_left_no_dns_source_and_no_nameserver() {
         name,
         address,
         accepting,
-    } = local_listener("UNUSED");
+    } = local_listener("UNUSED", Names::Listed);
     drain(address, accepting);
 
     let policy = SandboxPolicy::default().allow_dns(&name);
@@ -504,7 +521,7 @@ fn the_hosts_file_is_not_writable_under_a_write_grant() {
         name,
         address,
         accepting,
-    } = local_listener("UNUSED");
+    } = local_listener("UNUSED", Names::Listed);
     drain(address, accepting);
 
     let scratch = tempfile::tempdir().expect("a temporary directory");
@@ -543,7 +560,7 @@ fn the_host_etc_survives_a_bounded_run() {
         name,
         address,
         accepting,
-    } = local_listener("UNUSED");
+    } = local_listener("UNUSED", Names::Listed);
     drain(address, accepting);
 
     let before = fs::read_to_string("/etc/hosts").expect("the host's hosts file");
@@ -588,20 +605,17 @@ fn the_host_etc_survives_a_bounded_run() {
 }
 
 /// The flag is opt-in: without it there is no mount namespace and no rendered hosts file, so
-/// a command resolves exactly what it resolved before this existed.
+/// a command resolves exactly what it resolved before this existed. `localhost` stands in on a
+/// host whose file maps no name of its own: with no flag nothing is rendered, and comparing
+/// the file the command reads with the host's is what tells the two apart.
 #[test]
 fn a_run_without_the_flag_resolves_as_it_did_before() {
     retried_across_rewrites(|| {
-        let Some((name, address, _listener)) = bindable_name(true) else {
-            if bindable_name(false).is_none() {
-                return Err(NO_NAME.into());
-            }
-            eprintln!(
-                "SKIPPED: every name /etc/hosts lists sits on a line with no address of its \
-                 own, so each resolves through `dns`, which no sandboxed command reaches, \
-                 flag or not. The claim is untested on this run."
-            );
-            return Ok(());
+        let listed = fs::read_to_string("/etc/hosts").unwrap_or_default();
+        let Some((name, address, _listener)) = bindable_name(&listed, Names::Mapped)
+            .or_else(|| bindable_name(&listed, Names::Loopback))
+        else {
+            return Err(NO_NAME.into());
         };
 
         let policy = SandboxPolicy::default()
