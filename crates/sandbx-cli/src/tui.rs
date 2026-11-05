@@ -169,10 +169,13 @@ impl Tui {
             withheld: merged.withheld,
         };
 
-        // Before the screen, dropped after it: the alternate screen neither redirects
-        // stderr nor gives back what was written to it, so each audit record would land in
-        // the pane and die with it.
-        let audit = sandbx_logging::hold();
+        // Before the screen, dropped after it, and only over a terminal stderr: the
+        // alternate screen neither redirects it nor gives back what was written to it, so
+        // each audit record would land in the pane and die with it. A redirected stderr is
+        // not under the screen, and a record written there at once is one a signal cannot
+        // take back (#485).
+        let shown = Device::of(&io::stderr());
+        let audit = (shown == Device::Terminal).then(sandbx_logging::hold);
 
         // The screen before the keys: without raw mode ctrl-c is a signal, and the reader
         // would never see the key that is supposed to stop the turn. One lock because the
@@ -180,7 +183,6 @@ impl Tui {
         // same transcript; a `Mutex`, not a `RefCell`, so the turn's future stays `Send`.
         // The approved line is in `said` only where `execute` did not already write it, so
         // a reprint that fails still leaves it on a terminal stderr.
-        let shown = Device::of(&io::stderr());
         let pane = Mutex::new(Pane {
             screen: Screen::enter(transcript).map_err(AgentError::Screen)?,
             said: match shown {

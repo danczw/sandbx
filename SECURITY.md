@@ -339,6 +339,14 @@ architecture the filter gates on.
   [context/decision-on-disk-state.md](context/decision-on-disk-state.md)). Still
   unprotected: a copy, whether you move a transcript into a granted tree or
   another program of yours reads it.
+- **Under `tui`, a terminal's audit trail is held until the screen goes.** The
+  alternate screen covers the stderr it would be written to, so every
+  `sandbx::audit` record of the turn waits in memory until the screen is given
+  back. A signal that kills the process in that window (`SIGTERM`, `SIGQUIT`,
+  `SIGKILL`) loses all of them, a `spawned` for a command that ran included: no
+  handler is installed, and none could catch `SIGKILL`. With stderr redirected
+  nothing is held, and `2>` a file has each record as it happens
+  ([#485](https://github.com/danczw/sandbx/issues/485)).
 - **Only a spawned command's wall-clock time is bounded.** `bash`'s command is
   killed if it outruns its limit (90 seconds by default), and `sandbox-run` takes
   an opt-in `--timeout`. The other six run in-process, untimed, bounded by *work*
