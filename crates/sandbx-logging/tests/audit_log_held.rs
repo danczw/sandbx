@@ -84,7 +84,7 @@ fn held_run() {
         .build()
         .expect("a runtime for one blocking task")
         .block_on(async {
-            tokio::task::spawn_blocking(|| AuditEvent::allowed("ls", "/srv").emit())
+            tokio::task::spawn_blocking(|| AuditEvent::allowed("ls", None, "/srv").emit())
                 .await
                 .expect("the blocking task should finish");
         });

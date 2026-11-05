@@ -103,7 +103,7 @@ fn spawn_id(line: &str) -> &str {
 #[test]
 fn records_an_allowed_execution() {
     let lines = capture(|| {
-        AuditEvent::allowed("bash", "/bin/ls").emit();
+        AuditEvent::allowed("bash", None, "/bin/ls").emit();
     });
 
     assert_eq!(lines.len(), 1, "expected exactly one audit event");
@@ -116,7 +116,7 @@ fn records_an_allowed_execution() {
 #[test]
 fn records_a_refusal_with_its_reason() {
     let lines = capture(|| {
-        AuditEvent::denied("read", "/etc/shadow", "outside every readable root").emit();
+        AuditEvent::denied("read", None, "/etc/shadow", "outside every readable root").emit();
     });
 
     let line = &lines[0];
@@ -332,7 +332,7 @@ fn an_absent_write_parent_records_an_absence() {
 #[test]
 fn records_an_absence_without_a_reason() {
     let lines = capture(|| {
-        AuditEvent::absent("read", "/srv/nope").emit();
+        AuditEvent::absent("read", None, "/srv/nope").emit();
     });
 
     let line = &lines[0];
@@ -459,7 +459,7 @@ fn a_link_into_a_moved_root_records_the_swap() {
 #[test]
 fn is_emitted_at_info_not_debug() {
     let lines = capture(|| {
-        AuditEvent::allowed("bash", "/bin/ls").emit();
+        AuditEvent::allowed("bash", None, "/bin/ls").emit();
     });
     assert_eq!(lines.len(), 1);
 
@@ -468,7 +468,7 @@ fn is_emitted_at_info_not_debug() {
         .with(sink.clone())
         .with(tracing::level_filters::LevelFilter::INFO);
     with_default(subscriber, || {
-        AuditEvent::allowed("bash", "/bin/ls").emit();
+        AuditEvent::allowed("bash", None, "/bin/ls").emit();
     });
 
     assert_eq!(
@@ -994,6 +994,74 @@ fn a_run_under_a_session_records_its_id() {
     assert_eq!(lines.len(), 2, "got: {lines:?}");
     for line in &lines {
         assert!(line.contains("session=abc123 "), "got: {line}");
+    }
+}
+
+/// One access per road a guard's record leaves by — `record`, `conceal_unless_granted`,
+/// `deny`, the walk's own, `check_write`'s closure — run under `guard`, with the decision
+/// each must have taken. Six of the seven built-ins leave no other record (#429).
+fn guard_accesses(guard: impl FnOnce(&Path) -> FsGuard) -> Vec<(String, &'static str)> {
+    let root = tempfile::tempdir().expect("a directory to grant");
+    let file = root.path().join("present.txt");
+    fs::write(&file, b"x").expect("a file to read");
+    let elsewhere = tempfile::tempdir().expect("a directory outside the grant");
+    let guard = guard(root.path());
+
+    let lines = capture(|| {
+        guard.open_read(&file).expect("a granted read");
+        guard
+            .open_write(&root.path().join("out.txt"))
+            .expect("a granted write");
+        let _ = guard.check_read(&root.path().join("absent.txt"));
+        let _ = guard.check_read(&elsewhere.path().join("nope.txt"));
+        let _ = guard.check_write(&root.path().join("nodir").join(".."));
+        guard
+            .walk_readable(root.path(), 100)
+            .expect("a granted walk");
+    });
+
+    let decisions = [
+        "allowed", "allowed", "absent", "denied", "denied", "allowed",
+    ];
+    assert_eq!(lines.len(), decisions.len(), "got: {lines:?}");
+    for (line, decision) in lines.iter().zip(decisions) {
+        assert!(
+            line.contains(&format!("decision={decision} ")),
+            "got: {line}"
+        );
+    }
+    lines.into_iter().zip(decisions).collect()
+}
+
+fn read_write(root: &Path) -> SandboxPolicy {
+    SandboxPolicy::default()
+        .allow_read(vetted(root))
+        .allow_write(vetted(root))
+}
+
+#[test]
+fn every_access_record_names_the_guards_session() {
+    let accesses = guard_accesses(|root| FsGuard::for_session(&read_write(root), "abc123"));
+
+    for (line, decision) in &accesses {
+        assert!(
+            line.contains("session=abc123 "),
+            "a `decision={decision}` record did not name the guard's session: {line}"
+        );
+    }
+}
+
+/// The negative: a `session` field wired to some value regardless would pass the case
+/// above, and here writes something other than the sentinel.
+#[test]
+fn an_access_with_no_session_records_the_absence() {
+    let accesses = guard_accesses(|root| FsGuard::new(&read_write(root)));
+
+    for (line, decision) in &accesses {
+        assert!(
+            line.contains("session=- "),
+            "a `decision={decision}` record outside a session named one: {line}"
+        );
     }
 }
 

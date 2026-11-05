@@ -42,8 +42,8 @@ impl ExecutionContext {
     }
 
     /// [`new`](Self::new), naming the session every record of this context's work carries —
-    /// each spawn's pair, and the `rooted_access` degradation the guard may report as it is
-    /// built.
+    /// each spawn's pair, each in-process access, and the `rooted_access` degradation the
+    /// guard may report as it is built.
     ///
     /// A constructor and not a setter, which is the whole reason this exists: the guard
     /// reports while it is *built*, so a context told its session afterwards has already

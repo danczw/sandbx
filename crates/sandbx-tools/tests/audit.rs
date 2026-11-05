@@ -137,6 +137,34 @@ fn a_bash_spawn_records_the_session_and_the_command() {
     );
 }
 
+/// The in-process half of the same plumbing, which is most of the trail: `grep` reaches the
+/// filesystem through the guard alone, a walk record and one per file it opens (#429).
+#[test]
+fn a_grep_records_the_session_on_every_access() {
+    let root = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("a.txt"), b"needle\n").unwrap();
+    fs::write(root.path().join("b.txt"), b"hay\n").unwrap();
+    let policy = SandboxPolicy::default().allow_read(vetted(root.path()));
+    let ctx = ExecutionContext::for_session(policy, SESSION.to_string());
+
+    let lines = capture(|| {
+        BuiltinTool::Grep
+            .execute(
+                json!({ "path": root.path().to_str().unwrap(), "pattern": "needle" }),
+                &ctx,
+            )
+            .unwrap();
+    });
+
+    assert_eq!(lines.len(), 3, "the walk and two opens, got: {lines:?}");
+    for line in &lines {
+        assert!(
+            line.contains(&format!("session={SESSION} ")),
+            "an access did not name the session its context held: {line}"
+        );
+    }
+}
+
 #[test]
 fn two_bash_calls_take_two_spawn_ids() {
     let ctx = spawning_ctx();

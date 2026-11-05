@@ -65,7 +65,7 @@ fn captured(f: impl FnOnce()) -> String {
 
 #[test]
 fn an_audit_event_reaches_the_output() {
-    let output = captured(|| AuditEvent::allowed("read", "/srv").emit());
+    let output = captured(|| AuditEvent::allowed("read", None, "/srv").emit());
 
     assert!(!output.is_empty(), "the audit trail reached no writer");
     assert!(output.contains("sandbx::audit"), "{output}");
@@ -78,7 +78,7 @@ fn an_audit_event_reaches_the_output() {
 /// The shipped subscriber renders the new value, and no `reason` field for it.
 #[test]
 fn an_absence_reaches_the_output_without_a_reason() {
-    let output = captured(|| AuditEvent::absent("read", "/srv/nope").emit());
+    let output = captured(|| AuditEvent::absent("read", None, "/srv/nope").emit());
 
     assert!(output.contains(r#"decision="absent""#), "{output}");
     assert!(output.contains(r#"tool="read""#), "{output}");
@@ -266,7 +266,7 @@ fn audit_events_below_info_are_dropped() {
 #[test]
 fn the_output_carries_no_ansi_escapes() {
     let output = captured(|| {
-        AuditEvent::denied("write", "/etc/shadow", "outside every writable root").emit()
+        AuditEvent::denied("write", None, "/etc/shadow", "outside every writable root").emit()
     });
 
     assert!(!output.is_empty(), "nothing was recorded");

@@ -92,6 +92,9 @@ pub(crate) fn args_field(args: &[String]) -> String {
 pub enum AuditEvent<'a> {
     /// An operation the policy permitted.
     Allowed {
+        /// The session this ran under, as in [`Spawned`](Self::Spawned). No `spawn`: the
+        /// guard's accesses happen between spawns or with none (#429).
+        session: &'a str,
         /// Who asked: a tool's registry name, or a guard's access — `read` or `write`.
         tool: &'a str,
         /// What it acted on — a path, or the program being run.
@@ -102,6 +105,8 @@ pub enum AuditEvent<'a> {
     /// nothing refused it. Emitted only inside a granted root — outside one, a path's
     /// absence is what the refusal conceals.
     Absent {
+        /// The session this ran under, as in [`Allowed`](Self::Allowed).
+        session: &'a str,
         /// Who asked, as in [`Allowed`](Self::Allowed).
         tool: &'a str,
         /// The name that denotes nothing.
@@ -110,6 +115,8 @@ pub enum AuditEvent<'a> {
 
     /// An operation the policy refused.
     Denied {
+        /// The session this ran under, as in [`Allowed`](Self::Allowed).
+        session: &'a str,
         /// Who asked, in the same form as in [`Allowed`](Self::Allowed).
         tool: &'a str,
         /// What it would have acted on, had the policy allowed it.
@@ -225,19 +232,34 @@ pub enum AuditEvent<'a> {
 }
 
 impl<'a> AuditEvent<'a> {
-    /// Record a permitted operation.
-    pub fn allowed(tool: &'a str, subject: &'a str) -> Self {
-        Self::Allowed { tool, subject }
+    /// Record a permitted operation. `session` is an `Option` for the reason
+    /// [`spawned`](Self::spawned)'s is.
+    pub fn allowed(tool: &'a str, session: Option<&'a str>, subject: &'a str) -> Self {
+        Self::Allowed {
+            session: session.unwrap_or(SESSION_ABSENT),
+            tool,
+            subject,
+        }
     }
 
     /// Record an attempt on a name that denotes nothing.
-    pub fn absent(tool: &'a str, subject: &'a str) -> Self {
-        Self::Absent { tool, subject }
+    pub fn absent(tool: &'a str, session: Option<&'a str>, subject: &'a str) -> Self {
+        Self::Absent {
+            session: session.unwrap_or(SESSION_ABSENT),
+            tool,
+            subject,
+        }
     }
 
     /// Record a refusal and its reason.
-    pub fn denied(tool: &'a str, subject: &'a str, reason: &'a str) -> Self {
+    pub fn denied(
+        tool: &'a str,
+        session: Option<&'a str>,
+        subject: &'a str,
+        reason: &'a str,
+    ) -> Self {
         Self::Denied {
+            session: session.unwrap_or(SESSION_ABSENT),
             tool,
             subject,
             reason,
@@ -355,25 +377,37 @@ impl<'a> AuditEvent<'a> {
     /// `degradation.rs`'s channel instead.
     pub fn emit(&self) {
         match self {
-            Self::Allowed { tool, subject } => tracing::info!(
+            Self::Allowed {
+                session,
+                tool,
+                subject,
+            } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "allowed",
+                session,
                 tool,
                 subject,
             ),
-            Self::Absent { tool, subject } => tracing::info!(
+            Self::Absent {
+                session,
+                tool,
+                subject,
+            } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "absent",
+                session,
                 tool,
                 subject,
             ),
             Self::Denied {
+                session,
                 tool,
                 subject,
                 reason,
             } => tracing::info!(
                 target: AUDIT_TARGET,
                 decision = "denied",
+                session,
                 tool,
                 subject,
                 reason,
