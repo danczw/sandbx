@@ -11,7 +11,7 @@ use sandbx_event::{AgentEvent, StopReason};
 use sandbx_screen::Reasoning;
 use sandbx_text::{invisible, line_separator};
 
-use super::prompt::{APPROVE_CALL, account};
+use super::prompt::{APPROVE_CALL, Notes, account};
 use super::{Device, INCOMPLETE, NO_CONSENT};
 use crate::AgentError;
 
@@ -295,6 +295,12 @@ impl<W: Write, E: Write> Render<W, E> {
         } else {
             self.wrote |= !bytes.is_empty();
         }
+    }
+}
+
+impl<W: Write, E: Write> Notes for Render<W, E> {
+    fn note(&mut self, line: &str) {
+        Self::note(self, line);
     }
 }
 

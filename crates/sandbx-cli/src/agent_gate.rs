@@ -55,6 +55,14 @@ pub(super) fn approved_tools(allowed: Option<&[BuiltinTool]>) -> Vec<&'static st
         .collect()
 }
 
+/// [`approved_tools`] as the line both subcommands report it in.
+pub(super) fn approved_line(allowed: Option<&[BuiltinTool]>) -> String {
+    format!(
+        "sandbx: tools approved: {}",
+        approved_tools(allowed).join(", ")
+    )
+}
+
 /// Whether `--approve call` will put anything to the operator in this run.
 ///
 /// Argv is checked first and a read-only call is never asked about, so with no
