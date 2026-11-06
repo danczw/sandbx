@@ -1,10 +1,9 @@
 //! The held trail end to end: the shipped subscriber, a real emit, and real stderr.
 //!
-//! The composition is what was untested, and it is why #266 stood undiagnosable. The
-//! other two files each cover half of it: `audit_log.rs` drives `subscriber(…)` over a
-//! closure writer, never `Audit`; `lib.rs`'s own tests drive `Audit` and `HELD` with
+//! The other two files each cover half of it: `audit_log.rs` drives `subscriber(…)` over
+//! a closure writer, never `Audit`; `lib.rs`'s own tests drive `Audit` and `HELD` with
 //! no subscriber installed. Neither reaches `emit` → the global layer → `Audit::write` →
-//! `HELD` → `Held::drop` → stderr, which is the path `tui` actually runs.
+//! `HELD` → `Held::drop` → stderr, which is the path `tui` actually runs (#266).
 //!
 //! Its own binary, because `init` installs a process-global subscriber — the same
 //! reason `audit_log_install.rs` holds exactly one test.

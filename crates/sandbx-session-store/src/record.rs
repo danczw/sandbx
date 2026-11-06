@@ -66,9 +66,10 @@ impl Accounting {
     /// which [`fold`] replays and `Session::append` applies, so a resumed session and a
     /// continued one agree.
     ///
-    /// Nothing reads these figures while compaction is off, which it is by default. Do not
-    /// delete them as dead weight: they are recoverable only when the turn produces them, and
-    /// a session resumed without them could not tell whether its history fills the window.
+    /// Nothing reads these figures while compaction is off, and no flag turns it on (#302).
+    /// Do not delete them as dead weight: they are recoverable only when the turn produces
+    /// them, and a session resumed without them could not tell whether its history fills
+    /// the window.
     pub(crate) fn absorb(&mut self, turn: Self) {
         self.observed = turn.observed.or(self.observed);
         self.withheld = turn.withheld;
@@ -93,8 +94,8 @@ pub(crate) fn fold(path: &Path, body: &str) -> Result<Replayed, SessionError> {
 
     // No newline after the last line means an append that did not finish, and dropping
     // it restores the last consistent state. That line only: an interior line that will
-    // not parse may be a message, so it refuses. Refusing the torn one too, the first cut,
-    // made one interrupted append cost the whole conversation.
+    // not parse may be a message, so it refuses. Refusing the torn one too would make one
+    // interrupted append cost the whole conversation.
     let torn = !body.ends_with('\n');
     let last = body.lines().count().saturating_sub(1);
 

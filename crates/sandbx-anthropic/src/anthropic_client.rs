@@ -128,7 +128,6 @@ fn validate_base_url(base_url: &str) -> Result<Reachability, &'static str> {
     }
 }
 
-/// Build the HTTP client for a base URL of the given kind.
 fn build_http(reachability: Reachability) -> Result<reqwest::Client, ProviderError> {
     ensure_crypto_provider_installed();
     let mut builder = reqwest::Client::builder()

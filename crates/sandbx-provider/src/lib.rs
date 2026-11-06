@@ -1,11 +1,10 @@
 //! The provider seam: the stream a client hands back, and the error it can fail with.
 //!
-//! There is no provider trait and no provider object. `Provider` was a one-variant enum
-//! whose methods were pass-throughs, and it was deleted (#90) — a client's `stream_chat`
-//! returns [`EventStream`] directly. The seam is the **return type**, which is also why
-//! these two are one crate: the alias's `Item` names [`ProviderError`], so neither is
-//! nameable without the other. The per-rule account is
-//! `context/decision-provider-seam.md`.
+//! There is no provider trait and no provider object: over one backend its methods are
+//! pass-throughs (#90), so a client's `stream_chat` returns [`EventStream`] directly. The
+//! seam is the **return type**, which is also why these two are one crate: the alias's
+//! `Item` names [`ProviderError`], so neither is nameable without the other. The per-rule
+//! account is `context/decision-provider-seam.md`.
 //!
 //! Nothing here speaks a wire format — the vendor's field names, string tables and body
 //! rules are `sandbx-anthropic`'s, and no HTTP type crosses the seam:
@@ -71,9 +70,9 @@ pub enum ProviderError {
         message: String,
     },
 
-    /// A chunk of the SSE stream was not valid UTF-8, not a well-formed
-    /// `event:`/`data:` frame, or matched no known event shape — including a
-    /// `tool_use` block whose accumulated JSON never parsed.
+    /// A line of the SSE stream was not valid UTF-8, an event outgrew the size cap,
+    /// or a payload did not parse — including a `tool_use` block whose accumulated
+    /// JSON never parsed.
     MalformedEvent {
         /// What was wrong, for the operator to act on.
         detail: String,

@@ -103,8 +103,8 @@ pub enum SessionError {
         uid: u32,
     },
 
-    /// Two turns of the same role in a row, or a transcript opening on the model's reply
-    /// — both of which only a hand edit can produce.
+    /// Two turns of the same role in a row, bar results then a prompt, or a transcript
+    /// opening on the model's reply — both of which only a hand edit can produce.
     Disordered {
         /// The transcript that was refused.
         path: PathBuf,

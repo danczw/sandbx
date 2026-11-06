@@ -5,11 +5,9 @@
 //! only thing that can tell an operator. `context/decision-approval-gate.md` has what the
 //! gate claims across the crates that ask it and implement it.
 //!
-//! A crate and not a module in either of the two that use it, because both would need it:
-//! `sandbx-turn` asks, `sandbx-cli` implements, and whichever held the vocabulary would put
-//! an edge on the other. `sandbx-cli` cannot be the home — nothing may depend on it, which is
-//! why `deny.toml` omits it deliberately — and the loop's crate was, until #355 moved the
-//! asked out ahead of #357: extracting the asking would have dragged the vocabulary with it.
+//! A crate of its own under #328's small-crate rule (#355). `sandbx-turn` asks and
+//! `sandbx-cli` implements, and `sandbx-cli` cannot be the home: nothing may depend on it,
+//! which is why `deny.toml` omits it deliberately.
 
 use sandbx_tools::{BuiltinTool, ToolError};
 
