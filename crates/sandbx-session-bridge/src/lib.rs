@@ -97,16 +97,16 @@ fn resume_note(pending: bool, stop: Option<TurnStop>) -> Option<&'static str> {
             "its last turn ended with no one left to approve a call; this prompt goes to \
              the model beside a tool call it never answered"
         }
-        // The dropped round is named because a tool call in it may still have run (#26),
-        // and nothing the model is sent says so.
+        // The dropped round is named because its tool calls may have run (#26), and
+        // nothing the model is sent says so.
         Some(TurnStop::Interrupted) => {
             "its last turn was interrupted, and the round it stopped in is not stored, nor \
-             what a tool call in it did; this prompt goes to the model beside a tool call it \
+             what its tool calls did; this prompt goes to the model beside a tool call it \
              never answered"
         }
         Some(TurnStop::HungUp) => {
             "its last turn stopped when its terminal went away, and the round it stopped in \
-             is not stored, nor what a tool call in it did; this prompt goes to the model \
+             is not stored, nor what its tool calls did; this prompt goes to the model \
              beside a tool call it never answered"
         }
         // An answer beside an unanswered call is a hand edit, so it says no more than no
