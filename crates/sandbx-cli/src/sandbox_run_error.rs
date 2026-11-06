@@ -7,6 +7,9 @@ use sandbx_grants::PolicyError;
 
 /// Why `sandbox-run` did not run the command.
 ///
+/// Not folded into one CLI error enum with `AgentError`: that would make the provider and
+/// turn variants look reachable from `sandbox-run`.
+///
 /// Separate from [`SandboxError`], which `sandbx-core` owns: deriving a policy is the
 /// CLI's own step, and core must not grow a variant it never produces.
 #[derive(Debug)]

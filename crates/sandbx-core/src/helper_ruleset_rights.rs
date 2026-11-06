@@ -87,13 +87,13 @@ impl Inode {
     }
 }
 
-/// What a rule names: a grant the harness judged, or a path this process installed itself.
+/// What a rule names: a grant the harness judged, or a path the helper installed itself.
 ///
 /// The two differ in what can be confirmed about them, not in the rule they get. A grant
 /// carries the object the harness vetted, so the open can be checked against it (#212). A
-/// resolver file was bind-mounted by [`bound_resolution`] a moment ago, in this process and
-/// after the harness judged the policy — so no harness-side pin exists, and measuring one
-/// here would compare this process's answer against itself.
+/// resolver file was bind-mounted by [`bound_resolution`] in stage 1, after the harness
+/// judged the policy — so no harness-side pin exists, and measuring one here would compare
+/// the helper's answer against itself.
 ///
 /// [`bound_resolution`]: crate::helper::resolver::bound_resolution
 pub(in crate::helper) enum RuleTarget<'policy> {

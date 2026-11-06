@@ -1,7 +1,7 @@
 //! The provider seam: the stream a client hands back, and the error it can fail with.
 //!
-//! There is no provider trait and no provider object: over one backend its methods are
-//! pass-throughs (#90), so a client's `stream_chat` returns [`EventStream`] directly. The
+//! There is no provider trait and no provider object: over one backend, one would be methods
+//! passing through (#90), so a client's `stream_chat` returns [`EventStream`] directly. The
 //! seam is the **return type**, which is also why these two are one crate: the alias's
 //! `Item` names [`ProviderError`], so neither is nameable without the other. The per-rule
 //! account is `context/decision-provider-seam.md`.

@@ -271,7 +271,8 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<nix::unistd::
     // A check, not a re-narrowing: `spawn::command` narrows by construction, so clearing
     // again would leave `environ` identical and say nothing. A caller reaching this stage
     // directly (`HELPER_INNER_FLAG` is no trust boundary) arrives with a full environment
-    // and is refused here rather than narrowed.
+    // and is refused here rather than narrowed. Not folded into `confirm_supervisor`, a
+    // liveness check and no trust boundary either.
     //
     // An error and not an `assert!`: a helper run must end by running the command or by
     // reporting why not, and a panic does neither. The message names no variable, for the

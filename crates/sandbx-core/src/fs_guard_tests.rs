@@ -138,8 +138,8 @@ fn both_rootings_answer_alike() {
     }
 
     // The shapes a walk root can take that are not a readable directory: the only inputs
-    // where the rooted descent can propagate the open's errno while the by-path one skips
-    // the directory and reports no files.
+    // where a rooted descent that propagated the open's errno would diverge from the
+    // by-path one, which skips the directory and reports no files.
     let label = |walked: &Result<ReadableWalk, SandboxError>| match walked {
         Ok(walk) => format!("ok:{}", walk.files.len()),
         Err(error) => error.label().to_string(),
