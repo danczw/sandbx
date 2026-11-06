@@ -121,12 +121,13 @@ fn the_floor_names_the_message_it_named_before() {
     }
 }
 
-/// Inverting it: a merged index names where its run began in the transcript.
+/// Inverting it: a merged index names where a cut onto it lands in the transcript, which
+/// for the run is its prose, the results going with the withheld call (#208).
 #[test]
 fn a_reported_floor_returns_to_the_stored_index() {
     let merged = merge_user_runs(resumed(), 0);
 
-    for (reported, stored) in [(0, 0), (1, 1), (2, 2), (3, 4)] {
+    for (reported, stored) in [(0, 0), (1, 1), (2, 3), (3, 4)] {
         assert_eq!(merged.unmerged(reported), stored, "a cut at {reported}");
     }
 
@@ -134,6 +135,15 @@ fn a_reported_floor_returns_to_the_stored_index() {
     // messages, four sent, so the first produced one is 4 out and 5 back.
     assert_eq!(merged.unmerged(4), 5);
     assert_eq!(merged.unmerged(6), 7);
+}
+
+/// Stored, resumed and stored again, a cut onto the run's prose holds still.
+#[test]
+fn a_stored_cut_onto_a_run_survives_a_resume() {
+    let merged = merge_user_runs(resumed(), 3);
+
+    assert_eq!(merged.withheld, 2);
+    assert_eq!(merged.unmerged(merged.withheld), 3);
 }
 
 #[test]

@@ -720,6 +720,42 @@ async fn compaction_keeps_a_tool_result_with_its_call() {
     );
 }
 
+/// A turn out of rounds resumed by a prompt merged into its result (#188) is a cut point,
+/// and the result goes with the withheld call it answers (#208).
+#[tokio::test]
+async fn a_cut_onto_a_resumed_prompt_sheds_its_results() {
+    let mut history = tool_chain();
+    history.truncate(3);
+    history[2].content.push(ContentBlock::Text {
+        text: "go on".to_string(),
+    });
+    history.push(replied("done"));
+    let mut script = Script::new([vec![text("hi"), stop(StopReason::EndTurn)]]);
+    let mut turn = turn(&history, &[]);
+    turn.limits.compaction = Some(Compaction {
+        budget_tokens: 0,
+        keep_recent: 1,
+    });
+    turn.observed = Some(PromptUsage {
+        input_tokens: Some(1),
+        cache_read_tokens: None,
+        cache_write_tokens: None,
+    });
+
+    let outcome = run_turn(
+        async |r| script.open(r).await,
+        turn,
+        &ctx(SandboxPolicy::default()),
+        |_| {},
+        AllowAll,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.withheld, 2);
+    assert_eq!(sent(&script, 0), [said("go on"), replied("done")]);
+}
+
 /// Rung 3: cutting anyway turns a request that *might* be too long into one the API is
 /// certain to reject.
 #[tokio::test]
