@@ -77,8 +77,9 @@ fn the_ending_is_what_the_round_left() {
     let (stop, ending, said) = finish(None, true, why());
     assert_eq!((stop, ending), (capped().stop, Unfinished::Discarded(3)));
     assert_eq!(said.len(), 1);
-    let (stop, ending, _) = finish(None, false, why());
+    let (stop, ending, said) = finish(None, false, why());
     assert_eq!((stop, ending), (capped().stop, Unfinished::CutShort(3)));
+    assert_eq!(said.len(), 1, "a silent failure still says why");
 }
 
 /// An empty delta closes every block, so a silent round must not read as one that wrote.
