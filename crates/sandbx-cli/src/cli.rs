@@ -96,7 +96,9 @@ pub enum Command {
     /// Interrupting costs two things, which sandbx prints again once the screen goes:
     /// nothing of that turn is stored, even under `--session`, and a tool
     /// already running finishes — sandbx cannot cancel one mid-call, and the
-    /// process waits for it before it exits.
+    /// process waits for it before it exits. A turn interrupted while it is
+    /// being summarised after `--max-rounds` is the exception: its rounds are
+    /// stored, and only the summary is lost.
     ///
     /// `--show-thinking` reads differently here: it draws the reasoning in the
     /// pane rather than on stderr.

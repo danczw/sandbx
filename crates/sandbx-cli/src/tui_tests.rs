@@ -1,11 +1,12 @@
 use super::super::render::Unfinished;
 use super::super::{Device, INCOMPLETE, NO_CONSENT, gate};
-use super::{Ending, Running, Tui, ending, given_back, held, lost};
+use super::{Ending, Running, Tui, ending, given_back, held, stop};
 use crate::{AgentError, Cli, Command};
 use clap::Parser;
 use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_event::StopReason;
 use sandbx_tools::BuiltinTool;
+use sandbx_tui_input::Stopped;
 use sandbx_turn::{TurnError, TurnOutcome, TurnStop};
 use std::io;
 
@@ -314,14 +315,33 @@ fn only_a_terminal_stderr_holds_the_audit_trail() {
 /// The code as a literal, for the reason the test above it gives.
 #[test]
 fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
-    let given = given(Ok(NO_CONSENT), None, &[lost()], Device::Redirected);
-    assert!(matches!(given.code, Ok(3)));
-    assert!(given.err.contains("terminal went away"), "{}", given.err);
+    for wrapping in [None, Some(4)] {
+        let Ending { code, said } = stop(Stopped::Gone, wrapping);
+        assert_eq!(code, NO_CONSENT);
+        let given = given(Ok(code), None, &said, Device::Redirected);
+        assert!(matches!(given.code, Ok(3)));
+        assert!(given.err.contains("terminal went away"), "{}", given.err);
 
-    let said = lost();
-    assert!(said.starts_with("sandbx: "), "{said}");
-    assert!(said.contains("terminal went away"), "{said}");
-    assert!(!said.contains("interrupted"), "{said}");
+        let [said] = &said[..] else {
+            panic!("one line: {said:?}")
+        };
+        assert!(said.starts_with("sandbx: "), "{said}");
+        assert!(!said.contains("interrupted"), "{said}");
+    }
+}
+
+/// A stop in the wrap-up round finds the turn before it finished, which is kept; any other
+/// stop keeps nothing, and each line says which (#232).
+#[test]
+fn only_a_stop_in_the_wrap_up_round_keeps_the_turn() {
+    for stopped in [Stopped::Pressed, Stopped::Gone] {
+        let kept = stop(stopped, Some(4)).said.join("\n");
+        assert!(kept.contains("4 rounds before it are stored"), "{kept}");
+
+        let lost = stop(stopped, None).said.join("\n");
+        assert!(lost.contains("Nothing of this turn is stored"), "{lost}");
+    }
+    assert_eq!(stop(Stopped::Pressed, Some(4)).code, INCOMPLETE);
 }
 
 /// The flattened flags are the same flags: one `--allow-tool` cannot approve two
