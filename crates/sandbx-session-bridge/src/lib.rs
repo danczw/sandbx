@@ -142,8 +142,8 @@ pub struct Merged {
     /// takes.
     pub withheld: usize,
 
-    /// Where a cut onto each merged message lands in the unmerged history: its last part,
-    /// a run's results going with the calls they answer (`sandbx_compact::window`).
+    /// Where a cut onto each merged message lands in the unmerged history: its first part
+    /// that is not all results, `sandbx_compact::window` shedding those with their calls.
     opens: Vec<usize>,
 
     /// The unmerged length, so an index past the history maps by its distance past it.
@@ -159,6 +159,8 @@ impl Merged {
     #[must_use]
     pub fn unmerged(&self, withheld: usize) -> usize {
         match self.opens.get(withheld) {
+            // No call withheld, so no result shed.
+            Some(_) if withheld == 0 => 0,
             Some(open) => *open,
             None => self.length + (withheld - self.opens.len()),
         }
@@ -191,8 +193,14 @@ pub fn merge_user_runs(history: Vec<RequestMessage>, withheld: usize) -> Merged 
 
         match (merged.last_mut(), opens.last_mut()) {
             (Some(previous), Some(open)) if onto => {
+                if previous
+                    .content
+                    .iter()
+                    .all(|block| matches!(block, ContentBlock::ToolResult { .. }))
+                {
+                    *open = index;
+                }
                 previous.content.extend(message.content);
-                *open = index;
             }
             _ => {
                 merged.push(message);

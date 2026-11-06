@@ -232,7 +232,7 @@ fn resumed(id: &str, prose: &str) -> RequestMessage {
     message
 }
 
-/// A session capping on every turn: before #208 every prompt but the first was refused.
+/// A session capping on every turn, every prompt but the first merged into a result.
 fn capped() -> Vec<RequestMessage> {
     vec![
         user_text("one"),

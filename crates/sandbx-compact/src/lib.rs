@@ -4,8 +4,8 @@
 //! No summarisation model, just a bounded window. The API rejects anything but a user-turn
 //! opener — two user turns running, an orphaned `tool_result`, or empty content — so only a
 //! *prefix* drops, onto the new first message, which `opens_a_request` decides; that makes
-//! the legal cut points exactly the user turns carrying prose. [`window`] sheds the results
-//! such a turn opens on along with the calls they answer.
+//! the legal cut points exactly the user turns carrying more than results. [`window`] sheds
+//! the results such a turn opens on along with the calls they answer.
 //!
 //! A caller threads the cut back as a floor (`Turn::withheld`), not the measurement alone.
 //! The measurement is of the request already compacted, so on usage alone the turn after a
@@ -140,8 +140,7 @@ pub fn plan_cut(
 ///
 /// `history[cut..]`, less the `tool_result` blocks the first message opens on: their calls
 /// sit in the withheld `history[cut - 1]`, so they go with it. That message is the prompt
-/// resuming a turn out of rounds, merged into the results it answers beside (#188); without
-/// this a session capping on every turn had no cut point but its first (#208).
+/// resuming a turn out of rounds, merged into the results it answers beside (#188, #208).
 ///
 /// Every block is a `tool_result` or kept, so `cut` stays a whole-message count and needs
 /// no block offset beside it. Not checked against `opens_a_request`: that is
