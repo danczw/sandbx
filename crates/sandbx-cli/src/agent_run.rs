@@ -6,8 +6,7 @@
 //! disk, not a live session.
 //!
 //! One module on purpose: the pieces are already in `gate`, `prompt`, `render`, `tui`
-//! and `wrapup`, and what is left is the argv surface and the one sequence that
-//! consumes it. `AgentRun`'s doc comments are rendered `--help` text, not commentary.
+//! and `wrapup`. `AgentRun`'s doc comments are rendered `--help` text, not commentary.
 
 use std::io::Write;
 use std::{io, slice};
@@ -249,14 +248,14 @@ impl AgentRun {
     /// Run one turn, stream the answer, and report the code to exit with.
     ///
     /// `0` for an answer the model finished, `2` for one a bound cut short —
-    /// `--max-tokens` or `--max-rounds`.
+    /// `--max-tokens` or `--max-rounds` — and `3` for a turn whose operator could no
+    /// longer be asked.
     ///
     /// # Errors
     ///
     /// [`AgentError::EmptyPrompt`], [`AgentError::Policy`] and [`AgentError::Provider`]
     /// all land before any request goes out. A tool the policy refuses is not an error
-    /// here: it goes back to the model as a failed result, which is what lets it try
-    /// something the policy allows.
+    /// ([`AgentError`] says why).
     pub async fn execute(&self) -> Result<i32, AgentError> {
         let prompt = self.to_prompt();
         // The API rejects an empty text block with a 400, so letting it through buys a
@@ -278,23 +277,19 @@ impl AgentRun {
         // by-path resolution for good. This call's `eprintln!` can block outright on a
         // stderr nobody drains, so it is the one that could not stay in the middle.
         //
-        // The cost, taken deliberately: a refused policy below now leaves a header-only
-        // transcript nothing deletes, where before only a missing credential could. A stray
-        // directory against a window in the sandbox's TOCTOU guarantee
-        // (`guide-sandboxing.md`, *Known gaps*). The credential stays below the policy, so
-        // a refused policy still reads no key.
+        // The cost, taken deliberately: a refused policy below leaves a header-only
+        // transcript nothing deletes. A stray directory against a window in the sandbox's
+        // TOCTOU guarantee (`guide-sandboxing.md`, *Known gaps*).
         let session = session::open(self.session())?;
 
         let policy = self.policy()?;
         // Read off once: a second `self.policy()?` re-reads `getcwd`, and a cwd that moved
         // meanwhile would name the model a root the sandbox did not grant.
         let system = orientation::system_prompt(&policy, self.allow_tool.as_deref(), self.system());
-        // A granted root is vetted above and pinned here, and the two are adjacent on
-        // purpose. Not *nothing* in between — `system_prompt` resolves and stats each
-        // granted path again — but a bounded number of path lookups on operator-named
-        // paths, with nothing that blocks and no model-chosen input. What may not come
-        // between them is anything an attacker can stall, which is why the session is
-        // opened above rather than here.
+        // Vetted above, pinned here, adjacent on purpose. `system_prompt` between them
+        // re-vets each granted path, but that is a bounded number of lookups on
+        // operator-named paths, nothing that blocks and no model-chosen input. What may
+        // not come between is anything an attacker can stall, hence the session above.
         let ctx = match session.as_ref() {
             Some(open) => ExecutionContext::for_session(policy, open.id().to_string()),
             None => ExecutionContext::new(policy),
@@ -416,7 +411,7 @@ impl AgentRun {
         // After the loop, where `render`'s borrow has ended: no event carries the turn's own stop.
         let stop = outcome.as_ref().ok().map(|outcome| outcome.stop);
 
-        // Exhaustive on `TurnStop`, so a fourth way to end cannot reach `finish` as a clean one.
+        // Exhaustive on `TurnStop`, so a new way to end cannot reach `finish` as a clean one.
         let (outcome, ending) = match (stop, outcome) {
             (Some(TurnStop::RoundLimit { rounds }), Ok(first)) if !self.no_wrap_up => {
                 render.separate();

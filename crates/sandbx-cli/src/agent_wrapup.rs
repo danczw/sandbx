@@ -81,7 +81,7 @@ pub(super) async fn run(
     continued.extend(first.messages.iter().cloned());
 
     // Every field named, so a new one is decided here rather than inherited. The tools stay
-    // offered under `ToolChoice::None`, not emptied, so `max_rounds: 1` is all the loop needs.
+    // offered (module doc), so `max_rounds: 1` is all the loop needs.
     let wrap_up = Turn {
         model: turn.model,
         max_output_tokens: turn.max_output_tokens,
@@ -128,8 +128,8 @@ pub(super) async fn run(
             )),
         },
         // Either leaves the batch on an unanswered `tool_result`: `first` stands, and prose
-        // already streamed is `Unfinished::Discarded`. Reading every non-answer stop as a tool
-        // asked for is sound only while `RefuseAll` cannot abort.
+        // already streamed is `Unfinished::Discarded`. Sound only while `RefuseAll` cannot
+        // abort (its doc).
         Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => WrapUp {
             answer: None,
             wrote,

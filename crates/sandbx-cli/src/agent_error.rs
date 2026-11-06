@@ -99,8 +99,6 @@ impl fmt::Display for AgentError {
             // Forwarded rather than prefixed: the session's own prose already names the
             // path and carries the advice.
             Self::Session(error) => write!(f, "{error}"),
-            // The flag is named because dropping it is the whole remedy, and the run
-            // refuses rather than serving the weaker regime it asks to replace.
             Self::NotATerminal => write!(
                 f,
                 "`tui` draws a full screen and stdout is not a terminal; \
@@ -115,6 +113,8 @@ impl fmt::Display for AgentError {
                 crate::agent::APPROVE_CALL
             ),
             Self::Screen(error) => write!(f, "drawing the screen: {error}"),
+            // The flag is named because dropping it is the whole remedy, and the run
+            // refuses rather than serving the weaker regime it asks to replace.
             Self::NoTerminal { source } => write!(
                 f,
                 "`{}` needs a terminal to ask on and there is none: {source}. \
