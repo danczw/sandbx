@@ -2,7 +2,7 @@
 //!
 //! [`exec`] holds both stages and the ordered syscall sequence that confines the command;
 //! [`hardening`], [`ruleset`] and [`seccomp`] are the three mechanisms it sequences, and
-//! [`resolver`] the files it installs for them.
+//! [`resolver`] the mounts that bound name resolution.
 
 #[path = "helper_exec.rs"]
 mod exec;

@@ -71,12 +71,8 @@ fn the_clone_flag_comparison_ignores_the_high_half() {
     );
 }
 
-/// `clone3` carries its flags in a struct seccomp cannot read, so it is refused outright — and
-/// with `ENOSYS`, which is what makes the `clone` rules reachable.
-///
-/// glibc 2.34+ calls `clone3` from `pthread_create` and falls back to `clone` only on
-/// `ENOSYS`. `EPERM` here would break every threaded program rather than routing it onto the
-/// filtered `clone`.
+/// `clone3` is refused outright, and with `ENOSYS`, which is what makes the `clone` rules
+/// reachable — see `clone3_filter`.
 #[test]
 fn clone3_answers_enosys_so_callers_fall_back() {
     let program = clone3_filter().unwrap();

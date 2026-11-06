@@ -12,8 +12,8 @@ use std::fmt;
 /// ceiling it negotiates up to.
 ///
 /// This pair is the only place the floor `SECURITY.md` claims — ABI 5, Linux 6.10 — is
-/// enforced; seven files restate it in prose, that one included, and a bump leaving any of
-/// them behind fails `every_prose_copy_of_the_floor_is_current`, which lists them.
+/// enforced; `every_prose_copy_of_the_floor_is_current` lists the files restating it in prose
+/// and fails a bump that leaves any behind.
 ///
 /// A floor rather than a preference: Landlock leaves any access type *not* in the handled set
 /// unrestricted everywhere, so pinning a lower ABI leaves whole categories unguarded. Hence
@@ -41,9 +41,8 @@ pub(super) const NEGOTIABLE_ABI: [landlock::ABI; 5] = [
 ///
 /// [`kernel_probe`] asks whether the kernel will hard-require this set and
 /// [`requested_at`](super::requested::requested_at) hands it to
-/// [`apply`](crate::helper::exec::apply) to
-/// install, so two spellings could drift and have the probe settle on an ABI by answering a
-/// question `apply` never asks.
+/// [`apply`](crate::helper::exec::apply), so two spellings could drift and have the probe
+/// settle on an ABI by answering a question `apply` never asks.
 ///
 /// `from_all` and not an enumeration, so a right a future ABI adds lands in the handled set
 /// and is therefore *denied* unless some axis confers it — Landlock leaves an unhandled
@@ -105,10 +104,8 @@ pub(super) fn negotiated_abi() -> Result<landlock::ABI, SandboxError> {
 ///
 /// Split from the kernel it probes because the decision below is not the walk but which
 /// errors are an *ABI verdict* — untestable without a Landlock-capable host, and a non-verdict
-/// error stepping down instead of refusing is a silent hole both test suites pass.
-///
-/// `FnMut` rather than `Fn` for the tests' sake alone: it lets a probe record which rungs it
-/// was asked about by pushing into a local `Vec`, with no interior mutability.
+/// error stepping down instead of refusing is a silent hole both test suites pass. `FnMut` so
+/// a test's probe can record the rungs it was asked about.
 ///
 /// A kernel below [`BASELINE_ABI`] falls off the end and is refused with a *different* error
 /// from the one above: `Unsupported` names the floor, `Landlock` carries the kernel's own
@@ -165,8 +162,7 @@ pub(in crate::helper) fn enforcement_verdict(
 }
 
 pub(in crate::helper) fn landlock_failed(source: impl fmt::Display) -> SandboxError {
-    // Carry the kernel's own reason: "refused" alone leaves no clue which path or access
-    // right it objected to.
+    // The kernel's own reason: "refused" alone names no path or right it objected to.
     SandboxError::Landlock {
         detail: source.to_string(),
     }

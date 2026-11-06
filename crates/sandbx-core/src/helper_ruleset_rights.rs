@@ -225,11 +225,11 @@ fn resolver_paths(bounded: bool) -> impl Iterator<Item = &'static Path> {
 /// readback becomes a tautology and a retarget between them grants a file the bind never
 /// placed.
 ///
-/// So this flag installs no rule on a symlinked `resolv.conf`, while `install` binds over its
-/// target anyway: the asymmetry is intended, and the bind is what leaves a command whose
-/// *other* grants reach the resolved path reading sandbx's body rather than the host's. With
-/// no such grant it reads nothing there, and the bound rests on `nsswitch.conf` for glibc and
-/// the port allowlist for musl.
+/// So a symlinked `resolv.conf` gets no rule, while `install` binds over its target anyway:
+/// the asymmetry is intended, the bind leaving a command whose *other* grants reach the
+/// resolved path reading sandbx's body rather than the host's. With no such grant it reads
+/// nothing there, and the bound rests on `nsswitch.conf` for glibc and the port allowlist
+/// for musl.
 fn opens_as_itself(path: &Path) -> bool {
     path.symlink_metadata().is_ok_and(|at| !at.is_symlink())
 }

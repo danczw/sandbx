@@ -35,14 +35,13 @@ pub(super) fn compiled_filter(
 /// Compile `rules` into a program that answers `errno` for what it names, allowing the rest.
 ///
 /// Takes an `errno` rather than a `SeccompAction`, so no caller can pass `Allow` here and
-/// invert the filter. Split out to make the filter's polarity assertable without a kernel:
-/// the two actions below are positional and of the same type, so swapping them yields a
-/// filter that allows the denylist and `EPERM`s everything else. Hence the named bindings.
+/// invert the filter. The two actions below are positional and of the same type, so swapping
+/// them yields a filter that allows the denylist and `EPERM`s everything else; hence the
+/// named bindings.
 ///
-/// `helper_seccomp_tests_denylist.rs` keeps a twin of this with the two actions swapped,
-/// which is what proves those tests would notice. It only mutates the real path as long
-/// as this body does nothing but call `SeccompFilter::new` — if that changes, change the
-/// twin.
+/// `helper_seccomp_tests_denylist.rs`'s `inverted_filter` is a twin with the two swapped, a
+/// mutation of this only while the body does nothing but call `SeccompFilter::new`. Change
+/// both.
 pub(super) fn deny_with(
     rules: BTreeMap<libc::c_long, Vec<seccompiler::SeccompRule>>,
     errno: libc::c_int,

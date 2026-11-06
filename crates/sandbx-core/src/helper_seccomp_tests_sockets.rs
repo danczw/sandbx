@@ -107,9 +107,8 @@ fn granting_unix_sockets_lifts_only_the_unix_rules() {
 
 /// `socketpair` is the second route to an `AF_UNIX` descriptor, and it calls no `socket`, so
 /// the rule above cannot see it. The reachable half is the connectionless type: `connect` on a
-/// datagram pair re-targets it at a pathname socket, measured delivering outside the sandbox
-/// before this rule existed. Why the other two stay permitted is in
-/// `context/guide-sandboxing.md`.
+/// datagram pair re-targets it at a pathname socket, measured delivering outside the sandbox.
+/// Why the other two stay permitted is in `context/guide-sandboxing.md`.
 #[test]
 fn socketpair_refuses_a_connectionless_unix_pair() {
     let program = compiled_filter(&SandboxPolicy::default()).unwrap();

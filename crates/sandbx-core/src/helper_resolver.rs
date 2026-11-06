@@ -2,8 +2,8 @@
 //!
 //! The order is the whole of it. `MS_REC | MS_PRIVATE` on `/` before any bind, so the mounts
 //! are this namespace's own whatever the host's propagation. Runs in stage 1, after `isolate`
-//! unshared `CLONE_NEWNS` and before stage 2 exists, so the command inherits the mounts and
-//! `mount(2)` is not yet denied; stage 2 could not, `apply` having no namespace to put them in.
+//! unshared `CLONE_NEWNS` and before the capability drops, so the command inherits the
+//! mounts; stage 2 could not, holding no `CAP_SYS_ADMIN` and denying `mount(2)`.
 
 use std::fs::{DirBuilder, OpenOptions};
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
@@ -85,8 +85,7 @@ fn detach_mount_propagation() -> Result<(), SandboxError> {
 /// Write `file`'s body and bind-mount it over its `/etc` counterpart.
 ///
 /// A bind needs its target to exist already, so an absent one is skipped unless
-/// `crate::resolver::File::required` says that leaves resolution unbounded. A symlinked one is
-/// bound over its target rather than skipped — see the branch below.
+/// `crate::resolver::File::required` says that leaves resolution unbounded.
 fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
     let name = file.target.file_name().unwrap_or(file.target.as_os_str());
     let written = source.join(name);
@@ -112,10 +111,7 @@ fn install(source: &Path, file: &File) -> Result<(), SandboxError> {
     // replaceable with a hosts file of the command's own. NixOS links every `/etc` entry.
     // `resolv.conf` is exempt: a forged one names a nameserver that no policy bounding
     // resolution can reach, every shape that could reach one being refused before the run.
-    //
-    // So it is bound and not skipped, though `ruleset::rights::opens_as_itself` installs no
-    // rule for it: the asymmetry is the point. A command whose other grants reach the resolved
-    // path then reads sandbx's body there instead of the host's real one.
+    // Bound though it gets no rule — the asymmetry `ruleset::rights::opens_as_itself` gives.
     if target.is_symlink() && file.required {
         return Err(symlinked(file.target));
     }

@@ -1,5 +1,5 @@
-//! The `eval` interpreter every test in this directory reads its filter through, the
-//! `seccomp_data` word model it evaluates against, and its own tests.
+//! The `eval` interpreter every seccomp test reads its filter through, the `seccomp_data`
+//! word model it evaluates against, and its own tests.
 
 use std::array;
 
@@ -259,10 +259,9 @@ pub(super) fn protocol_socket_verdict(
 /// cover the classic mis-implementations over hand-written programs rather than the compiled
 /// filter.
 ///
-/// Only `JGT` is unreachable from the installed filters now: the `clone` rules are `MaskedEq`,
-/// which seccompiler compiles to `ALU|AND` plus `jeq`, and `x32_gate` hand-writes a `JGE`. It
-/// is implemented anyway, the alternative being an arm that panics on a program seccompiler
-/// can legitimately emit.
+/// Only `JGT` is unreachable from the installed filters: `MaskedEq` compiles to `ALU|AND`
+/// plus `jeq`, and `x32_gate` hand-writes a `JGE`. It is implemented anyway, the alternative
+/// being an arm that panics on a program seccompiler can legitimately emit.
 #[test]
 fn eval_implements_the_opcodes_seccompiler_can_emit() {
     // Every program loads word 0, `nr`, so the case's `nr` is what the comparison sees. `jt`,

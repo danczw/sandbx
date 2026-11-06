@@ -5,10 +5,8 @@ use super::super::filter::compiled_filter;
 use super::bpf::{AUDIT_ARCH, JEQ_K, KILL, verdict_from_arch};
 use crate::SandboxPolicy;
 
-// `X32_SYSCALL_BIT` and `x32_gate` do not exist off x86_64 — they are `#[cfg]`d in `filter`,
-// since no other architecture has that ABI — and `ALLOW` and `verdict` are reached only by
-// the four tests gated the same way. A glob tolerated all four being absent; an item list
-// has to carry the gate itself.
+// Gated: `X32_SYSCALL_BIT` and `x32_gate` exist only on x86_64, and `ALLOW` and `verdict`
+// are used only by the four tests gated the same way.
 #[cfg(target_arch = "x86_64")]
 use super::super::filter::{X32_SYSCALL_BIT, x32_gate};
 #[cfg(target_arch = "x86_64")]

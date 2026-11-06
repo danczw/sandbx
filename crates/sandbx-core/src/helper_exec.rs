@@ -85,10 +85,8 @@ fn start_inner_stage(
         report(&crate::degradation::encode(&degraded));
     }
 
-    // This same binary in inner mode, which restricts itself before starting the command.
-    // `spawn::command` narrows the environment as it builds it: ordinarily a no-op, sandbx
-    // having narrowed ours, and load-bearing for a helper invoked directly with no sandbx
-    // above it.
+    // `spawn::command` narrows the environment: a no-op under sandbx, which narrowed ours,
+    // and load-bearing for a helper invoked directly.
     let mut inner = crate::spawn::command(exe, &request.policy);
     inner
         .arg(crate::HELPER_INNER_FLAG)
@@ -141,9 +139,9 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<Infallible, SandboxError
         _ => (false, argv),
     };
 
-    // Before anything has changed, and outside the region that reports: its `spawn_failed`
-    // is a label the channel does not admit. It is `/proc/self/exe` unresolved, which the
-    // forked child reads as the image it inherited rather than as a second lookup.
+    // Outside the region that reports: its `spawn_failed` is a label the channel does not
+    // admit. `/proc/self/exe` unresolved, so the child execs the image it inherited rather
+    // than a second lookup of the name.
     let exe = crate::command::self_exe()?;
 
     let started = start_inner_stage(exe, argv, audit_on_stdin);
@@ -178,9 +176,6 @@ pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<Infallible, SandboxError
 fn relay(status: ExitStatus) -> Result<Infallible, SandboxError> {
     use std::os::unix::process::ExitStatusExt;
 
-    // Re-raised before the numbered form, so a signalled status stays signalled. When the
-    // raise returns anyway — the `SIGPIPE`/`SIGSEGV` cases above — the fallback encodes it
-    // the way a shell would.
     if status.code().is_none()
         && let Some(signal) = status.signal()
         && let Ok(signal) = nix::sys::signal::Signal::try_from(signal)
@@ -254,9 +249,7 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<Infallible, SandboxError> {
         Err(refusal) => refusal,
     };
 
-    // Without this the trail cannot tell a refusal from a command that ran and exited 1:
-    // this stage exits non-zero and stage 1 relays that status on the command's behalf.
-    // Swallowed — a lost record must not fail a run the parent was already told about.
+    // So the trail can tell a refusal from a command that exited 1; swallowed, as in `report`.
     if let (Some(channel), Some(reported)) = (&mut channel, refusal.refusal()) {
         use std::io::Write;
 
@@ -275,20 +268,17 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<nix::unistd::
     bind_lifetime_to_supervisor()?;
     confirm_supervisor(supervisor)?;
 
-    // A check, not a re-narrowing: `spawn::command` is the only `Command` builder in the
-    // crate and narrows by construction, so clearing again would answer with silence — the
-    // command's `environ` comes out identical either way. Not folded into
-    // `confirm_supervisor`, a liveness check and explicitly not a trust boundary (see
-    // `HELPER_INNER_FLAG`): a caller reaching the inner stage directly arrives with a full
-    // environment and is refused here rather than narrowed.
+    // A check, not a re-narrowing: `spawn::command` narrows by construction, so clearing
+    // again would leave `environ` identical and say nothing. A caller reaching this stage
+    // directly (`HELPER_INNER_FLAG` is no trust boundary) arrives with a full environment
+    // and is refused here rather than narrowed.
     //
-    // An error and not an `assert!`: `with_helper_dispatch` is exhaustive so a helper run
-    // cannot end without either running the command or reporting why not, and a panic
-    // leaves through neither. The message names no variable, for the reason
-    // `records_how_many_variables_passed_not_which` gives.
+    // An error and not an `assert!`: a helper run must end by running the command or by
+    // reporting why not, and a panic does neither. The message names no variable, for the
+    // reason `records_how_many_variables_passed_not_which` gives.
     //
-    // `permits_env` and not `allowed_env`: it is the predicate `spawn::command` builds
-    // from, so a variable the policy *imposes* cannot refuse the run.
+    // `permits_env` and not `allowed_env`: it also admits what the policy imposes, which
+    // `spawn::command` adds too, so an imposed variable cannot refuse the run.
     if env::vars_os().any(|(name, _)| !request.policy.permits_env(&name)) {
         return Err(SandboxError::ProcessHardening {
             detail: "the inner stage inherited a variable the policy does not permit; \
@@ -301,9 +291,7 @@ fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<nix::unistd::
 
     // After `apply`, so the descriptor is provably one the policy authorizes: opening first
     // would hash a file no grant covers and report a mismatch where the honest answer is a
-    // denied read. The command below inherits the cage for the same reason — `exec` keeps
-    // every restriction `apply` installed, and `spawn::command` narrowing the environment
-    // there is what decides what the real command reads out of its own `environ`.
+    // denied read.
     let image = request
         .pin
         .map(|expected| crate::sha256_digest::open_verified(&request.program, expected))
@@ -392,23 +380,19 @@ fn claim_audit_channel() -> Result<File, SandboxError> {
     Ok(File::from(channel))
 }
 
-/// `pub(super)` with no caller outside this module: as a private item of `helper` it was
-/// nameable by every descendant, and `hardening`, `ruleset::compat`, `ruleset::requested` and
-/// `ruleset::rights` all document themselves against it. `pub(super)` is that same set, now
-/// that they are siblings rather than descendants — narrowing it breaks their doc links.
+/// Install the seccomp filter and the Landlock ruleset on this process; the namespaces and
+/// capability drops are already inherited from [`prepare_supervisor`].
+///
+/// `pub(super)` with no caller outside this module: `hardening`, `ruleset::compat`,
+/// `ruleset::requested` and `ruleset::rights` link to it from their docs, and narrowing it
+/// breaks those links.
 pub(super) fn apply(policy: &crate::SandboxPolicy) -> Result<(), SandboxError> {
     use landlock::{
         CompatLevel, Compatible, NetPort, PathBeneath, Ruleset, RulesetAttr, RulesetCreatedAttr,
     };
 
-    // The namespaces and the capability drops already happened in the supervisor — see
-    // `prepare_supervisor` — and both are inherited. What is left is everything that must
-    // apply to the command itself and could not be done in a process that still had to
-    // spawn one.
-
-    // Both installs below need either CAP_SYS_ADMIN or no_new_privs, and this process holds no
-    // capabilities, the supervisor having dropped them. Each library sets the bit itself, so
-    // this call does not enable them; it is the refusal, raised here and ahead of either.
+    // Ahead of either install, which needs it without `CAP_SYS_ADMIN` and sets it itself: this
+    // call is the refusal, see `set_no_new_privs`.
     set_no_new_privs()?;
 
     deny_dangerous_syscalls(policy)?;

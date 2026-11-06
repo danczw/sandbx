@@ -230,8 +230,9 @@ impl SandboxPolicy {
         }
     }
 
-    /// Whether the child may hold a variable called `name`, allowlisted or imposed: the one
-    /// answer `spawn::command` and the helper's inherited-environment check share.
+    /// Whether the child may hold a variable called `name`, allowlisted or imposed: the set
+    /// `spawn::command` builds from `allowed_env` and `imposed_env`, asked by the helper's
+    /// inherited-environment check.
     pub fn permits_env(&self, name: &OsStr) -> bool {
         self.env.iter().any(|allowed| name == OsStr::new(allowed))
             || self

@@ -55,9 +55,8 @@ fn rights_for_narrows_a_regular_file() {
             "{axis:?} on a file derives no rights at all"
         );
 
-        // The whole file-legal set, spelled out: a sample would miss the other nine, and
-        // deriving it from `from_file(LATEST_ABI)` would move with the ABI bump this is
-        // meant to catch.
+        // The whole file-legal set, spelled out: a sample would miss the rest, and deriving
+        // it from `from_file(LATEST_ABI)` would move with the ABI bump this is meant to catch.
         let file_legal = landlock::make_bitflags!(AccessFs::{
             ReadFile | WriteFile | Execute | Truncate | IoctlDev | ResolveUnix
         });
@@ -120,10 +119,10 @@ fn only_the_execute_axis_carries_execute() {
 /// variants, so twelve would otherwise be pinned by nothing.
 ///
 /// `write` is the sharpest case, being defined by subtraction — `from_all` minus `from_read` —
-/// so every right a new ABI adds to the write half joins every `--allow-write` grant. At
-/// `LATEST_ABI` that is already one right beyond writing bytes: `IoctlDev`, device ioctls on a
-/// node beneath the path. The other right V9 adds, `ResolveUnix`, is subtracted back out and
-/// conferred by `--allow-unix-sockets` instead (#259), which is why no axis moves here.
+/// so every right a new ABI adds to the write half joins every `--allow-write` grant. That is
+/// already one right beyond writing bytes at both ends: `IoctlDev` (V5), device ioctls on a
+/// node beneath the path. `ResolveUnix`, which V9 adds, is subtracted back out and conferred
+/// by `--allow-unix-sockets` instead (#259), which is why no axis moves here.
 ///
 /// Spelled out rather than derived from `from_all`/`from_read`, which would move with the bump
 /// it is meant to catch. Both ends are claims — [`BASELINE_ABI`] is what sandbx refuses to run
@@ -189,9 +188,9 @@ fn a_write_grant_carries_neither_read_nor_execute() {
     assert!(!rights.contains(AccessFs::Execute));
 }
 
-/// `--allow-unix-sockets` is the only source of `ResolveUnix`, so no axis may carry it — the
-/// shape #259 reported was the write subtraction picking it up from `from_all` at V9 with no
-/// line edited, which would give the flag a path condition it never documented.
+/// `--allow-unix-sockets` is the only source of `ResolveUnix`, so no axis may carry it: the
+/// write subtraction picked it up from `from_all` at V9 with no line edited (#259), giving
+/// the flag a path condition it never documented.
 ///
 /// Over both target kinds, because `from_file` is where a narrowing could hand it back.
 #[test]
