@@ -7,10 +7,10 @@
 //! [`Content`] variant is the same in the other direction. Free functions and not `From`
 //! impls, both types being foreign to this crate.
 //!
-//! A crate and not the module of `sandbx-cli` it was, though `sandbx-cli` is its only
-//! dependent: [`request_usage`] and [`stored_usage`] are the only first-party code outside
-//! `sandbx-turn` that names `PromptUsage`, so folding them back would give `sandbx-cli` a
-//! `sandbx-compact` edge for a type nothing else in it mentions (#351).
+//! A crate though `sandbx-cli` is its only dependent: [`request_usage`] and
+//! [`stored_usage`] are the only first-party code outside `sandbx-turn` that names
+//! `PromptUsage`, so folding them into `sandbx-cli` would give it a `sandbx-compact` edge
+//! for a type nothing else in it mentions (#351).
 
 use std::env;
 
@@ -38,7 +38,7 @@ pub enum SessionChoice<'a> {
 /// Open the session `choice` describes, reporting it on stderr.
 ///
 /// Called before the first request, so a refused mode or an id with nothing behind it
-/// costs nothing — but after the client, which no new transcript should outlive.
+/// costs nothing.
 ///
 /// # Errors
 ///
@@ -141,7 +141,8 @@ pub fn request_history(stored: &[Message]) -> Vec<RequestMessage> {
         .collect()
 }
 
-/// A stored conversation in the shape a request carries it.
+/// A request history with its user runs merged, and the way back to the transcript's
+/// indices.
 ///
 /// Two index spaces meet here: the transcript stores every message separately, the request
 /// carries each run of user messages as one. `withheld` is an *index*, so a figure

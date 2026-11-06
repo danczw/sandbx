@@ -2,7 +2,7 @@
 //! cost.
 //!
 //! Mirrors `sandbx_prompt`'s `RequestMessage`, `Role` and `ContentBlock`, `sandbx_compact`'s
-//! `PromptUsage`, and, with one stop more, `sandbx_turn`'s `TurnStop`, declared here rather than
+//! `PromptUsage`, and, with two stops more, `sandbx_turn`'s `TurnStop`, declared here rather than
 //! imported because a transcript is a file format, and one that moved whenever a request type
 //! moved would not be.
 //! `sandbx-session-bridge` translates, and fails to compile on a new block kind; `sandbx-cli`

@@ -103,7 +103,7 @@ where
         }
 
         // The scan above has decoded the tail of a stream that ended on an earlier
-        // turn. Return rather than poll again: `state.bytes` already yielded `None`.
+        // pass. Return rather than poll again: `state.bytes` already yielded `None`.
         if state.done {
             if lines.is_empty() {
                 return None; // clean EOF between events

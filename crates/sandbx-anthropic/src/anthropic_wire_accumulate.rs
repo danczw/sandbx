@@ -14,7 +14,6 @@ use sandbx_provider::ProviderError;
 
 use super::payload::{RawContentBlockStart, RawDelta, RawStreamEvent, RawUsage};
 
-/// Map Anthropic's `stop_reason` onto the neutral enum.
 fn stop_reason(value: &str) -> StopReason {
     match value {
         "end_turn" => StopReason::EndTurn,
@@ -101,7 +100,6 @@ impl RawUsage {
 }
 
 impl<S> WireState<S> {
-    /// Queue the turn's token accounting, if there was any to report.
     fn push_usage(&mut self) {
         if !self.usage.reported() {
             return;

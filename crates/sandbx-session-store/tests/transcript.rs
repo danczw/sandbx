@@ -455,9 +455,8 @@ fn an_unknown_id_is_refused_not_started() {
     assert!(!store.root().join("zzzzzzzz.jsonl").exists());
 }
 
-/// The rendering, not just the variant: #346 changed what `NotFound` carries from a
-/// `SessionId` to its spelling, and the message was the one thing that could have
-/// changed with it. Nothing else pins this string — it exists only in the `Display` arm.
+/// The rendering, not just the variant: `NotFound` carries the id's spelling, not a
+/// `SessionId` (#346), and nothing else pins the string its `Display` arm builds.
 #[test]
 fn an_unknown_id_is_named_in_the_refusal() {
     let fixture = store();

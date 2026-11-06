@@ -142,7 +142,6 @@ trait Source {
     fn next(&mut self) -> io::Result<Option<Event>>;
 }
 
-/// crossterm itself.
 struct Crossterm;
 
 impl Source for Crossterm {
@@ -260,7 +259,6 @@ fn hung_up(
         .any(|fd| fd.revents().is_some_and(|revents| revents.intersects(GONE))))
 }
 
-/// Fold one keypress into what the reader has seen.
 fn pressed(seen: &mut Seen, key: KeyEvent) {
     seen.stop |= interrupts(key);
 }

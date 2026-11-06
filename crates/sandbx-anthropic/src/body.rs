@@ -6,7 +6,7 @@
 //! `serde`'s attributes cannot express them.
 //!
 //! Every impl below is on a local wrapper because the orphan rule requires it, the
-//! types being another crate's since #364 — not because a wrapper reads better.
+//! types being another crate's — not because a wrapper reads better.
 
 use sandbx_prompt::{
     ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition,

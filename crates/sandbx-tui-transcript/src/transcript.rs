@@ -1,7 +1,6 @@
 //! What the screen shows, folded from the event stream one event at a time.
 //!
-//! No terminal behind it, so the fold is a unit test rather than a screenshot. Nothing
-//! here renders a *requested* call: only a settled one has an outcome.
+//! Nothing here renders a *requested* call: only a settled one has an outcome.
 
 use sandbx_event::AgentEvent;
 use sandbx_text::{invisible, line_separator};

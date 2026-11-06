@@ -38,8 +38,6 @@ fn every_block_kind_survives_the_round_trip() {
 
     let back = request_history(&stored_messages(&sent));
 
-    // Compared through the stored shapes, which derive `PartialEq` where the provider
-    // types do not — the asymmetry is the reason the stored types exist.
     assert_eq!(stored_messages(&back), stored_messages(&sent));
     assert_eq!(stored_messages(&back)[0].content.len(), 4);
 }
@@ -193,8 +191,8 @@ fn a_settled_conversation_resumes_without_a_note() {
     }
 }
 
-/// A gate abort ends on the same unanswered call a round limit does, and was once
-/// reported as one (#226).
+/// A gate abort ends on the same unanswered call a round limit does, and is not reported
+/// as one (#226).
 #[test]
 fn an_unanswered_call_is_explained_by_the_stop_recorded() {
     let note = |stop| resume_note(true, stop).expect("a note");

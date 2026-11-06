@@ -21,7 +21,7 @@ pub enum AuthError {
     /// Neither `XDG_CONFIG_HOME` nor `HOME` named an absolute directory.
     NoConfigHome,
 
-    /// The credential file is readable by more than its owner.
+    /// The credential file carries a group or other permission bit.
     Permissions {
         /// The file that was refused.
         path: PathBuf,
@@ -29,7 +29,7 @@ pub enum AuthError {
         mode: u32,
     },
 
-    /// The directory holding the credential file is reachable by more than its owner.
+    /// The directory holding the credential file carries a group or other permission bit.
     DirPermissions {
         /// The directory that was refused.
         path: PathBuf,

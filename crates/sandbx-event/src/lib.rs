@@ -4,9 +4,8 @@
 //! A crate rather than a module in the provider crate, because every layer above speaks
 //! this vocabulary and only one of them wants a client: the turn loop, the CLI's renderer
 //! and `sandbx-tui-transcript`'s fold all name these two types, and the fold names nothing
-//! else of a provider's. While they lived beside the clients, the drawing side reached
-//! reqwest, rustls and hyper to match on an enum, and carried them on to `sandbx-screen`
-//! behind it; both crates now reach neither (#328, #365).
+//! else of a provider's, so neither it nor `sandbx-screen` behind it links reqwest, rustls
+//! and hyper to match on an enum (#365).
 //!
 //! A second adapter maps its own frames onto these types rather than extending them, which
 //! is the seam `context/decision-provider-seam.md` records. Nothing here derives
@@ -21,8 +20,8 @@
 pub enum AgentEvent {
     /// An incremental chunk of assistant-visible text.
     ///
-    /// Block boundaries are not recoverable: `content_block_stop` is surfaced only
-    /// for a `tool_use` block, so a consumer rebuilding content coalesces
+    /// Block boundaries are not recoverable: a block's end is surfaced only as a
+    /// tool call or a thinking block, so a consumer rebuilding content coalesces
     /// consecutive text blocks into one.
     Text {
         /// The new text to append; not the accumulated text so far.
@@ -32,9 +31,8 @@ pub enum AgentEvent {
     ///
     /// Empty unless `sandbx_prompt`'s `Thinking::Visible` was asked for, and never the
     /// whole block: [`ThinkingBlock`](Self::ThinkingBlock) is what carries one back into
-    /// a later request. Not a link, and not for [`Stop`](Self::Stop)'s reason — there is
-    /// no cycle here, just no edge, and one taken for a doc link would be the only thing
-    /// holding it.
+    /// a later request. Not a link: this crate has no edge to `sandbx-prompt`, and a doc
+    /// link would be the only thing holding one.
     Thinking {
         /// The new thinking text to append; not the accumulated text so far.
         delta: String,
