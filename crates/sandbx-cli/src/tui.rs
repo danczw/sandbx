@@ -25,15 +25,17 @@ use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_screen::{Screen, Transcript};
 use sandbx_session_bridge as session;
+use sandbx_session_message::TurnStop as StoredStop;
 use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Keys, Stopped};
-use sandbx_turn::{Turn, TurnError, TurnLimits, TurnOutcome, TurnStop, run_turn};
+use sandbx_turn::{Turn, TurnError, TurnLimits, TurnOutcome, TurnStop, run_turn_until};
 
 use super::prompt::{Notes, Stderr, account};
 use super::render::{Answer, Unfinished};
 use super::{
-    AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation, wrapup,
+    AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation, stored_stop,
+    wrapup,
 };
 use crate::AgentError;
 
@@ -193,32 +195,30 @@ impl Tui {
         let mut keys = Keys::listen();
         paint(&pane, |_| {});
 
-        let first = {
-            let turn = run_turn(
-                &mut open,
-                turn.clone(),
-                ctx,
-                |event| paint(&pane, |transcript| transcript.event(event)),
-                Gate {
-                    argv: gate::ArgvGate::new(self.run.allow_tool.as_deref(), None),
-                    pane: &pane,
-                },
-            );
-
-            // The whole of the interrupt: the turn's future is dropped where it stood, so
-            // the loop gains no stop of its own. What that costs is said below — a running
-            // tool still finishes, and the process waits on it, `Runtime::drop` having no
-            // timeout (#26).
-            tokio::select! {
-                outcome = turn => Ok(outcome),
-                stopped = keys.stop() => Err(stopped),
-            }
-        };
+        // Inside the loop rather than raced against it, so the rounds before the stop come
+        // back to be stored (#271). What it still costs is said below: a running tool
+        // finishes, and the process waits on it, `Runtime::drop` having no timeout (#26).
+        let mut seen = None;
+        let first = run_turn_until(
+            &mut open,
+            turn.clone(),
+            ctx,
+            |event| paint(&pane, |transcript| transcript.event(event)),
+            Gate {
+                argv: gate::ArgvGate::new(self.run.allow_tool.as_deref(), None),
+                pane: &pane,
+            },
+            async { seen = Some(keys.stop().await) },
+        )
+        .await;
 
         let driven = match first {
-            Err(stopped) => Driven::Stopped(stopped),
-            Ok(Err(error)) => Driven::Failed(error),
-            Ok(Ok(first)) => match first.stop {
+            Err(error) => Driven::Failed(error),
+            Ok(first) => match first.stop {
+                TurnStop::Interrupted => Driven::Stopped(
+                    seen.expect("only the keys resolve the stop that interrupted the turn"),
+                    first,
+                ),
                 TurnStop::RoundLimit { rounds } if !self.run.no_wrap_up => {
                     // Ahead of the request: the status bar counts this round too, and would
                     // otherwise read one past `--max-rounds` with nothing saying why.
@@ -285,9 +285,9 @@ impl Tui {
         // Not `?`: a store that refused the turn must still leave the transcript and the
         // trail, the answer being on the screen and nowhere else.
         let saved = match (outcome, session) {
-            (Some((outcome, unfinished)), Some(session)) => self
+            (Some((outcome, stop)), Some(session)) => self
                 .run
-                .save(session, &asked, outcome, unfinished, &merged, &mut pane),
+                .save(session, &asked, outcome, stop, &merged, &mut pane),
             _ => Ok(()),
         };
         let code = saved.and(code);
@@ -328,8 +328,9 @@ fn held(stderr: Device) -> Option<sandbx_logging::Held> {
 
 /// What the turn's futures came to, before any of it is accounted for.
 enum Driven {
-    /// Stopped before the turn had finished, so nothing of it is kept.
-    Stopped(Stopped),
+    /// Stopped before the turn had finished, which keeps the rounds before the one it
+    /// stopped in.
+    Stopped(Stopped, TurnOutcome),
     /// Stopped in the wrap-up round of a turn that ran out after `usize` rounds, which is
     /// kept as the cap left it.
     StoppedWrapping(Stopped, TurnOutcome, usize),
@@ -341,8 +342,8 @@ enum Driven {
 /// for both.
 struct Accounted {
     code: i32,
-    /// The turn `save` is handed, `None` where nothing of it is kept.
-    kept: Option<(TurnOutcome, Option<Unfinished>)>,
+    /// The turn `save` is handed and how it is stored, `None` where nothing of it is kept.
+    kept: Option<(TurnOutcome, StoredStop)>,
     said: Vec<String>,
 }
 
@@ -352,13 +353,13 @@ struct Accounted {
 /// a terminal, and `SECURITY.md` claims the difference.
 fn accounted(driven: Driven, running: Running) -> Result<Accounted, TurnError> {
     Ok(match driven {
-        Driven::Stopped(stopped) => {
+        Driven::Stopped(stopped, outcome) => {
             let Ending { code, said } = stop(stopped, false);
-            // The call the dropped future stood on never settles, so this is the only line
+            // The call the dropped round stood on never settles, so this is the only line
             // it gets.
             Accounted {
                 code,
-                kept: None,
+                kept: Some((outcome, stored(stopped))),
                 said: said.into_iter().chain(running.stopped()).collect(),
             }
         }
@@ -368,17 +369,19 @@ fn accounted(driven: Driven, running: Running) -> Result<Accounted, TurnError> {
             let unfinished = Some(Unfinished::CutShort(rounds));
             let Ending { code, mut said } = stop(stopped, true);
             said.extend(ending(&first, unfinished).said);
+            let stored = stored_stop(first.stop, unfinished);
             Accounted {
                 code,
-                kept: Some((first, unfinished)),
+                kept: Some((first, stored)),
                 said,
             }
         }
         Driven::Finished(outcome, unfinished) => {
             let Ending { code, said } = ending(&outcome, unfinished);
+            let stop = stored_stop(outcome.stop, unfinished);
             Accounted {
                 code,
-                kept: Some((outcome, unfinished)),
+                kept: Some((outcome, stop)),
                 said,
             }
         }
@@ -386,8 +389,17 @@ fn accounted(driven: Driven, running: Running) -> Result<Accounted, TurnError> {
     })
 }
 
+/// How a stop is stored, a hangup apart from a keypress for [`stop`]'s reason.
+fn stored(stopped: Stopped) -> StoredStop {
+    match stopped {
+        Stopped::Pressed => StoredStop::Interrupted,
+        Stopped::Gone => StoredStop::HungUp,
+    }
+}
+
 /// The code a stop exits with, and its line. `wrapping` is whether it found the turn in
-/// its wrap-up round, which keeps the turn before it, where any other stop keeps nothing.
+/// its wrap-up round, which keeps every round before it, where any other stop loses the
+/// round it lands in.
 ///
 /// A hangup has its own line and not the interrupt's: the operator did not stop this turn,
 /// and telling them they did is the one reading of a hangup that is certainly wrong (#264).
@@ -402,7 +414,7 @@ fn stop(stopped: Stopped, wrapping: bool) -> Ending {
         ),
     };
     // Not "stored": nothing is without `--session`, and `save` has not run yet. No tool
-    // call to name either, the wrap-up round's gate letting none run.
+    // call to name in the wrap-up round, its gate letting none run.
     let what = if wrapping {
         format!(
             "{how} in the wrap-up round. What it wrote is lost; under `--session`, the turn \
@@ -410,8 +422,9 @@ fn stop(stopped: Stopped, wrapping: bool) -> Ending {
         )
     } else {
         format!(
-            "{how}. Nothing of this turn is stored, and a tool call already running finishes \
-             unseen: the process waits for it before it exits (#26)"
+            "{how}. Under `--session` the rounds it finished are kept and the one it stopped \
+             in is lost, and a tool call already running finishes unseen: the process waits \
+             for it before it exits (#26)"
         )
     };
 

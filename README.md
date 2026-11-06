@@ -304,8 +304,9 @@ leave you answering one call blind.
 
 One question, one answer, then the process ends. `sandbx tui` takes the same
 flags and draws that turn on a screen instead of streaming it, where ctrl-c or
-escape ends it mid-flight — storing nothing of that turn and leaving a running
-tool call to finish unseen. When the turn ends the screen goes and the
+escape ends it mid-flight — `--session` keeping the rounds it finished but not
+the one it stopped in, and a running tool call left to finish unseen. When the
+turn ends the screen goes and the
 transcript is printed in its place, so the answer stays in your scrollback. It
 needs a terminal on stdout, so it refuses a piped run, and it refuses
 `--approve call`, whose question wants the terminal the screen has taken

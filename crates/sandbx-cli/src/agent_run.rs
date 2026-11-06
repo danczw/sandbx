@@ -438,7 +438,8 @@ impl AgentRun {
             // Skipped rather than refused by a flag: the wrap-up round is exactly the
             // request there is no longer anyone to have asked for (#218).
             (Some(TurnStop::GateAborted), outcome) => (outcome, Some(Unfinished::Aborted)),
-            (Some(TurnStop::Answered) | None, outcome) => (outcome, None),
+            // `run_turn` has no stop of its own; only `run_turn_until`'s caller interrupts.
+            (Some(TurnStop::Answered | TurnStop::Interrupted) | None, outcome) => (outcome, None),
         };
 
         // The outcome's figure, not the stream's: on `Discarded` that's the first turn's,
@@ -455,7 +456,8 @@ impl AgentRun {
         let outcome = outcome?;
 
         if let Some(session) = session {
-            self.save(session, &asked, outcome, ending, &merged, &mut render)?;
+            let stop = stored_stop(outcome.stop, ending);
+            self.save(session, &asked, outcome, stop, &merged, &mut render)?;
         }
 
         // Last: an append still happens for a closed stdout — the transcript is the
@@ -467,14 +469,16 @@ impl AgentRun {
     ///
     /// `asked` has to be passed back in: `TurnOutcome::messages` is what the turn
     /// produced, so a transcript built from the outcome alone would hold the model's
-    /// replies with nothing it replied to. `notes` takes the one line a turn with nothing to
-    /// store is owed, which under `tui` must not reach the stderr the screen covers.
+    /// replies with nothing it replied to. `stop` is the caller's, `outcome.stop` alone being
+    /// unable to say a cap was summarised or who interrupted a turn. `notes` takes the one line
+    /// a turn with nothing to store is owed, which under `tui` must not reach the stderr the
+    /// screen covers.
     pub(super) fn save(
         &self,
         mut session: Session,
         asked: &RequestMessage,
         outcome: TurnOutcome,
-        ending: Option<Unfinished>,
+        stop: StoredStop,
         merged: &Merged,
         notes: &mut impl Notes,
     ) -> Result<(), AgentError> {
@@ -485,7 +489,7 @@ impl AgentRun {
             observed: outcome.usage.map(session::stored_usage),
             // Back out of the request's index space, which the merge moved.
             withheld: merged.unmerged(outcome.withheld),
-            stop: stored_stop(outcome.stop, ending),
+            stop,
         };
 
         match session.append(turn) {
@@ -509,7 +513,8 @@ impl AgentRun {
 ///
 /// Exhaustive on both, with no `_` arm, so a new way to end, or a new kind of answer after
 /// the cap, has to be given a stop here rather than falling through to a whole turn.
-fn stored_stop(stop: TurnStop, ending: Option<Unfinished>) -> StoredStop {
+/// `Interrupted` cannot say who stopped the turn, so `tui`, which can, does not ask here.
+pub(super) fn stored_stop(stop: TurnStop, ending: Option<Unfinished>) -> StoredStop {
     match (stop, ending) {
         (TurnStop::Answered, Some(Unfinished::Summarised(_))) => StoredStop::Summarised,
         (
@@ -518,6 +523,7 @@ fn stored_stop(stop: TurnStop, ending: Option<Unfinished>) -> StoredStop {
         ) => StoredStop::Answered,
         (TurnStop::RoundLimit { .. }, _) => StoredStop::RoundLimit,
         (TurnStop::GateAborted, _) => StoredStop::GateAborted,
+        (TurnStop::Interrupted, _) => StoredStop::Interrupted,
     }
 }
 

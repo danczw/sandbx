@@ -13,7 +13,7 @@ mod tools;
 mod turn;
 mod turn_error;
 
-pub use turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
+pub use turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn, run_turn_until};
 pub use turn_error::TurnError;
 // Not dead: `TurnLimits::compaction`, `Turn::observed` and `TurnOutcome::usage` are public
 // fields of these types, and this is how a consumer outside the workspace names them (#356).

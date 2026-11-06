@@ -7,6 +7,7 @@ use crate::{AgentError, Cli, Command};
 use clap::Parser;
 use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_event::StopReason;
+use sandbx_session_message::TurnStop as StoredStop;
 use sandbx_tools::BuiltinTool;
 use sandbx_tui_input::Stopped;
 use sandbx_turn::{TurnError, TurnOutcome, TurnStop};
@@ -332,24 +333,28 @@ fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
     }
 }
 
-/// A stop in the wrap-up round finds the turn before it finished, and hands it to `save` as
-/// the cap left it; a stop anywhere else hands it nothing (#232).
+/// Every stop keeps the rounds it finished: in the wrap-up round the turn the cap left
+/// (#232), anywhere else the rounds before the one it landed in (#271), stored under a stop
+/// naming who stopped it.
 #[test]
-fn only_a_stop_in_the_wrap_up_round_keeps_the_turn() {
+fn every_stop_keeps_the_rounds_it_finished() {
     let capped = TurnStop::RoundLimit { rounds: 4 };
     let kept = |driven| accounted(driven, Running::default()).expect("not a failure");
 
-    for stopped in [Stopped::Pressed, Stopped::Gone] {
+    for (stopped, code, stored) in [
+        (Stopped::Pressed, 2, StoredStop::Interrupted),
+        (Stopped::Gone, 3, StoredStop::HungUp),
+    ] {
         let Accounted {
-            code,
+            code: wrapping,
             kept: turn,
             said,
         } = kept(Driven::StoppedWrapping(stopped, outcome(capped, None), 4));
-        let (turn, unfinished) = turn.expect("the capped turn is kept");
+        let (turn, stop) = turn.expect("the capped turn is kept");
         assert_eq!(turn.stop, capped);
-        assert_eq!(unfinished, Some(Unfinished::CutShort(4)));
+        assert_eq!(stop, StoredStop::RoundLimit);
         // The stop's code, never lowered to the cap's: a hangup still exits 3.
-        assert_eq!(code, stop(stopped, true).code);
+        assert_eq!(wrapping, code, "{stopped:?}");
         // The stop's line, then the cap's own, as `--no-wrap-up` would have drawn it.
         assert!(said[0].contains("wrap-up round"), "{said:?}");
         assert!(
@@ -358,13 +363,20 @@ fn only_a_stop_in_the_wrap_up_round_keeps_the_turn() {
         );
         assert!(said[1].contains("out of rounds after 4 rounds"), "{said:?}");
 
-        // Non-vacuous: the same stop before the cap keeps nothing.
-        let lost = kept(Driven::Stopped(stopped));
-        assert!(lost.kept.is_none());
+        let Accounted {
+            code: mid_turn,
+            kept: turn,
+            said,
+        } = kept(Driven::Stopped(
+            stopped,
+            outcome(TurnStop::Interrupted, None),
+        ));
+        let (_, stop) = turn.expect("the finished rounds are kept");
+        assert_eq!(stop, stored, "{stopped:?}");
+        assert_eq!(mid_turn, code, "{stopped:?}");
         assert!(
-            lost.said[0].contains("Nothing of this turn is stored"),
-            "{:?}",
-            lost.said
+            said[0].contains("the one it stopped in is lost"),
+            "{said:?}"
         );
     }
 }

@@ -176,12 +176,14 @@ fn a_figure_nobody_reported_stays_unreported() {
 }
 
 /// Every stop, and none recorded.
-const STOPS: [Option<TurnStop>; 5] = [
+const STOPS: [Option<TurnStop>; 7] = [
     None,
     Some(TurnStop::Answered),
     Some(TurnStop::RoundLimit),
     Some(TurnStop::Summarised),
     Some(TurnStop::GateAborted),
+    Some(TurnStop::Interrupted),
+    Some(TurnStop::HungUp),
 ];
 
 #[test]
@@ -205,4 +207,19 @@ fn an_unanswered_call_is_explained_by_the_stop_recorded() {
     // Each names one cause, so no reason is reported for another's.
     assert!(!note(Some(TurnStop::GateAborted)).contains("rounds"));
     assert!(!note(None).contains("rounds"));
+}
+
+/// A hangup is not reported as a keypress, and both name the round they lost (#271).
+#[test]
+fn a_stopped_turn_names_its_stop_and_what_it_lost() {
+    let pressed = resume_note(true, Some(TurnStop::Interrupted)).expect("a note");
+    let gone = resume_note(true, Some(TurnStop::HungUp)).expect("a note");
+
+    assert!(pressed.contains("interrupted"), "{pressed}");
+    assert!(gone.contains("terminal went away"), "{gone}");
+    assert!(!gone.contains("interrupted"), "{gone}");
+    for note in [pressed, gone] {
+        assert!(note.contains("is not stored"), "{note}");
+        assert!(!note.contains("rounds"), "{note}");
+    }
 }

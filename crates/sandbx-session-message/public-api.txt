@@ -54,6 +54,8 @@ impl core::panic::unwind_safe::UnwindSafe for sandbx_session_message::Role
 pub enum sandbx_session_message::TurnStop
 pub sandbx_session_message::TurnStop::Answered
 pub sandbx_session_message::TurnStop::GateAborted
+pub sandbx_session_message::TurnStop::HungUp
+pub sandbx_session_message::TurnStop::Interrupted
 pub sandbx_session_message::TurnStop::RoundLimit
 pub sandbx_session_message::TurnStop::Summarised
 impl core::clone::Clone for sandbx_session_message::TurnStop

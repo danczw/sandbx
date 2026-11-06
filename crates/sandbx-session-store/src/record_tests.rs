@@ -56,11 +56,24 @@ fn a_turn_line_with_no_stop_reads_as_none_recorded() {
     );
 }
 
+/// Literals, so a renamed variant fails here rather than leaving old lines unreadable.
+#[test]
+fn a_stopped_turn_says_who_stopped_it() {
+    for (stop, wire) in [
+        (TurnStop::Interrupted, "interrupted"),
+        (TurnStop::HungUp, "hung_up"),
+    ] {
+        let line = format!(r#"{{"type":"turn","observed":null,"withheld":0,"stop":"{wire}"}}"#);
+        assert_eq!(turn_of(&line).stop, Some(stop), "{line}");
+        assert_eq!(serde_json::to_value(stop).unwrap(), wire);
+    }
+}
+
 /// A later build's stop is a diagnosis this one cannot give, not a line it cannot read.
 #[test]
 fn a_stop_this_build_cannot_name_reads_as_none_recorded() {
     for stop in [
-        r#""interrupted""#,
+        r#""rewound""#,
         "null",
         "7",
         r#"{"round_limit":{"rounds":5}}"#,
