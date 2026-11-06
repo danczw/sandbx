@@ -155,7 +155,7 @@ fn a_rounds_stop_does_not_terminate_the_answer() {
     assert_eq!(code.expect("clean turn"), 0);
 }
 
-/// No `Stop` decides it any more: the figure comes off the outcome's `round_stop`, so
+/// No `Stop` decides it: the figure comes off the outcome's `round_stop`, so
 /// a renderer fed a `max_tokens` round and told nothing still exits clean.
 #[test]
 fn the_exit_code_comes_from_the_outcome_not_a_stop() {

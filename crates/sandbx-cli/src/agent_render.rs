@@ -55,7 +55,7 @@ pub(super) enum Unfinished {
 /// alone.
 ///
 /// `E` is the other half — reasoning, and the lines that say how the turn ended. A field
-/// rather than a macro so a test can read back what was written and in what order (#223).
+/// rather than a macro so a test can read back what was written and in what order.
 pub(super) struct Render<W, E> {
     out: W,
     err: E,

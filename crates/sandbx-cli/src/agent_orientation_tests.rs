@@ -188,8 +188,8 @@ fn a_run_granted_nowhere_to_be_is_told_nothing_about_starting() {
 
 /// Compared against the whole tools sentence: a roots sentence over an empty list names
 /// no path either, so a check for one would pass with the guard gone. Granted while it
-/// exists and removed after — a grant naming nothing is unconstructible now that one
-/// carries the object it was vetted against (#212).
+/// exists and removed after — a grant naming nothing is unconstructible, one carrying
+/// the object it was vetted against (#212).
 #[test]
 fn a_grant_that_resolves_to_nothing_is_not_named() {
     let Work { dir: work, .. } = work();
@@ -338,7 +338,8 @@ fn nothing_is_sent_when_there_is_nothing_to_say() {
     );
 }
 
-/// The model cannot pass a flag mid-turn; `gate::decide`'s refusal is where it reads one.
+/// The model cannot pass a flag mid-turn; `ArgvGate::approve`'s refusal is where it reads
+/// one.
 #[test]
 fn the_prompt_never_names_the_flag_to_the_model() {
     let prompt = granted(SandboxPolicy::default());

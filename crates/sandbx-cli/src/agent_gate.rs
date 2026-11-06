@@ -138,9 +138,9 @@ pub(super) fn settled(call: Settled<'_>) {
 /// The operator's whole line for one call, prefixed and stripped.
 ///
 /// Stripped at the sink and not only field by field, so a `Display` impl that starts
-/// carrying model text cannot re-open the hole — `SandboxError`'s did once. Reached from
-/// `tui` too, which draws the line rather than printing it, so a second caller of `report`
-/// is not a second place to forget the strip.
+/// carrying model text cannot re-open the hole. Reached from `tui` too, which draws the
+/// line rather than printing it, so a second caller of `report` is not a second place to
+/// forget the strip.
 pub(super) fn line(call: Settled<'_>) -> String {
     format!("sandbx: {}", stripped(&report(call)))
 }

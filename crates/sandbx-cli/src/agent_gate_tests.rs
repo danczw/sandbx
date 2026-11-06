@@ -334,8 +334,8 @@ fn a_call_that_ran_names_the_tool_and_its_subject() {
     );
 }
 
-/// #169's misleading row: `--allow-tool write` outside a writable tree announced a write
-/// that never happened, the gate having approved it before the policy refused it.
+/// A write the gate approved and the policy then refused must not read as one that ran
+/// (#169).
 #[test]
 fn a_policy_refusal_is_not_reported_as_a_call_that_ran() {
     let error = ToolError::Denied {
@@ -359,7 +359,7 @@ fn a_policy_refusal_is_not_reported_as_a_call_that_ran() {
     );
 }
 
-/// Neither of these reaches `approve`, so before #169 they reached the operator not at all.
+/// Neither of these reaches `approve`, so this line is the operator's only account (#169).
 #[test]
 fn the_two_refusals_above_the_gate_are_reported() {
     assert_eq!(

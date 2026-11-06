@@ -306,8 +306,8 @@ fn an_answer_typed_before_the_question_is_not_read_as_its_answer() {
 /// A hangup is not an EOF the operator sent: the master is gone, so the read cannot block.
 ///
 /// The discriminant alone, no reason: whether a slave whose master is gone fails at
-/// `tcflush` or at the question's write is platform detail, and a `Deny` — the answer
-/// before #218 — is what the discriminant rules out.
+/// `tcflush` or at the question's write is platform detail, and a `Deny` is what the
+/// discriminant rules out (#218).
 #[test]
 fn a_terminal_that_hung_up_aborts_without_blocking() {
     let Pty { master, slave } = pty();
