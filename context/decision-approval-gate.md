@@ -234,7 +234,8 @@ The system prompt names the approved set before the first request (#197), so
 the refusal stays the operator's signal without being the model's only route to
 the list.
 
-Narrowing the offered set buys defence in depth and costs that signal;
+Narrowing the offered set buys defence in depth and costs that signal, so it is
+worth revisiting if a second caller appears;
 `the_risk_each_tool_carries_is_documented` is what holds the classification a
 mistake would have to get past.
 
@@ -277,13 +278,12 @@ can leave an SGR state behind or print prose that reads like a question. The
 reset covers the first, and is written before the account as well as before the
 question (concealing the record of what ran is the same attack one line later),
 including on stderr when stderr is a terminal, which a redirected one is not.
-The second is worse than it looks: a counterfeit question
-cannot *consume* an answer, since only `approve` ever reads, but canonical mode
-queues a finished line until something reads it, so a `y` typed at the forgery
-was still sitting in the kernel's input queue when the real question's read
-arrived — and a round can hold the operator there, since a read-only call runs
-unasked and takes as long as the tree it walks. The answer bound to a call the
-operator never saw.
+The second is worse than it looks: a counterfeit question cannot *consume* an
+answer, since only `approve` ever reads, but canonical mode queues a finished
+line until something reads it, so a `y` typed at the forgery was still sitting
+in the kernel's input queue when the real question's read arrived — and a round
+can hold the operator there, since a read-only call runs unasked and takes as
+long as the tree it walks. The answer bound to a call the operator never saw.
 
 So the queue is discarded immediately before each question — `tcflush` for the
 kernel's, and `BufReader`'s own buffer after it, one read being able to deliver

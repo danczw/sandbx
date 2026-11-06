@@ -225,8 +225,8 @@ reach past the join.
 `negotiated_abi_from` takes the probe for the same reason `fs_rules` takes the
 policy: the decision worth asserting is not the ladder walk but which errors are
 an *ABI verdict* (step down a rung) and which are not (refuse). Without the seam
-no test can construct a `RulesetError`, and the refusing arm is unreachable
-(#87).
+a test can build a `RulesetError` but not hand one to the ladder, so the
+refusing arm is unreachable from any test (#87).
 
 `apply` ignores the axis (`for FsRule { target, rights, .. }`): the kernel is
 told the rights and nothing else. The axis rides along only so tests can assert
@@ -1069,9 +1069,9 @@ therefore miss `--allow-read .` from `$HOME`, and miss the host where `/home`
 links to `/var/home` — Fedora Silverblue — where one spelling would be refused
 and the other would not. `resolved` closes both by canonicalizing the deepest
 ancestor that exists and re-joining what is left, applied to each side of the
-comparison. The deepest
-*existing* ancestor and not the whole path, because `canonicalize` needs every
-component to exist and a credential nobody has stored yet does not.
+comparison. The deepest *existing* ancestor and not the whole path, because
+`canonicalize` needs every component to exist and a credential nobody has
+stored yet does not.
 
 A relative grant is joined to the working directory before any of that, which is
 what it is vetted and granted as too. Resolving it ancestor by ancestor is not

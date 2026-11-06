@@ -233,10 +233,10 @@ passes. The pin is not — a bind over a granted path is fine only if it predate
 the vet, since one made after leaves the spelling alone and changes the object,
 which refuses as `grant_replaced`. What is not fine is a `pivot_root`, an
 `MS_MOVE` over a granted root, or a bind whose source is unlinked (`read_link`
-then appends `" (deleted)"`). Any of
-those makes every grant read back as something else, so the run refuses under a
-label naming the grant rather than the mount that moved it, which is the hardest
-shape to attribute: the message accuses the innocent party.
+then appends `" (deleted)"`). Any of those makes every grant read back as
+something else, so the run refuses under a label naming the grant rather than
+the mount that moved it, which is the hardest shape to attribute: the message
+accuses the innocent party.
 
 Both are decided in the helper, so each carries a `HelperRefusal` and crosses the
 audit channel — `grant_redirected` and `grant_replaced`: only the stage holding the
@@ -256,9 +256,9 @@ resolved path, which is admitted only under a root that confirms; it is the
 *reason* the spelling decides, a substitution reached only by resolving being
 refused as plainly outside. There is no readback half here: a spelling
 comparison would be this process agreeing with itself, since the guard both
-resolves the path and performs the access. So
-`root_replaced` is sandbx's own and stays out of `HelperRefusal`: no helper runs
-the measurement, and a record claiming it would name the wrong decider.
+resolves the path and performs the access. So `root_replaced` is sandbx's own
+and stays out of `HelperRefusal`: no helper runs the measurement, and a record
+claiming it would name the wrong decider.
 
 ## Where the command starts
 
@@ -393,7 +393,7 @@ only an x32 caller reaches for those numbers.
 | Step | Hard or best-effort | Note |
 |---|---|---|
 | `unshare(CLONE_NEWUSER\|CLONE_NEWPID[\|CLONE_NEWNET][\|CLONE_NEWNS])` | **hard** — EPERM refuses | one call; the user and PID namespaces are unconditional for every policy. `CLONE_NEWNET` is dropped whenever network is granted *at all*, a bare grant and a port allowlist alike, because a port rule inside an empty netns has nothing to permit. `CLONE_NEWNS` is added only when the policy bounds resolution — `--allow-dns` — and `helper::resolver` is what fills it; a mount namespace with nothing mounted into it confines nothing |
-| the three resolver binds | **hard** — a failed mount refuses | only for a policy that bounds resolution. Where AppArmor restricts unprivileged user namespaces the `unshare` succeeds but `CAP_SYS_ADMIN` is denied inside it, so the first mount returns `EACCES` and the run is refused rather than left unbounded. `MS_REC\|MS_PRIVATE` on `/` first, then `hosts`, `nsswitch.conf` (its `hosts` and `networks` lines rewritten, the rest copied) and `resolv.conf` bound from a tmpfs and remounted `MS_RDONLY`. A symlinked `/etc/hosts` or `/etc/nsswitch.conf` refuses the run; `resolv.conf` is exempt. Each step's reason is on its function in `helper_resolver.rs` |
+| the three resolver binds | **hard** — a failed mount refuses | only for a policy that bounds resolution. Where AppArmor restricts unprivileged user namespaces the `unshare` succeeds but `CAP_SYS_ADMIN` is denied inside it, so the first mount returns `EACCES` and the run is refused rather than left unbounded. `MS_REC\|MS_PRIVATE` on `/` first, then `hosts`, `nsswitch.conf` (its `hosts` and `networks` lines rewritten, the rest copied) and `resolv.conf` bound from a tmpfs and remounted `MS_RDONLY`. A symlinked `/etc/hosts` or `/etc/nsswitch.conf` refuses the run; `resolv.conf` is exempt. Each step's reason is on its function in `helper_resolver.rs`; the line-by-line rewrite is `decision-port-allowlist.md`'s. |
 | `no_new_privs` | **hard** | set in both stages |
 | effective/permitted/inheritable/ambient capsets | **hard** | |
 | `RLIMIT_CORE = 0` | **hard** | chosen over `PR_SET_DUMPABLE`: only the rlimit survives `execve` |

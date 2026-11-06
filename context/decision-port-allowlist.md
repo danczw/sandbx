@@ -394,8 +394,9 @@ no line in the hosts file and glibc has no other source to try, so
 `getaddrinfo` returns `EAI_NONAME` — "Name or service not known", at once and
 with no timeout. `curl` prints `Could not resolve host` and exits 6.
 
-That arrives by the path every other resolution failure arrives by: a stub
-resolver reads an RCODE, a shell script reads the exit code. **It is also
+That arrives by the path every other resolution failure arrives by, the exit
+code a script reads, where a `REFUSED` RCODE would have reached only a stub
+resolver. **It is also
 indistinguishable from a typo**, and that is the cost. It is paid where the
 operator is: `sandbox_run.rs`'s advice names `--allow-dns NAME` as the first of
 the two answers, and the refusals catch the shapes where the flag is the wrong
