@@ -36,7 +36,7 @@ through `SandboxedCommand`:
 | network | an empty network namespace; or, with a port allowlist, Landlock TCP port rules plus seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion, TCP Fast Open | IP egress and abstract unix sockets when network is withheld; IP connect and bind narrowed to the allowlisted TCP ports when granted per port |
 | name resolution | with `--allow-dns NAME`: the files every resolver reads — a `hosts` sandbx resolved before the command started, `nsswitch.conf` with no `dns` source, a nameserver-less `resolv.conf` — bind-mounted read-only over `/etc` in the command's own mount namespace | which names resolve, nothing about which hosts are reachable. An unlisted name does not resolve, immediately rather than by timeout, and no nameserver is left to ask instead — see *[What `--allow-dns` bounds](#what---allow-dns-bounds)* |
 | unix sockets | seccomp-bpf on `socket(AF_UNIX)` and on a connectionless `socketpair(AF_UNIX)`, plus Landlock `ResolveUnix` on every granted path where the kernel handles it — ABI V9, Linux 7.1 | whether the command may open a unix socket that reaches anything outside itself: one boolean, never a chosen path. A connected `socketpair` is left alone and is not an exception — both halves are inside the sandbox, and neither can be re-aimed at a host socket. *Which* pathname socket it may dial is bounded by the filesystem policy at V9 only; below V9 nothing bounds it, and a socket whose path the command knows is reachable with no grant naming it — see *[What sandbx does not claim](#what-sandbx-does-not-claim)* |
-| environment | `env_clear` plus a name allowlist on the policy (`SandboxPolicy::allow_env`), then the constants `SandboxPolicy::imposed_env` sets | which variables the command *inherits*; everything unnamed is dropped, at every spawn stage, so a secret in the harness's own environment does not cross. Not the whole of what it holds: `--dns-over-tcp` imposes `RES_OPTIONS=use-vc` with no `--allow-env` naming it, so the child's environment is the allowlist plus a set of compile-time constants. `permits_env` — allowlisted or imposed — is the predicate `spawn::command` builds and the helper's inherited-environment check asks |
+| environment | `env_clear` plus a name allowlist on the policy (`SandboxPolicy::allow_env`), then the constants `SandboxPolicy::imposed_env` sets | which variables the command *inherits*; everything unnamed is dropped, at every spawn stage, so a secret in the harness's own environment does not cross. Not the whole of what it holds: `--dns-over-tcp` imposes `RES_OPTIONS=use-vc` with no `--allow-env` naming it, so the child's environment is the allowlist plus a set of compile-time constants. `permits_env` — allowlisted or imposed — is the set `spawn::command` builds, and the predicate the helper's inherited-environment check asks |
 | syscalls | seccomp-bpf | a denylist — process inspection, namespace manipulation, mounting, loading code into the kernel, the keyring, `io_uring`, `userfaultfd`, `memfd_create`, whole-host state — plus a foreign architecture killed outright. See *[The syscall denylist](#the-syscall-denylist)* |
 | process state | prctl, rlimit, capset | `no_new_privs`, `RLIMIT_CORE=0`, empty effective/permitted/inheritable/ambient capability sets (bounding set best-effort — see below) |
 | process lifetime | PID namespace whose init is sandbx's own process, never the command, bound to the call by the process group and `PR_SET_PDEATHSIG` | every process the command spawned is killed when the call ends, including one that called `setsid` |
@@ -269,12 +269,13 @@ architecture the filter gates on.
   a path sandbx itself owns: about sandbx's own state, not a list.
 - **The boundary is enforced by convention plus tooling**, not a capability
   system: `unsafe` is forbidden workspace-wide, `sandbx-core` included, and
-  spawning a process outside it is a clippy error — but a determined contributor
-  can add raw syscalls, and the lint sees only sandbx's own code. A dependency
-  that spawns does so unsandboxed, with your privileges, unseen by it: crossterm
-  forks `tput`, found through `PATH`, when it cannot read a terminal's size. `tui`
-  no longer asks it to, but its key reader still can when a resize races a
-  hangup ([#269](https://github.com/danczw/sandbx/issues/269)).
+  spawning a process outside it is a clippy error short of an `#[allow]`, which
+  only the dev-only `sandbx-helper-fixture` carries — but a determined
+  contributor can add raw syscalls, and the lint sees only sandbx's own code. A
+  dependency that spawns does so unsandboxed, with your privileges, unseen by it:
+  crossterm forks `tput`, found through `PATH`, when it cannot read a terminal's
+  size. `tui` no longer asks it to, but its key reader still can when a resize
+  races a hangup ([#269](https://github.com/danczw/sandbx/issues/269)).
 - **Approval is not enforcement, and by default it is per tool per run**
   ([#165](https://github.com/danczw/sandbx/issues/165)). A gate sits between the
   model asking for a tool and `sandbx-tools` running it, and `agent-run` and

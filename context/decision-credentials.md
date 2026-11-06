@@ -49,7 +49,8 @@ prompt would echo the key into the terminal's scrollback, and the obvious
 alternative — an argument — would publish it through `/proc/<pid>/cmdline` to
 every process on the host. Refusing a tty means the documented idiom is
 `read -rs KEY && printf %s "$KEY" | sandbx auth login`, which keeps the key out of
-scrollback, shell history and argv alike. The tty refusal has no test.
+scrollback, shell history and argv alike. The refusal is tested through an
+injected `Device`; nothing drives it from a real terminal (#496).
 
 Where the credential file lives, what mode it is created with and why its mode
 rule differs from a session transcript's is in

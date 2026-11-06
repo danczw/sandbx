@@ -23,7 +23,6 @@ Where to look, and where to put something new:
 The code follows the [Google Rust style guide](https://google.github.io/styleguide/rustguide.html), except where `context/decision-google-style.md` records otherwise.
 The guide tags five rules `[chrome]`: two of them, small crates and the flat file layout, are adopted here on their merits, and the other three are skipped.
 That file says which and why — read the tag alone and phases 3 and 4 look like they build on rules the repo skips.
-While #328's migration runs, existing code is exempt from a rule until the phase that fixes it has landed; new and changed code follows the guide.
 
 `SECURITY.md` may never overstate the sandbox.
 Where the mechanism and the claim disagree, one of them changes — the claim is weakened, or the mechanism is widened to match.
@@ -67,7 +66,7 @@ So re-measure `git diff --stat origin/main...HEAD` for every pass, compare it ag
 
 A review over the wrong lines is not a pass.
 
-The gate commands are `.githooks/pre-commit`'s, and the doc one is the trap: CI (`ci.yml:77`) and the hook (`.githooks/pre-commit:26`) both run `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items --all-features`.
+The gate commands are `.githooks/pre-commit`'s, and the doc one is the trap: CI (`ci.yml:77`) and the hook (`.githooks/pre-commit:27`) both run `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items --all-features`.
 Without `--document-private-items` rustdoc does not check links inside private items, so the shorter form exits 0 on a broken link that fails CI — and a moved file's `crate::` links are exactly that class.
 Run the hook's line, after touching every `src/lib.rs` or the answer comes from cache.
 

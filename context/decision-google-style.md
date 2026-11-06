@@ -60,21 +60,6 @@ Read the allowance and you will conclude the crate may be split as soon as someo
 finds a tidier boundary. Read this and you will not — the boundary *is* the
 visibility, and there is no tidier one.
 
-## What the grace rule costs
-
-Existing code is exempt from a rule until the phase that fixes it has landed; new and
-changed code follows the guide. Both halves are load-bearing — without the first,
-every phase blocks on every other; without the second, the tree drifts further out
-while the migration runs.
-
-**A reviewer cannot read conformance off the file in front of them.** Whether a
-violation is a finding depends on which phase has landed and whether the line is new.
-The diff answers the second question and only the tracking issue answers the first,
-so every review pays this while a phase is unlanded.
-
-**A file can hold both styles at once** — a module half-swept — and read as nobody's
-intent. That is the price of not doing the whole tree in one unreviewable commit.
-
 ## Library rules in `core`, application rules elsewhere
 
 `sandbx-core` follows the guide's library rules and every other crate its application

@@ -553,7 +553,7 @@ starts the helper and deliberately clears nothing, for the reason given above;
 and the tests that drive the built binary, which carry their own. Two properties
 fall out that no amount of per-site discipline gave:
 
-- There is one line to delete, and deleting it fails 24 enforcement tests. The
+- There is one line to delete, and deleting it fails the enforcement tests. The
   invariant is pinned, not merely upheld.
 - A new spawn site cannot forget. `clippy.toml` bans `Command::new` workspace-wide
   at `deny`, so the only way to build one is the way that narrows —
