@@ -9,10 +9,10 @@ use futures_util::{StreamExt, stream};
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_core::SandboxPolicy;
 use sandbx_event::{AgentEvent, StopReason};
-use sandbx_prompt::{ContentBlock, Role};
+use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_provider::EventStream;
 use sandbx_tools::BuiltinTool;
-use sandbx_turn::{TurnLimits, TurnStop, run_turn_until};
+use sandbx_turn::{Compaction, TurnLimits, TurnStop, run_turn_until};
 use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
 /// A round asking for one `ls` of `root`.
@@ -193,4 +193,104 @@ async fn a_stopped_turn_returns_no_reasoning() {
         "got {:?}",
         outcome.messages
     );
+}
+
+/// A round's usage report, counting `input` tokens in.
+fn measured(input: u32) -> AgentEvent {
+    AgentEvent::Usage {
+        input_tokens: Some(input),
+        output_tokens: Some(1),
+        cache_write_tokens: None,
+        cache_read_tokens: None,
+    }
+}
+
+/// The dropped round's request was the messages kept, so its figure is theirs.
+#[tokio::test]
+async fn a_stop_mid_call_keeps_that_rounds_usage() {
+    let root = tempfile::tempdir().unwrap();
+    let flag = AtomicBool::new(false);
+    let mut first = listing(&root);
+    first.insert(1, measured(500));
+    let mut second = listing(&root);
+    second.insert(1, measured(700));
+    let mut script = Script::new([first, second]);
+
+    let outcome = run_turn_until(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Ls]),
+        &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
+        |_| {},
+        RaisingOn {
+            nth: 2,
+            asked: AtomicUsize::new(0),
+            stop: &flag,
+        },
+        raised(&flag),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.stop, TurnStop::Interrupted);
+    assert_eq!(outcome.usage.and_then(|u| u.input_tokens), Some(700));
+}
+
+/// Eight prose messages, a legal cut point at every even index.
+fn conversation() -> Vec<RequestMessage> {
+    (0..8)
+        .map(|n| RequestMessage {
+            role: if n % 2 == 0 {
+                Role::User
+            } else {
+                Role::Assistant
+            },
+            content: vec![ContentBlock::Text {
+                text: n.to_string(),
+            }],
+        })
+        .collect()
+}
+
+/// Round two plans a deeper cut on round one's figure and is stopped before it reports.
+/// Handing back that cut beside round one's figure would deepen the next turn's again.
+#[tokio::test(start_paused = true)]
+async fn a_stop_mid_stream_keeps_the_cut_it_measured() {
+    let root = tempfile::tempdir().unwrap();
+    let history = conversation();
+    let mut first = listing(&root);
+    first.insert(1, measured(500));
+    let mut rounds = [first].into_iter();
+    let mut compacting = turn(&history, &[BuiltinTool::Ls]);
+    compacting.limits.compaction = Some(Compaction {
+        budget_tokens: 100,
+        keep_recent: 2,
+    });
+    compacting.withheld = 2;
+    let mut cuts = Vec::new();
+
+    let outcome = run_turn_until(
+        async |r| {
+            cuts.push(r.messages.len());
+            Ok(match rounds.next() {
+                Some(events) => Box::pin(stream::iter(events.into_iter().map(Ok)).fuse()),
+                None => stalled(),
+            })
+        },
+        compacting,
+        &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
+        |_| {},
+        AllowAll,
+        tokio::time::sleep(Duration::from_secs(1)),
+    )
+    .await
+    .unwrap();
+
+    // Not vacuous: round two did go out under a deeper cut than round one's.
+    assert_eq!(cuts, [6, 4], "messages per request");
+    assert_eq!(outcome.stop, TurnStop::Interrupted);
+    assert_eq!(
+        outcome.withheld, 2,
+        "the cut round one's 500 was measured under"
+    );
+    assert_eq!(outcome.usage.and_then(|u| u.input_tokens), Some(500));
 }

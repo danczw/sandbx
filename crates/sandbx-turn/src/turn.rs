@@ -140,8 +140,9 @@ pub enum TurnStop {
     /// [`run_turn_until`]'s `stop` resolved, and the round it found running was dropped.
     ///
     /// The transcript is every round before it, as legal to send again as
-    /// [`RoundLimit`](Self::RoundLimit)'s, or empty. Not in it: whatever the dropped round
-    /// streamed, and a tool call it had started, which still runs to completion (#26).
+    /// [`RoundLimit`](Self::RoundLimit)'s, or empty. Not in it: anything of the dropped
+    /// round, the calls it had already run included, and a call it had started, which still
+    /// runs to completion (#26).
     Interrupted,
 }
 
@@ -238,12 +239,14 @@ where
 /// [`run_turn`], ended as [`TurnStop::Interrupted`] once `stop` resolves.
 ///
 /// Raced against each round's request and its tool calls, `stop` first, so a stop that
-/// has already resolved opens no further request. Whatever the round it lands in streamed
-/// is dropped; a call already running goes on unseen, `spawn_blocking` being what it is
-/// (#26), and [`CallGate::settled`] never hears of it.
+/// has already resolved opens no further request. The round it lands in is dropped whole,
+/// calls already answered in it included; a call already running goes on unseen,
+/// `spawn_blocking` being what it is (#26), and [`CallGate::settled`] never hears of it.
 ///
 /// [`TurnOutcome::usage`] keeps the dropped round's figure when it reported one, its request
-/// being exactly the messages kept.
+/// being exactly the messages kept. [`TurnOutcome::withheld`] is the cut of whichever request
+/// that figure measured, the carried floor where none was: a cut planned for the dropped
+/// round was maybe never sent, and paired with an older figure it would deepen the next.
 ///
 /// # Errors
 ///
@@ -281,6 +284,8 @@ where
     let mut measured = true;
     // What the last request withheld, `None` before there was one.
     let mut sent_cut: Option<usize> = None;
+    // The cut of the request `usage` measured, which an interrupt hands back.
+    let mut measured_cut = turn.withheld;
 
     for _ in 0..turn.limits.max_rounds {
         if measured && let Some(policy) = turn.limits.compaction {
@@ -333,7 +338,7 @@ where
             return Ok(outcome(
                 produced,
                 usage,
-                cut,
+                measured_cut,
                 TurnStop::Interrupted,
                 last_stop,
             ));
@@ -345,6 +350,7 @@ where
             usage = Some(reported);
             observed = Some(reported);
             measured = true;
+            measured_cut = cut;
         }
         last_stop = Some(round.reason);
 
@@ -365,7 +371,7 @@ where
             return Ok(outcome(
                 produced,
                 usage,
-                cut,
+                measured_cut,
                 TurnStop::Interrupted,
                 last_stop,
             ));

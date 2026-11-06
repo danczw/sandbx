@@ -306,8 +306,8 @@ One question, one answer, then the process ends. `sandbx tui` takes the same
 flags and draws that turn on a screen instead of streaming it, where ctrl-c or
 escape ends it mid-flight — `--session` keeping the rounds it finished but not
 the one it stopped in, and a running tool call left to finish unseen. When the
-turn ends the screen goes and the
-transcript is printed in its place, so the answer stays in your scrollback. It
+turn ends the screen goes and the transcript is printed in its place, so the
+answer stays in your scrollback. It
 needs a terminal on stdout, so it refuses a piped run, and it refuses
 `--approve call`, whose question wants the terminal the screen has taken
 ([#225](https://github.com/danczw/sandbx/issues/225)):
@@ -333,7 +333,7 @@ resuming one another user can write is refused — [SECURITY.md](SECURITY.md).
 |---|---|
 | `0` | the model finished its answer |
 | `2` | a bound cut the turn short, named on stderr — `--max-tokens` or `--max-rounds`. Out of rounds, one more request answers the turn with no tool, so stdout usually holds a summary a blank line below what arrived before the cap; `--no-wrap-up` skips it, leaving nothing at all if the model opened with a tool call ([#204](https://github.com/danczw/sandbx/pull/204)). Under `tui` it also means you interrupted the turn |
-| `3` | the terminal went away, so the turn ended there and nobody was watching it. Under `--approve call` that is the terminal it asks on: that call and the ones behind it were refused and no further request was sent. What the turn did before is on stdout and in `--session`. Under `tui` it is the screen or the keyboard hanging up mid-turn, which ends the turn where it stood and stores nothing of it, unless it was in the wrap-up round after `--max-rounds`: `--session` then keeps the rounds before it. The audit trail of what it touched is released to stderr rather than dropped unwritten, so `2>` a file to keep it: where stderr is the terminal that died, the write fails and it goes with it |
+| `3` | the terminal went away, so the turn ended there and nobody was watching it. Under `--approve call` that is the terminal it asks on: that call and the ones behind it were refused and no further request was sent. What the turn did before is on stdout and in `--session`. Under `tui` it is the screen or the keyboard hanging up mid-turn, which ends the turn where it stood: `--session` keeps the rounds it finished, and loses the one it stopped in ([#271](https://github.com/danczw/sandbx/issues/271)). The audit trail of what it touched is released to stderr rather than dropped unwritten, so `2>` a file to keep it: where stderr is the terminal that died, the write fails and it goes with it |
 | `64` | sandbx would not take the command line, so no turn was started and nothing was spawned. The complaint is on stderr, as clap wrote it. `EX_USAGE`, and the same code under every subcommand |
 | anything else | it failed before or during the turn, with the reason on stderr |
 
