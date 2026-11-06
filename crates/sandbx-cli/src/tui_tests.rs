@@ -1,6 +1,8 @@
 use super::super::render::Unfinished;
 use super::super::{Device, INCOMPLETE, NO_CONSENT, gate};
-use super::{Ending, Running, Tui, ending, given_back, held, stop};
+use super::{
+    Accounted, Driven, Ending, Running, Tui, accounted, counted, ending, given_back, held, stop,
+};
 use crate::{AgentError, Cli, Command};
 use clap::Parser;
 use sandbx_approval::{ApprovalDecision, ToolCall};
@@ -315,7 +317,7 @@ fn only_a_terminal_stderr_holds_the_audit_trail() {
 /// The code as a literal, for the reason the test above it gives.
 #[test]
 fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
-    for wrapping in [None, Some(4)] {
+    for wrapping in [false, true] {
         let Ending { code, said } = stop(Stopped::Gone, wrapping);
         assert_eq!(code, NO_CONSENT);
         let given = given(Ok(code), None, &said, Device::Redirected);
@@ -330,18 +332,69 @@ fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
     }
 }
 
-/// A stop in the wrap-up round finds the turn before it finished, which is kept; any other
-/// stop keeps nothing, and each line says which (#232).
+/// A stop in the wrap-up round finds the turn before it finished, and hands it to `save` as
+/// the cap left it; a stop anywhere else hands it nothing (#232). The claim `SECURITY.md`
+/// makes of both, which `drive` cannot be driven to show without a terminal.
 #[test]
 fn only_a_stop_in_the_wrap_up_round_keeps_the_turn() {
-    for stopped in [Stopped::Pressed, Stopped::Gone] {
-        let kept = stop(stopped, Some(4)).said.join("\n");
-        assert!(kept.contains("4 rounds before it are stored"), "{kept}");
+    let capped = TurnStop::RoundLimit { rounds: 4 };
+    let kept = |driven| accounted(driven, Running::default()).expect("not a failure");
 
-        let lost = stop(stopped, None).said.join("\n");
-        assert!(lost.contains("Nothing of this turn is stored"), "{lost}");
+    for stopped in [Stopped::Pressed, Stopped::Gone] {
+        let Accounted {
+            code,
+            kept: turn,
+            said,
+        } = kept(Driven::StoppedWrapping(stopped, outcome(capped, None), 4));
+        let (turn, unfinished) = turn.expect("the capped turn is kept");
+        assert_eq!(turn.stop, capped);
+        assert_eq!(unfinished, Some(Unfinished::CutShort(4)));
+        // The stop's code, never lowered to the cap's: a hangup still exits 3.
+        assert_eq!(code, stop(stopped, true).code);
+        // The stop's line, then the cap's own, as `--no-wrap-up` would have drawn it.
+        assert!(said[0].contains("wrap-up round"), "{said:?}");
+        assert!(
+            !said[0].contains("stored"),
+            "save has not run yet: {said:?}"
+        );
+        assert!(said[1].contains("out of rounds after 4 rounds"), "{said:?}");
+
+        // Non-vacuous: the same stop before the cap keeps nothing.
+        let lost = kept(Driven::Stopped(stopped));
+        assert!(lost.kept.is_none());
+        assert!(
+            lost.said[0].contains("Nothing of this turn is stored"),
+            "{:?}",
+            lost.said
+        );
     }
-    assert_eq!(stop(Stopped::Pressed, Some(4)).code, INCOMPLETE);
+}
+
+/// A round cut at `--max-tokens` and then capped says so even when the wrap-up is stopped,
+/// the turn kept being the same one `--no-wrap-up` would have kept.
+#[test]
+fn a_stopped_wrap_up_still_names_a_cut_round() {
+    let said = accounted(
+        Driven::StoppedWrapping(
+            Stopped::Pressed,
+            outcome(
+                TurnStop::RoundLimit { rounds: 2 },
+                Some(StopReason::MaxTokens),
+            ),
+            2,
+        ),
+        Running::default(),
+    )
+    .expect("not a failure")
+    .said;
+    assert_eq!(said.len(), 3, "{said:?}");
+    assert!(said[2].contains("--max-tokens"), "{said:?}");
+}
+
+#[test]
+fn one_round_is_not_one_rounds() {
+    assert_eq!(counted(1), "1 round");
+    assert_eq!(counted(4), "4 rounds");
 }
 
 /// The flattened flags are the same flags: one `--allow-tool` cannot approve two

@@ -222,7 +222,10 @@ impl Tui {
                 TurnStop::RoundLimit { rounds } if !self.run.no_wrap_up => {
                     // Ahead of the request: the status bar counts this round too, and would
                     // otherwise read one past `--max-rounds` with nothing saying why.
-                    (&pane).note("sandbx: out of rounds; asking once more, with no tool");
+                    (&pane).note(&format!(
+                        "sandbx: out of rounds after {}; asking once more, with no tool",
+                        counted(rounds)
+                    ));
 
                     // A stop of its own and not the first round's: the turn before it has
                     // finished, so a stop here costs the wrap-up's prose and nothing else.
@@ -262,24 +265,9 @@ impl Tui {
         // a write that can stall on a paused terminal while the trail is still held.
         pane.over = true;
 
-        let (code, outcome, closing) = match driven {
-            Driven::Stopped(stopped) => {
-                let Ending { code, said } = stop(stopped, None);
-                // The call the dropped future stood on never settles, so this is the only
-                // line it gets.
-                let running = mem::take(&mut pane.running).stopped();
-                (Ok(code), None, said.into_iter().chain(running).collect())
-            }
-            Driven::StoppedWrapping(stopped, first, rounds) => {
-                let Ending { code, said } = stop(stopped, Some(rounds));
-                let kept = (first, Some(Unfinished::CutShort(rounds)));
-                (Ok(code), Some(kept), said)
-            }
-            Driven::Finished(outcome, unfinished) => {
-                let Ending { code, said } = ending(&outcome, unfinished);
-                (Ok(code), Some((outcome, unfinished)), said)
-            }
-            Driven::Failed(error) => {
+        let (code, outcome, closing) = match accounted(driven, mem::take(&mut pane.running)) {
+            Ok(Accounted { code, kept, said }) => (Ok(code), kept, said),
+            Err(error) => {
                 // In the reprint only where stderr went elsewhere: `main` prints the error
                 // once it is returned, which a terminal would otherwise read twice.
                 if shown == Device::Redirected {
@@ -349,14 +337,63 @@ enum Driven {
     Failed(TurnError),
 }
 
-/// The code a stop exits with, and its line. `wrapping` is the rounds of a turn the stop
-/// found in its wrap-up round, which is kept, where any other stop keeps nothing.
+/// What a turn that did not fail keeps, the code it exits with, and every line accounting
+/// for both.
+struct Accounted {
+    code: i32,
+    /// The turn `save` is handed, `None` where nothing of it is kept.
+    kept: Option<(TurnOutcome, Option<Unfinished>)>,
+    said: Vec<String>,
+}
+
+/// Account for what the turn's futures came to, `running` being the call a stop stood on.
+///
+/// Apart from `drive` so what a stop keeps is an assertion: the screen it is drawn on needs
+/// a terminal, and `SECURITY.md` claims the difference.
+fn accounted(driven: Driven, running: Running) -> Result<Accounted, TurnError> {
+    Ok(match driven {
+        Driven::Stopped(stopped) => {
+            let Ending { code, said } = stop(stopped, false);
+            // The call the dropped future stood on never settles, so this is the only line
+            // it gets.
+            Accounted {
+                code,
+                kept: None,
+                said: said.into_iter().chain(running.stopped()).collect(),
+            }
+        }
+        // The cap's own lines too, as the same turn stored under `--no-wrap-up` has them. The
+        // stop's code stands: the cap's is 2, and a hangup's 3 must not be lowered by it.
+        Driven::StoppedWrapping(stopped, first, rounds) => {
+            let unfinished = Some(Unfinished::CutShort(rounds));
+            let Ending { code, mut said } = stop(stopped, true);
+            said.extend(ending(&first, unfinished).said);
+            Accounted {
+                code,
+                kept: Some((first, unfinished)),
+                said,
+            }
+        }
+        Driven::Finished(outcome, unfinished) => {
+            let Ending { code, said } = ending(&outcome, unfinished);
+            Accounted {
+                code,
+                kept: Some((outcome, unfinished)),
+                said,
+            }
+        }
+        Driven::Failed(error) => return Err(error),
+    })
+}
+
+/// The code a stop exits with, and its line. `wrapping` is whether it found the turn in
+/// its wrap-up round, which keeps the turn before it, where any other stop keeps nothing.
 ///
 /// A hangup has its own line and not the interrupt's: the operator did not stop this turn,
 /// and telling them they did is the one reading of a hangup that is certainly wrong (#264).
 /// It exits 3 and not 2, the code a lost gate already takes: a turn nobody could see is one
 /// nobody watched, and that is not the recoverable stop an interrupt is.
-fn stop(stopped: Stopped, wrapping: Option<usize>) -> Ending {
+fn stop(stopped: Stopped, wrapping: bool) -> Ending {
     let (code, how) = match stopped {
         Stopped::Pressed => (INCOMPLETE, "sandbx: interrupted"),
         Stopped::Gone => (
@@ -364,21 +401,31 @@ fn stop(stopped: Stopped, wrapping: Option<usize>) -> Ending {
             "sandbx: the terminal went away, so the turn stopped where it stood",
         ),
     };
-    let what = match wrapping {
-        // No tool call to name: the wrap-up round's gate lets none run.
-        Some(rounds) => format!(
-            "{how} in the wrap-up round. The {rounds} rounds before it are stored as the \
-             cap left them; what the wrap-up wrote is not"
-        ),
-        None => format!(
+    // Not "stored": nothing is without `--session`, and `save` has not run yet. No tool
+    // call to name either, the wrap-up round's gate letting none run.
+    let what = if wrapping {
+        format!(
+            "{how} in the wrap-up round. What it wrote is lost; under `--session`, the turn \
+             before it is kept as the cap left it"
+        )
+    } else {
+        format!(
             "{how}. Nothing of this turn is stored, and a tool call already running finishes \
              unseen: the process waits for it before it exits (#26)"
-        ),
+        )
     };
 
     Ending {
         code,
         said: vec![what],
+    }
+}
+
+/// `rounds` with its noun, so a cap of one does not read as "1 rounds".
+fn counted(rounds: usize) -> String {
+    match rounds {
+        1 => "1 round".to_string(),
+        n => format!("{n} rounds"),
     }
 }
 
@@ -461,22 +508,25 @@ fn ending(outcome: &TurnOutcome, unfinished: Option<Unfinished>) -> Ending {
         }
         (_, Some(Unfinished::Summarised(rounds))) => {
             said.push(format!(
-                "sandbx: the answer above summarises what {rounds} rounds of tool calls \
-                 found; raising `--max-rounds` would let the turn go further"
+                "sandbx: the answer above summarises what {} of tool calls found; raising \
+                 `--max-rounds` would let the turn go further",
+                counted(rounds)
             ));
             INCOMPLETE
         }
         (_, Some(Unfinished::Discarded(rounds))) => {
             said.push(format!(
-                "sandbx: out of rounds after {rounds}; what the wrap-up round wrote is not an \
-                 answer, and is not stored. Raising `--max-rounds` would let the turn go further"
+                "sandbx: out of rounds after {}; what the wrap-up round wrote is not an \
+                 answer, and is not stored. Raising `--max-rounds` would let the turn go further",
+                counted(rounds)
             ));
             INCOMPLETE
         }
         (_, Some(Unfinished::CutShort(rounds))) | (TurnStop::RoundLimit { rounds }, None) => {
             said.push(format!(
-                "sandbx: out of rounds after {rounds}, so the answer ends on tool work; \
-                 raising `--max-rounds` would let the turn go further"
+                "sandbx: out of rounds after {}, so the answer ends on tool work; raising \
+                 `--max-rounds` would let the turn go further",
+                counted(rounds)
             ));
             INCOMPLETE
         }
