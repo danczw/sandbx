@@ -146,6 +146,20 @@ fn a_stored_cut_onto_a_run_survives_a_resume() {
     assert_eq!(merged.unmerged(merged.withheld), 3);
 }
 
+/// What `window` keeps, whatever the run: no result is shed at cut 0, and a run opening on
+/// prose sheds no part of itself. Hand-edited shapes, which resume refuses but merge takes.
+#[test]
+fn a_stored_cut_counts_only_what_was_shed() {
+    let [ask, call, result, prompt, reply] = resumed().try_into().unwrap();
+    // `[user(tool_result), user, assistant, user, user, assistant]`.
+    let history = vec![result, prompt, call, ask.clone(), ask, reply];
+
+    let merged = merge_user_runs(history, 0);
+
+    assert_eq!(merged.unmerged(0), 0, "a run opening the history");
+    assert_eq!(merged.unmerged(2), 3, "a run of two prompts");
+}
+
 #[test]
 fn a_figure_nobody_reported_stays_unreported() {
     let observed = PromptUsage {
