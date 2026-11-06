@@ -27,7 +27,7 @@ pub(crate) use prompt::APPROVE_CALL;
 
 // Reached as `super::…` from the sibling modules rather than used here: `tui` takes the
 // two prompt types and the two exit codes, `render` the exit codes.
-use agent_run::{INCOMPLETE, NO_CONSENT};
+use agent_run::{INCOMPLETE, NO_CONSENT, stored_stop};
 use prompt::{Approve, Terminal};
 
 /// Whether a stream reaches a terminal: what decides both that an SGR escape renders on it

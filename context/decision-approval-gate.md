@@ -200,12 +200,11 @@ Three differences follow from there being no question to refuse:
   so the hangup it must notice is on standard output and standard input both.
 
 It also keeps less. The abort is a `TurnStop`, so the turn returns and its
-messages, usage and `withheld` are stored; `tui` races the turn with a `select!`
-and drops the future, so there is no outcome to append and the turn is stored
-nowhere. That is the existing cost of the interrupt rather than a choice made
-here — ending on a hangup makes a lost turn no worse than an interrupted one, and
-the account says so where the operator can read it. A tool call already running
-finishes unseen (#26) on both surfaces alike.
+messages, usage and `withheld` are stored. A `tui` stop ends the turn through
+`run_turn_until`, which keeps the rounds before it and drops the one it lands
+in, so the round the operator was watching is stored nowhere, for a hangup as
+for an interrupt (#271). A tool call already running finishes unseen (#26) on
+both surfaces alike.
 
 ## Deny by default, and the honest claim
 

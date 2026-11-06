@@ -190,6 +190,29 @@ fn a_turn_out_of_rounds_is_stored_and_read_back() {
     assert_eq!(stored.last_stop(), Some(TurnStop::RoundLimit));
 }
 
+/// A stopped turn keeps its finished rounds, which end as a capped one's do (#271).
+#[test]
+fn a_stopped_turn_is_stored_and_read_back() {
+    for stop in [TurnStop::Interrupted, TurnStop::HungUp] {
+        let fixture = store();
+        let store = fixture.store;
+        let mut session = store.create().unwrap();
+
+        session
+            .append(CompletedTurn {
+                messages: &out_of_rounds("what is in /srv?", "toolu_01"),
+                observed: None,
+                withheld: 0,
+                stop,
+            })
+            .unwrap();
+
+        let stored = store.resume(session.id()).unwrap();
+        assert!(stored.pending_call(), "{stop:?}");
+        assert_eq!(stored.last_stop(), Some(stop));
+    }
+}
+
 /// Two user turns in a row, legal only because the request merges them into one.
 #[test]
 fn a_prompt_may_follow_the_call_it_answers_beside() {

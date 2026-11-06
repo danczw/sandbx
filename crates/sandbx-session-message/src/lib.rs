@@ -77,9 +77,11 @@ pub struct Usage {
 /// How a stored turn came to an end, which its messages cannot always show: a turn out of
 /// rounds and one the gate aborted both end on tool calls the model never answered.
 ///
-/// No payload, unlike `sandbx_turn`'s: resume says which stop it was, never the cap. One
-/// stop more, too: `sandbx-cli`'s wrap-up merge takes the tool-less round's `Answered` over the
+/// No payload, unlike `sandbx_turn`'s: resume says which stop it was, never the cap. Two
+/// stops more, too. `sandbx-cli`'s wrap-up merge takes the tool-less round's `Answered` over the
 /// cap, which would store a capped turn as a whole one; [`Summarised`](Self::Summarised) keeps it.
+/// And `sandbx_turn`'s `Interrupted` is split by who stopped it, a hangup being a turn nobody
+/// watched (#271).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnStop {
@@ -91,6 +93,11 @@ pub enum TurnStop {
     Summarised,
     /// The gate ended the turn, having lost whatever it decides with.
     GateAborted,
+    /// The operator stopped the turn, and the round it was in is not stored.
+    Interrupted,
+    /// The terminal went away, which stopped the turn as [`Interrupted`](Self::Interrupted)
+    /// does.
+    HungUp,
 }
 
 /// One turn's worth of everything a transcript records; they travel together because

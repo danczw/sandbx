@@ -4,7 +4,11 @@
 //! One module on purpose: a new way for a turn to stop is one edit to
 //! `TurnStop`, to the loop that chooses it and to the outcome that carries it.
 
+use std::future::{self, Future};
+use std::pin::{Pin, pin};
 use std::time::Duration;
+
+use futures_util::future::{Either, select};
 
 use sandbx_approval::CallGate;
 use sandbx_compact::{Compaction, PromptUsage, over_budget, plan_cut, window};
@@ -132,6 +136,13 @@ pub enum TurnStop {
     /// as [`RoundLimit`](Self::RoundLimit)'s. No payload: the gate's reason is in the last
     /// `tool_result`.
     GateAborted,
+
+    /// [`run_turn_until`]'s `stop` resolved, and the round it found running was dropped.
+    ///
+    /// The transcript is every round before it, as legal to send again as
+    /// [`RoundLimit`](Self::RoundLimit)'s, or empty. Not in it: whatever the dropped round
+    /// streamed, and a tool call it had started, which still runs to completion (#26).
+    Interrupted,
 }
 
 /// The bounds one turn runs within.
@@ -203,24 +214,54 @@ impl Default for TurnLimits {
 ///
 /// Tools run on `spawn_blocking`, uncancellable: dropping this future still lets the
 /// blocking task finish, so a turn abandoned mid-tool applies the `write` anyway, recorded
-/// only in the audit trail (#26).
+/// only in the audit trail (#26). [`run_turn_until`] stops a turn and keeps its rounds.
 ///
 /// Needs a tokio runtime with the time driver enabled: the per-round bound is
 /// `tokio::time::timeout`, which panics with "there is no timer running" otherwise.
 /// `#[tokio::main]` and `enable_all()` cover it, `enable_io()` alone does not; the flavour
 /// is free, since `spawn_blocking` needs only `rt`.
 pub async fn run_turn<F, O, G>(
-    mut open: F,
+    open: F,
     turn: Turn<'_>,
     ctx: &ExecutionContext,
-    mut observe: O,
-    mut gate: G,
+    observe: O,
+    gate: G,
 ) -> Result<TurnOutcome, TurnError>
 where
     F: AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
     O: FnMut(&AgentEvent),
     G: CallGate,
 {
+    run_turn_until(open, turn, ctx, observe, gate, future::pending()).await
+}
+
+/// [`run_turn`], ended as [`TurnStop::Interrupted`] once `stop` resolves.
+///
+/// Raced against each round's request and its tool calls, `stop` first, so a stop that
+/// has already resolved opens no further request. Whatever the round it lands in streamed
+/// is dropped; a call already running goes on unseen, `spawn_blocking` being what it is
+/// (#26), and [`CallGate::settled`] never hears of it.
+///
+/// [`TurnOutcome::usage`] keeps the dropped round's figure when it reported one, its request
+/// being exactly the messages kept.
+///
+/// # Errors
+///
+/// [`run_turn`]'s, from a round that finished before `stop` resolved.
+pub async fn run_turn_until<F, O, G>(
+    mut open: F,
+    turn: Turn<'_>,
+    ctx: &ExecutionContext,
+    mut observe: O,
+    mut gate: G,
+    stop: impl Future<Output = ()>,
+) -> Result<TurnOutcome, TurnError>
+where
+    F: AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
+    O: FnMut(&AgentEvent),
+    G: CallGate,
+{
+    let mut stop = pin!(stop);
     // Built once: the offered set does not change between rounds.
     let definitions: Vec<ToolDefinition> = turn.tools.iter().copied().map(definition).collect();
     let mut produced: Vec<RequestMessage> = Vec::new();
@@ -274,18 +315,30 @@ where
             thinking: turn.thinking,
         };
 
-        let mut stream = open(prompt).await.map_err(TurnError::Provider)?;
+        let streamed = async {
+            let mut stream = open(prompt).await.map_err(TurnError::Provider)?;
 
-        // Only the consumption: opening the stream is bounded by the provider's own connect
-        // and read timeouts.
-        let round = tokio::time::timeout(
-            turn.limits.stream_timeout,
-            accumulate(&mut stream, &mut observe),
-        )
-        .await
-        .map_err(|_| TurnError::TimedOut {
-            after: turn.limits.stream_timeout,
-        })??;
+            // Only the consumption: opening the stream is bounded by the provider's own
+            // connect and read timeouts.
+            tokio::time::timeout(
+                turn.limits.stream_timeout,
+                accumulate(&mut stream, &mut observe),
+            )
+            .await
+            .map_err(|_| TurnError::TimedOut {
+                after: turn.limits.stream_timeout,
+            })?
+        };
+        let Some(round) = unless(stop.as_mut(), streamed).await else {
+            return Ok(outcome(
+                produced,
+                usage,
+                cut,
+                TurnStop::Interrupted,
+                last_stop,
+            ));
+        };
+        let round = round?;
 
         // Before any exit below, since counts matter even on the round that ends the turn.
         if let Some(reported) = round.usage {
@@ -307,8 +360,17 @@ where
         }
 
         // Before pushing: answering borrows `round.blocks`, pushing moves them.
-        let Answers { results, aborted } =
-            answer_calls(&round.blocks, ctx, turn.tools, &mut gate).await?;
+        let answered = answer_calls(&round.blocks, ctx, turn.tools, &mut gate);
+        let Some(answers) = unless(stop.as_mut(), answered).await else {
+            return Ok(outcome(
+                produced,
+                usage,
+                cut,
+                TurnStop::Interrupted,
+                last_stop,
+            ));
+        };
+        let Answers { results, aborted } = answers?;
 
         produced.push(RequestMessage {
             role: Role::Assistant,
@@ -357,7 +419,18 @@ where
     ))
 }
 
-/// The one exit from [`run_turn`], so no path can return reasoning to a caller.
+/// `work`'s output, or `None` once `stop` has resolved, which is polled first.
+async fn unless<T>(
+    stop: Pin<&mut impl Future<Output = ()>>,
+    work: impl Future<Output = T>,
+) -> Option<T> {
+    match select(stop, pin!(work)).await {
+        Either::Left(((), _)) => None,
+        Either::Right((done, _)) => Some(done),
+    }
+}
+
+/// The one exit from [`run_turn_until`], so no path can return reasoning to a caller.
 fn outcome(
     mut produced: Vec<RequestMessage>,
     usage: Option<PromptUsage>,
