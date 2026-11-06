@@ -244,9 +244,10 @@ where
 /// `spawn_blocking` being what it is (#26), and [`CallGate::settled`] never hears of it.
 ///
 /// [`TurnOutcome::usage`] keeps the dropped round's figure when it reported one, its request
-/// being exactly the messages kept. [`TurnOutcome::withheld`] is the cut of whichever request
-/// that figure measured, the carried floor where none was: a cut planned for the dropped
-/// round was maybe never sent, and paired with an older figure it would deepen the next.
+/// being exactly the messages kept. [`TurnOutcome::withheld`] is the cut of the last request
+/// that finished streaming, the carried floor before one did: a cut planned for a round
+/// dropped mid-stream may never have been sent, and stored beside an older figure the pair
+/// would describe no request.
 ///
 /// # Errors
 ///
@@ -284,8 +285,8 @@ where
     let mut measured = true;
     // What the last request withheld, `None` before there was one.
     let mut sent_cut: Option<usize> = None;
-    // The cut of the request `usage` measured, which an interrupt hands back.
-    let mut measured_cut = turn.withheld;
+    // The cut of the last request that finished streaming, which an interrupt hands back.
+    let mut streamed_cut = turn.withheld;
 
     for _ in 0..turn.limits.max_rounds {
         if measured && let Some(policy) = turn.limits.compaction {
@@ -338,19 +339,19 @@ where
             return Ok(outcome(
                 produced,
                 usage,
-                measured_cut,
+                streamed_cut,
                 TurnStop::Interrupted,
                 last_stop,
             ));
         };
         let round = round?;
+        streamed_cut = cut;
 
         // Before any exit below, since counts matter even on the round that ends the turn.
         if let Some(reported) = round.usage {
             usage = Some(reported);
             observed = Some(reported);
             measured = true;
-            measured_cut = cut;
         }
         last_stop = Some(round.reason);
 
@@ -371,7 +372,7 @@ where
             return Ok(outcome(
                 produced,
                 usage,
-                measured_cut,
+                streamed_cut,
                 TurnStop::Interrupted,
                 last_stop,
             ));

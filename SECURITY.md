@@ -318,19 +318,20 @@ architecture the filter gates on.
   `$XDG_STATE_HOME/sandbx/sessions`, else `~/.local/state/sandbx/sessions`.
   Whatever a tool read is in it: a token in a config, a `.env` under
   `--allow-read`, a key a `bash` printed. No encryption, no redaction, no expiry,
-  no deletion. A turn stopped on `tui`'s screen stores the prompt and every round
-  it finished, under a stop naming an interrupt or a hung-up terminal, and loses
-  the round it stopped in whole: whatever it streamed, including the part of the
-  answer you read, and every tool call it asked for. The calls it had already
-  run did run, and one still running finishes, but the transcript records the
-  effect of neither. A stop before the first round finishes stores nothing, the
-  prompt included ([#271](https://github.com/danczw/sandbx/issues/271)).
-  Resuming says so on stderr; the model is told nothing of it. What the turn
-  showed is printed back to the terminal once the screen is gone, and the running
-  call is named on stderr but never its result. Where the terminal is what went
-  away, only a redirected stderr still has either. A stop during the wrap-up
-  round after `--max-rounds` keeps the rounds before it as the cap left them, and
-  loses only the wrap-up's prose
+  no deletion. A turn stopped on `tui`'s screen stores the prompt and every
+  round it finished, under a stop naming an interrupt or a hung-up terminal, and
+  loses the round it stopped in whole: whatever it streamed, including the part
+  of the answer you read, and every tool call it asked for. The calls it had
+  already run did run, and one still running finishes, but the transcript
+  records the effect of neither. A stop before the first round finishes stores
+  nothing, the prompt included, and leaves no trace in the session that a call
+  ran ([#271](https://github.com/danczw/sandbx/issues/271)). Where a round was
+  stored, resuming says so on stderr; the model is told nothing of it. What the
+  turn showed is printed back to the terminal once the screen is gone, and the
+  running call is named on stderr but never its result. Where the terminal is
+  what went away, only a redirected stderr still has either. A stop during the
+  wrap-up round after `--max-rounds` keeps the rounds before it as the cap left
+  them, and loses only the wrap-up's prose
   ([#232](https://github.com/danczw/sandbx/issues/232)).
 
   Ownership and integrity are enforced, not secrecy: directory `0700`, transcript
