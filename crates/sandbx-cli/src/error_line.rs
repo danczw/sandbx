@@ -11,7 +11,8 @@ use std::error::Error;
 /// DNS failure, the refused connection or the rejected certificate sits below it (#457).
 ///
 /// The walk follows `source()` and nothing else, so an error that withholds a cause
-/// keeps it withheld — `AuthError::Malformed` has none because toml's quotes the key.
+/// keeps it withheld: `AuthError::Malformed` has none, toml's error quoting the line it
+/// failed on, which can be the key.
 ///
 /// Every link is escaped, the top one too: `SandboxError` writes a model-chosen path back,
 /// and a cause is text sandbx did not write — a certificate's names come through

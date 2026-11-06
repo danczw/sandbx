@@ -1,8 +1,7 @@
 //! Printing the digest `--pin-sha256` takes.
 //!
-//! The one subcommand that confines nothing: it reads a file in the harness, the way
-//! `sha256sum` does, because a pin has to be taken before there is a policy to take it
-//! under.
+//! Confines nothing: it reads a file in the harness, the way `sha256sum` does, because a
+//! pin has to be taken before there is a policy to take it under.
 
 use std::fs::File;
 use std::io;

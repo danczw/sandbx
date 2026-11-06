@@ -15,11 +15,9 @@ fn a_refused_command_line_exits_sixty_four_and_help_exits_zero() {
             .kind()
     };
 
-    // #265's own repro first, then a value clap will not take, an unknown flag and a
-    // missing required argument — the four shapes already in tree. Then the two argvs
-    // that name no subcommand at all: clap answers both by printing the help, which is
-    // why they are easy to read as a help anyone asked for, and prints it to stderr
-    // because neither is.
+    // #265's own repro, a value clap will not take, an unknown flag and a missing
+    // required argument. Then the two argvs that name no subcommand: clap answers both
+    // with the help, on stderr, because neither asked for it.
     for argv in [
         ["sandbx", "tui", "--max-rounds", "1", "no-dashdash"].as_slice(),
         &[

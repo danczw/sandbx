@@ -66,16 +66,15 @@ fn main() -> ExitCode {
 
 /// The code a command line clap would not take leaves on.
 ///
-/// A free function so the mapping is a unit test rather than a shape only a spawned
-/// process shows. `--help` and `--version` are not refusals — clap reports them as errors
-/// so the caller decides where they print — and both keep the 0 they have always had.
+/// A free function so the mapping is a unit test, not a shape only a spawned process
+/// shows. `--help` and `--version` are not refusals: clap reports them as errors so the
+/// caller decides where they print, and they exit 0.
 ///
-/// Those two and no more, which is the one line to get wrong here. An argv naming no
-/// subcommand is `DisplayHelpOnMissingArgumentOrSubcommand`, which clap prints to *stderr*
-/// and exits 2: a refusal that answers with the help, not a help anyone asked for. Taking 0
-/// for it would make a bare `sandbx auth` indistinguishable from the 0 `auth status` spends
-/// on a key it found, and break the claim `README.md` and `SECURITY.md` both make — that no
-/// code of a run is reachable by mistyping a flag.
+/// Those two and no more. An argv naming no subcommand is
+/// `DisplayHelpOnMissingArgumentOrSubcommand`, which clap prints to *stderr*: a refusal
+/// answered with the help. Taking 0 for it would make a bare `sandbx auth` read as the 0
+/// `auth status` spends on a key it found, and break the claim `README.md` and
+/// `SECURITY.md` both make, that no code of a run is reachable by mistyping a flag.
 fn usage_code(kind: ErrorKind) -> u8 {
     match kind {
         ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => 0,
@@ -108,9 +107,7 @@ fn report(result: Result<i32, impl Error>, failure: u8) -> ExitCode {
             // `writeln!` and not `eprintln!`: under `tui` a hung-up screen leaves stderr
             // the same dead descriptor, where the macro's failed write panics and the
             // process exits 101 instead of the code the run earned (#264). The two
-            // `eprintln!`s above keep theirs — they run before any screen exists, so
-            // stderr there is the one the operator started the process with, not one
-            // sandbx took and lost.
+            // `eprintln!`s above run before any screen exists.
             let _ = writeln!(io::stderr(), "sandbx: {}", sandbx_cli::error_line(&error));
             ExitCode::from(failure)
         }

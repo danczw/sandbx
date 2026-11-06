@@ -16,11 +16,10 @@ pub use error::{AgentError, HashError, SandboxRunError, error_line};
 pub use hash::Hash;
 pub use sandbox_run::SandboxRun;
 
-// Both are in this crate's surface — `Grants` flattened into `SandboxRun` and `AgentRun`,
-// `PolicyError` in their errors' `Policy` variant — and the integration tests match on them.
+// Both are in this crate's surface: `Grants` flattened into `SandboxRun` and `AgentRun`,
+// `PolicyError` their errors' `Policy` variant, which the integration tests match on.
 pub use sandbx_grants::{Grants, PolicyError};
-// `AgentRun::session` returns one and a caller matches on its *variants*, which is what
-// separates it from the other foreign types in this surface — the errors, the policy and
-// the digest are displayed or passed along, never destructured, so they stay spelled by
-// their own crates (#351).
+// `AgentRun::session` returns one and a caller matches on its variants. The other foreign
+// types in this surface are displayed or passed along, never destructured, so they stay
+// spelled by their own crates (#351).
 pub use sandbx_session_bridge::SessionChoice;

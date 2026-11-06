@@ -33,9 +33,9 @@ fn spellings(granted: &[sandbx_core::VettedPath]) -> Vec<&Path> {
 
 /// A scratch root holding `names`, each a real directory, and their absolute spellings.
 ///
-/// A flag's path has to name something now that a grant carries the object at it, so a
-/// fixture cannot grant `/srv` and hope. Rooted at the resolved `$TMPDIR` because vetting
-/// resolves, and the spellings a test compares against are the ones the policy holds.
+/// A flag's path has to name something, a grant carrying the object at it, so a fixture
+/// cannot grant `/srv` and hope. Rooted at the resolved `$TMPDIR` because vetting resolves,
+/// and the spellings a test compares against are the ones the policy holds.
 fn scratch(names: &[&str]) -> Scratch {
     let root = env::temp_dir()
         .canonicalize()
@@ -126,8 +126,8 @@ fn the_working_directory_is_readable_and_writable() {
     );
 }
 
-/// What a no-flag run has always done, now said rather than inherited: the derived default
-/// grants write over the cwd, so the command starts where it already started (#191).
+/// The derived default grants write over the cwd, so a no-flag run starts the command
+/// there (#191).
 #[test]
 fn a_no_flag_run_starts_in_the_working_directory() {
     let policy = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
@@ -203,8 +203,8 @@ fn an_env_flag_keeps_the_working_directory() {
 }
 
 /// Landlock rights cover a subtree, so a working directory overlapping a system path
-/// would inherit execute from `allow_system_executables` — the root `vetted_root` refuses,
-/// and the one case this assertion could not see.
+/// would inherit execute from `allow_system_executables`. `vetted_root` refuses that root,
+/// a case this assertion, run from the package root, cannot see.
 #[test]
 fn the_default_root_is_not_executable() {
     let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
@@ -653,8 +653,8 @@ fn allow_env_is_repeatable_and_widens_nothing_else() {
             "{name} was not granted"
         );
     }
-    // Against the bare policy rather than against emptiness: the working-directory
-    // default means "widens nothing else" is no longer the same claim as "grants nothing".
+    // Against the bare policy rather than against emptiness: under the working-directory
+    // default, "widens nothing else" is not the claim "grants nothing".
     let bare = sandbox_run(&["sandbx", "sandbox-run", "--", "true"])
         .policy()
         .expect("the flags describe a policy");
