@@ -35,13 +35,12 @@ without it the first thing to notice is CI after the push.
 ### fmt is the one gate whose exit code is not enough
 
 Three of `rustfmt.toml`'s four options are nightly-only (#334), and rustfmt skips
-an option it cannot set with a `Warning:` on stderr and exit 0 — on stable, or on
+an option it cannot set with a `Warning:` on stderr and exit 0, on stable or on
 a name with a typo in it. So both halves capture the output and fail on
 `Warning:`, which is the rule below about a glob that matches nothing, applied to
 a gate rather than to a loop. That line is also what catches a fmt command that
-has lost its `+toolchain`: stable's rustfmt is on the runner image either way, so
-leaving `rustfmt` off `ci.yml`'s stable step does not stop the fall-through — it
-only keeps the step honest about what it needs.
+has lost its `+toolchain`, stable's rustfmt being on the runner image whether or
+not `ci.yml`'s stable step names it.
 
 **`cargo +toolchain` installs a toolchain it does not have**, silently and
 without being asked, so the toolchain cannot be checked by using it. Both halves
@@ -129,12 +128,10 @@ needs the same guard.
 `cargo deny` reads a block's `name` as a package to look for, so a name matching
 nothing is vacuous rather than wrong: the block bans a package that does not
 exist, the crate the typo meant becomes unbanned, and every edge into it goes
-unchecked. It is not silent — each listed parent gets a `warning[unused-wrapper]`
-— but it is **non-fatal**, so the run ends `bans ok`, exit 0. On this repo that
-is one warning beside five ambient `warning[duplicate]` lines, which is the
-practical point: the signal exists and is indistinguishable from the noise a
-passing run already prints. Measured on #415 and reproduced against a second
-block, which is why it is not a suspicion about the tool.
+unchecked. It is not silent (each listed parent gets a `warning[unused-wrapper]`)
+but it is **non-fatal**, so the run ends `bans ok`, exit 0, beside the ambient
+`warning[duplicate]` lines a passing run already prints. The script's docstring
+has the measurement.
 
 `deny-wrappers.py` reads the allowlist back against `cargo metadata` and fails on
 four things cargo-deny only warns about or ignores: a `sandbx-*` name that
@@ -165,11 +162,8 @@ check does, and its `--self-test` runs first, against scratch workspaces, so a
 checker that has stopped checking fails rather than passing the real file by
 default. Each check is mutation-tested when it is written, not on every run:
 disable it and a named case must fail. The harness lives in the PR that adds the
-check (#416, #481), not in the repo. #416's left exactly two survivors, both
-unreachable from any config and both saying so in their comments — the
-zero-comparison guard and the empty-package-set guard. They assert against a
-future edit to the keying or the graph read, not against a file. #481's left
-none in checks 4 and 5.
+check (#416, #481), not in the repo, and a guard no config can reach says so in
+its comment.
 
 **It also refuses three keys that make cargo-deny's own enforcement vacuous**,
 each the same hole as a typo'd name wearing different clothes, and all three
@@ -195,16 +189,9 @@ them the two are defence in depth. That matters most for `sandbx-core`, whose
 entry rests entirely on a dev edge. cargo-deny remains the sole authority for
 advisories, licences and third-party bans.
 
-Python, where its three neighbours are `/bin/sh`, because it has to read TOML and
-`/bin/sh` has no parser for it. The first version approximated one in awk and a
-review found five ways to break it — a comment inside a multi-line array
-injecting a phantom parent, a trailing comment after `name`, a `name` key in any
-later table being absorbed, an indented closing bracket swallowing the next
-table, and key order inside a block mattering when TOML says it does not.
-`tomllib` is standard library from 3.11 and removes the class rather than
-patching it. All five are self-test cases, beside a sixth for the plain
-multi-line array that awk did handle, so a rewrite back into shell cannot
-reintroduce any of them quietly.
+Python, where its three neighbours are `/bin/sh`, because it has to read TOML;
+the docstring has the awk version a review broke five ways, each now a
+self-test case, so a rewrite back into shell cannot reintroduce one quietly.
 
 The general shape, and the third instance of it in this file: **a gate that
 cannot distinguish "nothing to check" from "checked and clean" is not a gate.**
@@ -238,14 +225,15 @@ Three things to get right:
   nightly-only and its format version changes without notice, so a different
   nightly rewrites every baseline for no change in API.
   `.github/scripts/public-api.sh` sets `RUSTUP_TOOLCHAIN` itself for that reason.
-  The date is written four times — in the script's default, in `ci.yml`'s toolchain
-  step for this job, and in the fmt command in `ci.yml` and `.githooks/pre-commit`
-  — because `dtolnay/rust-toolchain` cannot read it out of the script. Each of the
-  three that is used to run something checks first, through `rustup run`, and says
-  which toolchain is missing; none of them relies on `cargo +nightly-…` failing,
-  because that form installs what it is asked for instead. What stays unchecked is
-  the four agreeing with each other: a bump that updates three of them leaves two
-  dates live and nothing red to show it.
+  The date is written five times: the script's default, `.githooks/pre-commit`'s
+  fmt command, and in `ci.yml` the `test` job's nightly install, its fmt
+  command, and the `api-diff` job's toolchain step, because
+  `dtolnay/rust-toolchain` cannot read it out of the script. Each of the three
+  that runs something checks first, through `rustup run`, and says which
+  toolchain is missing; none of them relies on `cargo +nightly-…` failing,
+  because that form installs what it is asked for instead. What stays unchecked
+  is the five agreeing with each other: a bump that misses one leaves two dates
+  live and nothing red to show it.
 - **The nightly is for rustdoc JSON and rustfmt, and nothing else.** Every build
   and test stays on stable, as does every other job, and the manifest's
   `rust-version` is untouched. rustfmt shares this pin rather than taking its own

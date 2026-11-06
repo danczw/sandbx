@@ -1,11 +1,11 @@
 # Decision: what sandbx writes to disk, and who may read it
 
-Two roots, each owned by one crate, each created `0700` with its files `0600`.
+Two roots, each created `0700` with its files `0600`.
 
 | Root | Holds | Owner |
 |---|---|---|
 | `$XDG_CONFIG_HOME/sandbx/`, else `~/.config/sandbx/` | `credentials.toml` | `sandbx-auth/src/store.rs` |
-| `$XDG_STATE_HOME/sandbx/sessions/`, else `~/.local/state/sandbx/sessions/` | `<id>.jsonl`, one per session | `sandbx-session-paths/src/lib.rs` |
+| `$XDG_STATE_HOME/sandbx/sessions/`, else `~/.local/state/sandbx/sessions/` | `<id>.jsonl`, one per session | named by `sandbx-session-paths`, created and vetted by `sandbx-session-store` |
 
 Config and state are split because XDG splits them, and the split earns its
 keep here: a credential is something you put there, a transcript is something
@@ -63,11 +63,11 @@ parent at all — it checks its own root — so a link there would leave the rig
 directory vetted and the wrong file read. It opens the transcript `O_NOFOLLOW`
 instead and refuses a link outright, on the create, the read and the reopen for
 append alike. Each of those is an `openat` on the descriptor the root was vetted
-through, never the path again, so a rename of `sessions/` or an ancestor after the
-check cannot leave one directory vetted and another read (#317).
-`O_NOFOLLOW` covers the last component only, so a symlinked state directory, which
-an operator may well have, still opens; `$XDG_STATE_HOME` is the supported way to
-put the store elsewhere.
+through, never the path again, so a rename of `sessions/` or an ancestor after
+the check cannot leave one directory vetted and another read (#317).
+`O_NOFOLLOW` covers the last component only, so a symlinked state directory,
+which an operator may well have, still opens; `$XDG_STATE_HOME` is the supported
+way to put the store elsewhere.
 
 The root gets the same treatment, and needs it more: its mode is not only read but
 *narrowed*, so following a link there would `fchmod` whatever it points at —
@@ -111,10 +111,9 @@ A tool running inside your own `agent-run`, granted write over the session root,
 rewrites the transcript with your uid and leaves the mode at `0600`. Nothing the
 read path can see distinguishes that from you editing it, so the defence is not
 here: the CLI refuses the grant instead, for a path reaching the sessions
-directory on either run subcommand (#173, `decision-policy.md`).
-That leaves the mode check what it can actually answer — a transcript another
-user owns or can write — and it stays, because a grant is not the only way one
-gets there.
+directory on either run subcommand (#173, `decision-policy.md`). That leaves
+the mode check what it can actually answer, a transcript another user owns or
+can write, and it stays, because a grant is not the only way one gets there.
 
 ## The transcript format
 

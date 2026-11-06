@@ -8,32 +8,31 @@ than being logged where it is found (#95, #96).
 
 ### The problem
 
-`AuditEvent::Degraded` had two emitters, both in `helper_hardening.rs`:
+`AuditEvent::Degraded` has two sources, both in `helper_hardening.rs`:
 `PR_CAPBSET_DROP` refused, and the uid/gid map unwritten. Both run in helper
 **stage 1**, a re-exec'd child of sandbx.
 
 That process installs no `tracing` subscriber. `sandbx_logging::init()` is
 called inside the `with_helper_dispatch` closure, which runs only for an
-ordinary invocation;
-the helper routes into `exec_sandboxed` and never returns. `tracing` drops an event
-with no subscriber silently and at every level, so the record reached nobody.
+ordinary invocation; the helper routes into `exec_sandboxed` and never returns.
+`tracing` drops an event with no subscriber silently and at every level, so a
+record emitted there reaches nobody.
 
-The placement is not an oversight — it is load-bearing. Stage 1's stdout and stderr
-are pipes sandbx captures and replays verbatim, and the command inherits them from
-stage 2. A subscriber in the helper would write sandbx's own audit
+The placement is not an oversight; it is load-bearing. Stage 1's stdout and
+stderr are pipes sandbx captures and replays verbatim, and the command inherits
+them from stage 2. A subscriber in the helper would write sandbx's own audit
 records into the output of the command being sandboxed.
 
-So #89's level change (`debug!` → `AuditEvent` at `INFO`) bought nothing: a record
-that survives the filter still needs somewhere to land. On Ubuntu 24.04+ hosts,
-where AppArmor's `restrict_unprivileged_userns` makes the bounding-set drop fail by
-default, `SECURITY.md` promised the operator a signal they never got.
+So a record at `INFO` still needs somewhere to land (#89, #95). On Ubuntu 24.04+
+hosts, where AppArmor's `restrict_unprivileged_userns` makes the bounding-set
+drop fail by default, `SECURITY.md` promises the operator that signal.
 
 ### Why not a descriptor of its own
 
-The issue's first option was an inherited fd at a number passed in argv. It is not
-reachable here: `unsafe_code = "forbid"` is workspace-wide (`Cargo.toml`), and
-adopting a raw fd child-side needs `OwnedFd::from_raw_fd` or
-`BorrowedFd::borrow_raw`, both `unsafe`.
+An inherited fd at a number passed in argv is not reachable here:
+`unsafe_code = "forbid"` is workspace-wide (`Cargo.toml`), and adopting a raw fd
+child-side needs `OwnedFd::from_raw_fd` or `BorrowedFd::borrow_raw`, both
+`unsafe`.
 
 Checked by experiment rather than assumed. A non-CLOEXEC fd *does* survive
 `Command::spawn` and the following `exec`, and `nix::fcntl(F_SETFD)` can clear
@@ -41,13 +40,13 @@ CLOEXEC safely on the parent side — so the kernel half works. It is the safe
 *adoption* that does not exist. The only descriptors `std` hands a child without
 `unsafe` are 0, 1 and 2.
 
-The second option — report in-band through the existing protocol — is also
-unavailable. `HelperArgs` is argv, which is one-directional, and stage 1's exit
-status is the *command's*, relayed faithfully by `helper::relay`; spending it on a
-hardening note would misreport what the command did.
+Reporting in-band through the existing protocol is also unavailable.
+`HelperArgs` is argv, which is one-directional, and stage 1's exit status is the
+*command's*, relayed faithfully by `helper::relay`; spending it on a hardening
+note would misreport what the command did.
 
-The third — a subscriber in the helper — is the thing the current placement exists
-to prevent, and was already rejected.
+A subscriber in the helper is the thing the current placement exists to
+prevent.
 
 That leaves fd 0. 1 and 2 are the command's output.
 
@@ -81,14 +80,14 @@ supervisor already gone, an environment an earlier stage did not narrow — and 
 those exits non-zero, which stage 1 relays on the command's behalf. So the record is
 `SandboxError::label` and the trail says `failed reason=<label>`; `exec_failed` is one
 member of that set rather than the only thing the channel can carry. The set lives on
-`SandboxError`, which owns it because `label` reads the exhaustive match a new variant
-has to pass through. The claim on fd 0 moves to the top of `exec_inner` for this: a refusal
-is only reportable from a point where the channel is already in hand.
+`SandboxError`, which owns it because `label` reads the exhaustive match a new
+variant has to pass through. The claim on fd 0 sits at the top of `exec_inner`
+for this: a refusal is only reportable from a point where the channel is
+already in hand.
 
-**Stage 1 reports its own refusals too** (#160), the same gap one stage up: it exits
-non-zero, the parent has only that status, and a malformed argv or a kernel that will
-not unshare read as `exited code=1`. It already held the write end for its whole
-lifetime, so the write site was the whole of what was missing.
+**Stage 1 reports its own refusals too** (#160), the same gap one stage up: it
+exits non-zero, and the parent would otherwise have only that status, so a
+malformed argv or a kernel that will not unshare would read as `exited code=1`.
 
 The *region* that reports is what the design is in. `start_inner_stage` holds
 everything stage 1 does up to and including the spawn, and only its `Err` is written.
@@ -112,8 +111,7 @@ record outranks the exit status, so one label for two deciders would let a line 
 a helper that failed to start when one did.
 
 **sandbx emits, not the helper.** One subscriber in the process tree, one timestamp
-source, one format, and no `tracing-subscriber` dependency in the helper. This is
-the property the issue wanted from its in-band option, obtained over a channel.
+source, one format, and no `tracing-subscriber` dependency in the helper.
 
 **`--sandbx-audit-stdin` makes it opt-in.** Positional and split off before
 `HelperArgs::decode`, which refuses flags it does not recognise — the same
@@ -145,20 +143,16 @@ Fail closed: either step failing is a `ProcessHardening` refusal, not a lost
 record. Starting the command with a writable channel on fd 0 is worse than any
 record it would have bought.
 
-It is pinned by `the_command_cannot_write_the_audit_channel`, and the
-test was checked by removing the line: without it the command's `printf` lands on
-the trail as `decision=degraded mechanism=capability_bounding_set`. That check also
-caught a flaw in the test's own first draft — a literal tab in the script is an
-`IFS` character, so the shell split the word and `echo` rejoined it with a space,
-and the forged line was rejected for having no separator rather than for being
-unreachable. The test would have passed against a sandbox that could write the
-channel. The tab is now written as a `printf` escape.
+It is pinned by `the_command_cannot_write_the_audit_channel`, checked by
+removing the line: without it the command's `printf` lands on the trail as
+`decision=degraded mechanism=capability_bounding_set`. The test's own doc says
+why its tab must stay a `printf` escape.
+`the_command_inherits_no_other_end_of_the_channel` pins the duplicate.
 
-It is gated on `--sandbx-audit-stdin`, the same flag as the write, because the flag
-is what says fd 0 is a channel at all. Without it nothing was written there and
-there is nothing to protect, so stdin stays inherited — a hand-invoked
-`sandbx-helper` running a command that reads its own input keeps working, which an
-unconditional `null` quietly took away.
+It is gated on `--sandbx-audit-stdin`, the same flag as the write, because the
+flag is what says fd 0 is a channel at all. Without it nothing is written there
+and there is nothing to protect, so stdin stays inherited: a hand-invoked
+`sandbx-helper` running a command that reads its own input keeps working.
 
 **Defence in depth behind that line.** `decode` accepts only labels in
 `Degradation::ALL` and `HelperRefusal::ALL`, two closed sets kept disjoint by a
@@ -177,18 +171,19 @@ relayed error is a `Display` that a caller prefixes again, and
 it, and the ones it leaves out are the point: `timeout`, `spawn_failed`,
 `path_not_allowed`, `unresolvable` and `root_replaced` among them are decisions
 sandbx and `FsGuard` make for themselves. No count is given here, because the set
-is not maintained here: `the_reasons_the_helper_does_not_decide_cannot_cross_the_channel`
-derives it from every variant, so a new reason lands on one side or the other with
-no list to fall behind. `root_replaced` is the sharpest case for the criterion
-being the decider and not what failed — it and the admitted `grant_replaced` name
-the same substitution, measured the same way, and differ only in which process
-measured it, so the one with no helper to speak for it stays out.
-A channel record outranks the exit status, so
-admitting `timeout` would let a forged line claim a kill that never happened *and*
-suppress the real outcome, on a trail whose whole purpose is that `reason="timeout"`
-can be filtered. What the criterion turns on is whether the label names one decider,
-not what failed: `inner_stage_failed` is in and `spawn_failed` is out although both
-name a process that would not start.
+is not maintained here:
+`the_reasons_the_helper_does_not_decide_cannot_cross_the_channel` derives it
+from every variant, so a new reason lands on one side or the other with no list
+to fall behind.
+
+A channel record outranks the exit status, so admitting `timeout` would let a
+forged line claim a kill that never happened *and* suppress the real outcome, on
+a trail whose whole purpose is that `reason="timeout"` can be filtered. The
+criterion is whether the label names one decider, not what failed:
+`inner_stage_failed` is in and `spawn_failed` is out although both name a
+process that would not start, and `root_replaced` and the admitted
+`grant_replaced` name the same substitution, measured the same way, differing
+only in which process measured it.
 
 **A record replaces a status, not an error** (#185). `output` returns
 `HelperRefused` where it would have returned `Ok` with the helper's exit code, and
@@ -228,12 +223,10 @@ Stage 2's claim is on that path; stage 1's fd 0 is reachable only through a
 ### Accepted costs
 
 **The stdin slot is claimed.** A sandboxed command run through `SandboxedCommand`
-cannot later be given interactive stdin without moving this channel. Nothing
-regresses today: the command still gets a null stdin, now from stage 2's `dup2`
-rather than from stage 1's `Stdio::null()`, and the hand-invoked helper keeps its
-inherited fd 0 because both are gated on the flag. If interactive stdin is ever
-wanted here, the channel needs a different carrier — most likely a Unix
-socketpair, which would mean either `unsafe` or a dependency that encapsulates it.
+gets a null stdin from stage 2's `dup2`, and cannot be given interactive stdin
+without moving this channel to a different carrier: most likely a Unix
+socketpair, which would mean either `unsafe` or a dependency that encapsulates
+it.
 
 **Everything the channel carries is timestamped after `spawned`.** sandbx reads it
 only once the helper has been waited on, so a `degraded` record lands after the
@@ -333,10 +326,10 @@ mode-111 binary runs unpinned and cannot be pinned. That is `PinUnreadable`, who
 message names the missing right rather than letting a `Permission denied` from the
 open read as a failed exec.
 
-Symlinks are followed, deliberately and against the first draft of #146's plan.
-The proposition is "the bytes `execve` would run hash to this", and `execve`
-follows them too; the swap is closed by holding the inode rather than by how it was
-reached, so `O_NOFOLLOW` would refuse `/usr/bin/python3` and buy nothing.
+Symlinks are followed, deliberately. The proposition is "the bytes `execve`
+would run hash to this", and `execve` follows them too; the swap is closed by
+holding the inode rather than by how it was reached, so `O_NOFOLLOW` would
+refuse `/usr/bin/python3` and buy nothing.
 
 `arg0` is restored unconditionally to the program as the caller named it, so a
 matching pin changes nothing the command can observe. Without it `$0` would be the
@@ -358,7 +351,7 @@ It does cost program resolution. sandbx opens the file, so sandbx and not libc's
 the *policy* imposes — hashing one file and execing another. A pin therefore
 requires an absolute program. Resolving `PATH` in sandbx's own code would mean
 reimplementing `execvp`'s search inside the security-critical path, for a flag
-whose point is naming one exact binary. Unpinned runs keep today's behaviour.
+whose point is naming one exact binary. Unpinned runs are unaffected.
 
 Refused in two places on purpose: the CLI returns a `PolicyError` naming what to
 write instead, because only there is the program in scope to put in the advice,
@@ -367,8 +360,8 @@ not pass through the CLI.
 
 ### Not trust-on-first-use
 
-TOFU needs somewhere to persist the record, which is #108's state directory, and
-it pins whatever was on disk the first time — change detection, not authorization.
+TOFU needs somewhere to persist the record (`decision-on-disk-state.md`), and it
+pins whatever was on disk the first time: change detection, not authorization.
 An explicit digest says what the operator decided. `sandbx hash PATH` exists so
 that digest need not be produced by hand: a pin has to be taken before there is a
 policy to take it under, which is why that one subcommand confines nothing.

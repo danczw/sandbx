@@ -14,34 +14,37 @@ enforcement.
 ```
 SandboxPolicy ──► FsGuard::new ──► readable[] / writable[]     (execute dropped, not the path)
                        │
-                       └──► open_read / open_write  ──► O_NOFOLLOW handle
+                       └──► open_read / open_write  ──► File
                             walk_readable           ──► ReadableWalk { files, truncated }
-                            read_dir                ──► ReadDir        ◄── ls only
+                            read_dir                ──► Listing        ◄── ls only
                             check_read / check_write ─► resolved path  ◄── no tool
 ```
 
-`Axis::ReadExecute` confers read, so an `--allow-read-execute` path still lands in
+`Axis::ReadExecute` confers read, so an `--allow-exec` path still lands in
 `readable[]`: what `FsGuard::new` drops is the execute right, not the path.
 
-Tools hold **handles, not paths**. That is what closes the TOCTOU window: if the
-leaf became a symlink between check and use, the open fails. `ls` is the one
-exception: `FsGuard::read_dir` hands it a `ReadDir`, but there is no `O_NOFOLLOW`
-for a directory read, so that handle closes the window no more than a path would.
+Tools hold **handles, not paths**, which is what closes the TOCTOU window. Where
+a granted root is a directory and the kernel has `openat2` (5.6), an access
+resolves beneath a descriptor held on that root with `RESOLVE_NO_SYMLINKS`, so a
+component swapped for a link fails the open. Otherwise an open goes by path with
+`O_NOFOLLOW`, which guards the leaf only, and `ls` lists by path, a second
+resolution (`fs_guard.rs`'s `//!`, #230).
 
 #### The root is confirmed, not re-resolved
 
 A root the guard holds is the grant's own vetted path, pin included, and never a
-second resolution of its spelling. `FsGuard::new` does no I/O: a granted path
-resolves to itself by the invariant on `SandboxPolicy::grant`, so there is nothing
-left to resolve, and a `canonicalize` whose result is discarded but whose success
-gates the check below it is the substitution one size down — a granted root replaced
-by a symlink had the guard adopt the link's target as its root (#212).
+second resolution of its spelling: a granted path resolves to itself by the
+invariant on `SandboxPolicy::grant`. `FsGuard::new` opens a descriptor on it
+(`open_root`) and keeps it only if it measures as the pinned object. A
+`canonicalize` of the root, discarded but gating the check, is the substitution
+one size down — a root replaced by a symlink had the guard adopt the link's
+target (#212).
 
 So containment is two questions, both of which must answer yes: the requested path
 is lexically inside a root, and that root still holds the object the grant carries,
 measured now through an `O_PATH` descriptor. A mismatch is `root_replaced` — the
-in-process twin of the helper's `grant_replaced`, decided here because there is no
-descriptor to carry and no second process to relay it (*A grant names an object, not a name*, below).
+in-process twin of the helper's `grant_replaced`, decided here because there is
+no second process to relay it (*A grant names an object, not a name*, below).
 
 The confirmation is measured **once** per access and carried into the refusal. Asking
 for a `bool` and then re-measuring to learn which root moved is two measurements that
@@ -50,9 +53,9 @@ confirms. A root that cannot be opened at all names no object to accuse: it gran
 nothing and refuses nothing, so the scan continues and an unmeasurable root reads as
 out of bounds rather than as a swap.
 
-The scan short-circuits on the first root that is both lexical and confirmed, because
-nested and sibling grants overlap — a replaced root must not deny a path a second
-grant legitimately covers.
+The first root that is both lexical and confirmed settles the verdict, because
+nested and sibling grants overlap — a replaced root must not deny a path a
+second grant legitimately covers.
 
 #### A refusal says nothing, except inside a grant
 
@@ -89,9 +92,9 @@ that can refuse. Asked after resolution instead, in either of the two forms that
 look equivalent, the substitute picks the verdict: a link it holds may resolve
 *into a second grant that confirms*, which reads as plainly inside and returns
 `Ok` beside an absent name's `root_replaced`; and a nearest-resolving-ancestor
-measurement follows that same link past the root being asked about. The first cost
-a write a new file under a root the policy no longer holds. The rule to keep is
-that no reason may be drawn from a path the substitute resolved.
+measurement follows that same link past the root being asked about. The first
+would let a write create a new file under a root the policy no longer holds. The
+rule to keep is that no reason may be drawn from a path the substitute resolved.
 
 Lexically means two spellings, not one, because neither covers the other.
 `Path::starts_with` is a whole-component prefix test, so a `..` *after* the root
@@ -123,10 +126,9 @@ root a path names, and the one who cannot tell the two apart is the one probing.
 A granted name that has become a symlink falls out of the same rule rather than
 needing its own. `confirm` omits `O_NOFOLLOW`, so the object it measures is the
 link's target: a name leading elsewhere holds something else, and the access is
-`root_replaced` — not the `path_not_allowed` a lexical-only guard reported, which
-also differed from what an absent name under that root reported. A link naming the
-vetted object itself is the one that confirms, and the resolved path then leaves
-the granted spelling, so that access refuses as plainly outside —
+`root_replaced`, as an absent name under that root is. A link naming the vetted
+object itself is the one that confirms, and the resolved path then leaves the
+granted spelling, so that access refuses as plainly outside —
 `a_root_linked_back_to_its_vetted_object_is_refused_as_outside`. Refused either
 way, and the two labels are what an operator counts substitutions by.
 
@@ -140,10 +142,10 @@ conceals.
 What counts as absence is `names_nothing`: ENOENT, ENOTDIR and ENAMETOOLONG, by
 errno because `ErrorKind` cannot spell the last one. The line is what the agent
 can act on — a wrong name is its to fix — so EACCES from a `000` directory keeps
-`Unresolvable` and its `denied` record. Narrowing it to ENOENT alone sent a path
-through a regular file back as a refusal, which is #180's own failure mode one
-errno over — except on the leaf of a directory read, where ENOTDIR says the leaf
-*is* a file and `listed_nothing` drops it.
+`Unresolvable` and its `denied` record. ENOENT alone would send a path through a
+regular file back as a refusal, #180's own failure mode one errno over — except
+on the leaf of a directory read, where ENOTDIR says the leaf *is* a file and
+`listed_nothing` drops it.
 
 Both entry points go through the gate. `check_write` resolves the parent, not the
 leaf, and reports the path the caller asked for rather than the parent that
@@ -160,10 +162,10 @@ sandbx ──argv──► helper stage 1 (supervisor) ──argv verbatim──
 | | |
 |---|---|
 | Shape | `HelperArgs { policy, program, args, pin }`, `encode` / `decode`. `pin` rides beside the policy and not inside it, for the reason `context/decision-helper-audit-channel.md` gives |
-| Path flags | `--ro` / `--rw` / `--rx`, from the single `path_flag(axis)` match |
-| Other flags | `--allow-network`, `--allow-network-port N` (repeatable), `--allow-unix-sockets`, `--env NAME` (repeatable), `--dns-over-tcp`, `--pin-sha256 HEX` (at most once), `--` separator |
+| Path flags | `--ro` / `--rw` / `--rx`, from the single `path_flag(axis)` match, each taking a path and its `<dev>:<ino>` pin |
+| Other flags | `--allow-network`, `--allow-network-port N` (repeatable), `--allow-unix-sockets`, `--dns-over-tcp`, `--env NAME` (repeatable), `--allow-dns-name NAME` (repeatable), `--pin-sha256 HEX` (at most once), `--` separator |
 | Wire ≠ CLI | the two spellings diverge where they must. `--allow-network-port` takes exactly one value, where the CLI's `--allow-network` takes an optional one: `decode` walks argv a token at a time and must refuse anything unrecognised, so an optional value would put a "does this look like a port?" lookahead in the decoder that gates enforcement. Same reason `--env NAME` is not spelled `--allow-env` here. `--dns-over-tcp` *is* the CLI spelling, and may be: it takes no value, so there is no lookahead to get wrong — and so is `--pin-sha256`, whose one value is mandatory on both sides |
-| Why argv | the environment is now cleared at every stage (#98), so it cannot carry the policy — argv is the only channel left that survives the re-exec. It is not *private*: `/proc` in the sandbox is the host's, so the command reads the supervisor's `/proc/<pid>/cmdline` — not its own, which the `exec` overwrites — and the rule is that argv carries variable **names**, never values. `--dns-over-tcp` keeps that rule rather than bending it: the pair it stands for is a constant the policy holds, so the wire carries the flag and not the value |
+| Why argv | the environment is cleared at every stage, so it cannot carry the policy — argv is the only channel that survives the re-exec. It is not *private*: `/proc` in the sandbox is the host's, so the command reads the supervisor's `/proc/<pid>/cmdline` — not its own, which the `exec` overwrites — and the rule is that argv carries variable **names**, never values. `--dns-over-tcp` keeps that rule rather than bending it: the pair it stands for is a constant the policy holds, so the wire carries the flag and not the value |
 | Decode failure | always a refusal; an unrecognised flag is an error, never skipped |
 | Stage 1 → 2 | argv passed **verbatim**, not re-encoded — a re-encode is a second chance for the policy to drift on its way to the stage that enforces it |
 
@@ -206,29 +208,29 @@ requested(policy: &SandboxPolicy) -> Result<Requested<'_>, _>
 The syscall list is in `helper_seccomp_rules.rs`; `apply` in `helper_exec.rs`.
 
 A rule names a `RuleTarget`, not a path: `Granted` carries the object the harness
-vetted and `Installed` is a resolver file bind-mounted in this process, so
+vetted and `Installed` is a resolver file the helper bind-mounted, so
 `open_grant` checks the pin on one and has nothing to check on the other
 (*A grant names an object, not a name*, below).
 
 `abi` is a **parameter**, not ambient — that is what makes the mapping
-kernel-independent and testable at both ends of the range. The stronger form
-since #87: a parameter to `requested_at`, and **`apply` holds no ABI binding at
-all.** `requested` negotiates internally and returns the handled set and the
-rules together, so the two cannot be derived from different ABIs. Previously they
-were two expressions in `apply` with a comment between them saying they must
-match — and because `AccessFs::from_all` is constant across V5..V8, a divergence
-there was unobservable in any kernel-free test. Structure, not coverage, is what
-retires it; `fs_rules` narrowed to `pub(super)` so `apply` cannot reach past the
-join.
+kernel-independent and testable at both ends of the range. It is a parameter to
+`requested_at`, and **`apply` holds no ABI binding at all**: `requested`
+negotiates internally and returns the handled set and the rules together, so the
+two cannot be derived from different ABIs. Do not split them back into two
+expressions in `apply`: `AccessFs::from_all` is constant across V5..V8, so a
+divergence there is unobservable in any kernel-free test. Structure, not
+coverage, is what rules it out; `fs_rules` is `pub(super)` so `apply` cannot
+reach past the join.
 
 `negotiated_abi_from` takes the probe for the same reason `fs_rules` takes the
 policy: the decision worth asserting is not the ladder walk but which errors are
-an *ABI verdict* (step down a rung) and which are not (refuse). `RulesetError` was
-named in exactly one place in the workspace and no test constructed one, so the
-refusing arm was not merely untested but unreachable (#87).
+an *ABI verdict* (step down a rung) and which are not (refuse). Without the seam
+no test can construct a `RulesetError`, and the refusing arm is unreachable
+(#87).
 
-`apply` ignores the axis (`for (_, target, rights)`): the kernel is told the rights
-and nothing else. The axis rides along only so tests can assert the mapping.
+`apply` ignores the axis (`for FsRule { target, rights, .. }`): the kernel is
+told the rights and nothing else. The axis rides along only so tests can assert
+the mapping.
 
 #### Why the axis rides along
 
@@ -274,11 +276,11 @@ failure — not the length of `Axis::ALL`, which nothing needs at compile time.
 a limit rather than an oversight.** Its union check is a *theorem*: `rights_for`'s
 three subtractions partition `from_all`, and landlock's own invariant test asserts
 `from_read | from_write == from_all`, so the union equals the handled set at every
-ABI — including one the code got wrong. Since #259 that is a partition only with
-the unix-socket flag set: the write axis subtracts `ResolveUnix` as well, and the
-flag is what puts it back. That is why the test's policy sets the flag, and why
-dropping it from the policy to "simplify" the test makes the union fall short of
-`handled` at `LATEST_ABI`. No hard-coded expectation is available to
+ABI — including one the code got wrong. That is a partition only with the
+unix-socket flag set: the write axis subtracts `ResolveUnix` as well, and the
+flag is what puts it back (#259). That is why the test's policy sets the flag,
+and why dropping it from the policy to "simplify" the test makes the union fall
+short of `handled` at `LATEST_ABI`. No hard-coded expectation is available to
 replace it, because pinning `handled` literally would make a third site spelling
 out the same sixteen-or-seventeen rights, against the "one place to edit" argument
 that `each_axis_confers_exactly_the_documented_set` rests on. So the test carries
@@ -300,20 +302,21 @@ are written down.
 
 ### All of them run, or none of the files compiles
 
-65 real-kernel enforcement tests, all four files `sandbx-helper`'s since #347,
-split by what enforces them: 41 in `enforcement.rs` for paths and grants, 10 in
-`enforcement_syscalls.rs` for the calls Landlock cannot express, 6 in
-`enforcement_network.rs` for the ports it does, and 8 in
-`enforcement_resolver.rs` for the names that resolve. All four files are
-`#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`, so the
-count is unconditional — all 64 run or none of the files compiles, and
-`cargo test` reports `0 ignored`. Nothing checks this number against the files.
+65 real-kernel enforcement tests in `sandbx-helper`, split by what enforces them:
+41 in `enforcement.rs` for paths and grants, 10 in `enforcement_syscalls.rs` for
+the calls Landlock cannot express, 6 in `enforcement_network.rs` for the ports
+it does, and 8 in `enforcement_resolver.rs` for the names that resolve. All four
+files are `#![cfg(all(feature = "sandbox-integration", target_os = "linux"))]`,
+so the count is unconditional — all of them run or none of the files compiles,
+and `cargo test` reports `0 ignored`. Nothing checks this number against the
+files.
 
 ## The axis table
 
 Why filesystem policy has one table and five consumers instead of five parallel
 lists. The current derived-vs-forced breakdown lives in *Derived vs. hard-coded
-expectations*, above; this is how it got that way and how it was checked.
+expectations*, above; this is what each consumer derives and how that was
+checked.
 
 ### The table
 
@@ -326,25 +329,22 @@ Axis::Write       => (false, true,  false)
 Axis::ReadExecute => (true,  false, true )
 ```
 
-### Before and after
+### The five consumers
 
-| Site | Before | After |
-|---|---|---|
-| `helper_ruleset_rights.rs` | three `if allow_* {}` arms | loop over `Axis::ALL`, rights from `grants()` |
-| `fs_guard.rs` | two hand-built path lists | destructure `grants()` into readable/writable |
-| `helper_args.rs` | three flag spellings, twice (encode + decode) | one `path_flag` match, `axis_for` as reverse lookup |
-| `audit_event.rs` | three counted fields, hand-maintained | loop + exhaustive `match` |
-| `sandbx-grants/src/grants.rs` | three flag blocks | loop + exhaustive `match` |
+| Site | Derives by |
+|---|---|
+| `helper_ruleset_rights.rs` | loop over `Axis::ALL`, rights from `grants()` |
+| `fs_guard.rs` | destructure `grants()` into readable/writable |
+| `helper_args.rs` | one `path_flag` match, `axis_for` as reverse lookup |
+| `audit_event.rs` | loop + exhaustive `match` |
+| `sandbx-grants/src/grants.rs` | loop + exhaustive `match` |
 
 Two sites cannot derive their answer and are **forced** instead — `tracing` needs
 static field names, and clap needs per-flag `--help` text. Both pair the loop
 with an exhaustive `match`, so a new axis is a build failure rather than a
-silently missing grant.
-
-> Not the *length* of `Axis::ALL`. An earlier design pinned the audit record to
-> fixed-arity destructuring for exactly that reason; it was reverted, and nothing
-> now needs the array's length at compile time. The exhaustive matches are the
-> whole mechanism.
+silently missing grant. Not fixed-arity destructuring of `Axis::ALL`, which was
+tried and reverted: nothing needs the array's length at compile time, and the
+exhaustive matches are the whole mechanism.
 
 ### Why the rights are subtractions
 
@@ -369,27 +369,28 @@ it: one bit less and a write grant confers read at the kernel that `FsGuard`
 refuses, leaving the write-only drop directory readable (`rights_for`'s `///`).
 
 `ResolveUnix` is the worked example rather than a hypothetical, and the one
-exception. It arrived at ABI V9 and joined the write set with no line edited, so
-on the first V9 kernel (Linux 7.1, `LATEST_ABI`) `--allow-unix-sockets` — one
-boolean, documented as all-or-nothing — would have acquired a path condition: a
-pathname socket must sit inside a *write* grant to be dialled, and a command that
-works today fails on a newer kernel with the same flags. #259 subtracted it back
-out and gave the flag the right instead, on every path the policy granted, masked
-by `from_all(abi)` so nothing moves at or below V8.
+exception. It arrived at ABI V9 and would have joined the write set with no line
+edited, so on the first V9 kernel (Linux 7.1, `LATEST_ABI`)
+`--allow-unix-sockets` — one boolean, documented as all-or-nothing — would have
+acquired a path condition: a pathname socket would have to sit inside a *write*
+grant to be dialled, and a command that works on V8 would fail on a newer kernel
+with the same flags. So the write axis subtracts it and the flag confers it
+instead, on every path the policy granted, masked by `from_all(abi)` so nothing
+moves at or below V8 (#259).
 
 Four shapes were rejected, and the first is the one someone will re-propose:
 
 - **Leave `ResolveUnix` unhandled while the flag is set.** The only shape that
-  preserves today's behaviour exactly across V8→V9. Fail-open by construction;
+  preserves V8 behaviour exactly across V8→V9. Fail-open by construction;
   `helper_ruleset_compat.rs` forbids precisely that edit; it makes the flag
   *wider* than documented; and it breaks the probe/apply agreement that file
   keeps policy-independent, so `negotiated_abi` would report V9 while asking for
   a V8 set.
 - **Additive only** — leave the write axis alone and confer on the read axes too.
-  A strict superset of what shipped, differing only in whether a `--allow-write`
-  grant carries the bit with the flag off. Rejected because it gives one bit two
-  sources, where `net_rules` makes a point of being the only place that chooses,
-  and it leaves the worry above live.
+  A strict superset of the chosen shape, differing only in whether a
+  `--allow-write` grant carries the bit with the flag off. Rejected because it
+  gives one bit two sources, where `net_rules` makes a point of being the only
+  place that chooses, and it leaves the worry above live.
 - **Enumerate the write set literally**, for full `net_rules` symmetry. Rejected
   for a test reason: `each_axis_confers_exactly_the_documented_set` spells its
   rights out *because* the code derives them. Have the code enumerate too and the
@@ -404,7 +405,7 @@ Four shapes were rejected, and the first is the one someone will re-propose:
 This fixes the instance, not the class: a future write-side right still arrives
 conferred on every `--allow-write` grant.
 `each_axis_confers_exactly_the_documented_set` stays the tripwire, and its two
-columns now read identical, so a new bit on any axis shows up as the two ends of
+columns read identical, so a new bit on any axis shows up as the two ends of
 the range disagreeing.
 
 Narrowed once more by target kind: a non-directory intersects `from_file(abi)`.
@@ -427,8 +428,8 @@ round 2:  add a fourth axis
               everything else derives it
 ```
 
-Whole suite green throughout, with `rights_for`, `FsGuard::new` and `decode`
-taking **no axis-driven edit** — which is the property the table was for.
+`rights_for`, `FsGuard::new` and `decode` took **no axis-driven edit** in either
+round — which is the property the table is for.
 
 ### The CLI departs from the table, once
 
@@ -441,9 +442,9 @@ through `SandboxPolicy::allow_write` (#49).
 
 Why a sandboxed command starts with an empty environment, and why the clearing
 happens in the one factory every `Command` in the crate is built by rather than at
-each of the four spawn sites — with the inner stage checking what it inherited as
-well, so the clearing is falsifiable. The mechanism is in `guide-sandboxing.md`;
-this is what the choices were between.
+each spawn site — with the inner stage checking what it inherited as well, so the
+clearing is falsifiable. The mechanism is in `guide-sandboxing.md`; this is what
+the choices were between.
 
 ### What is deliberately not a row
 
@@ -458,47 +459,33 @@ not rows either — `unix_sockets` confers a Landlock right all the same, throug
 `resolver_paths`, which is why neither needs to be one. The environment is the
 same shape again, as a list rather than a bool.
 
-The cost of staying off the table was that nothing *forced* a site to notice it.
-While the four `env::restrict` calls were hand-written, a fifth spawn site added
-later would have **leaked the harness's whole environment** — not inherited
-nothing — which failed open, the one place this was weaker than the path axes,
-where a new consumer that ignores `Axis::ALL` grants nothing instead.
-
-Closed since, by a different mechanism than the table: every `Command` in the
-crate is built by `spawn::command`, which narrows as it constructs, and
-`clippy.toml` bans `Command::new` everywhere else under `-D warnings`. So a new
-spawn site does not compile rather than failing open. The lint stands in for the
-exhaustive `match` the environment does not get by being a row. The audit field is
-still hand-written.
+The cost of staying off the table is that nothing exhaustive *forces* a spawn
+site to notice it, and a site that forgets leaks the harness's whole environment
+— fail-open, where a new path consumer that ignores `Axis::ALL` grants nothing.
+What closes it instead: every `Command` in the crate is built by
+`spawn::command`, which narrows as it constructs, and `clippy.toml` bans
+`Command::new` everywhere else under `-D warnings`. So a new spawn site does not
+compile rather than failing open; the lint stands in for the exhaustive `match`.
+The audit field is still hand-written.
 
 What stands in for the compiler on the *behaviour* — that `spawn::command` narrows
 at all, which the lint says nothing about — is
-`sandbx-helper/tests/enforcement.rs`, which runs
-`/usr/bin/env` through the real helper and reads its stdout — the issue's own
-reproducer, inverted — plus the check in `restrict_and_spawn` that refuses an
-environment an earlier stage should have narrowed. The run goes through
+`sandbx-helper/tests/enforcement.rs`, which runs `/usr/bin/env` through the real
+helper and reads its stdout, plus the check in `restrict_and_spawn` that refuses
+an environment an earlier stage should have narrowed. The run goes through
 `sandbx_helper_fixture::run`, which spawns the helper *without* clearing anything
-first, so what it pins is the sandbox doing it on its own. One site to delete, 24
-failures when it goes; *Narrow by construction, at one site* has why.
+first, so what it pins is the sandbox doing it on its own.
 
-### What #98 actually was
-
-Not a policy that defaulted open — an axis that did not exist. A workspace-wide
-grep for `env_clear`, `env_remove`, `.env(` and `.envs(` returned zero hits, so
-every variable the harness held crossed `fork`/`exec` verbatim:
+Without the axis, every variable the harness held crossed `fork`/`exec` verbatim
+(#98):
 
 ```
 $ FAKE_SECRET=leaked-abc123 sandbx sandbox-run --allow-read /usr -- /usr/bin/env | grep FAKE
 FAKE_SECRET=leaked-abc123
 ```
 
-Latent at the time — no shipped subcommand put a credential in the harness's
-environment — but `anthropic_api_key()` then read `ANTHROPIC_API_KEY` out of the
-process environment, so it was already real for a library consumer embedding
-`sandbx-core` beside its own secrets, and would have become live for the CLI the
-day the agent loop got a subcommand. It also blocked
-[#41](https://github.com/danczw/sandbx/issues/41): credential *injection* cannot
-be designed on top of an environment that is already shared in full.
+and credential *injection* (#41) cannot be designed on top of an environment
+that is shared in full.
 
 ### Allowlist, not denylist
 
@@ -518,13 +505,11 @@ The policy carries `Vec<String>` of **names**. Values are read with
 a constant instead; *One variable sandbx sets itself* has it.
 
 Two reasons, and the first is the hard one. The policy crosses into the helper as
-argv, and argv is not private: `/proc` in the sandbox is the host's, so the
-sandboxed command reads the supervisor's `/proc/<pid>/cmdline` — not its own, which
-the `exec` overwrites. A value on the wire would therefore be handed to exactly the
-process the allowlist exists to keep it from. (This is also why the CLI flag is
-`--allow-env NAME` and not `NAME=VALUE` — the latter is #41's problem, and solving
-it this way would solve it wrongly. The one name `agent-run` refuses outright is
-in `decision-credentials.md`.)
+argv, and argv is not private (*Seam 2*, above): a value on the wire would be
+handed to exactly the process the allowlist exists to keep it from. (This is
+also why the CLI flag is `--allow-env NAME` and not `NAME=VALUE` — the latter is
+#41's problem, and solving it this way would solve it wrongly. The one name
+`agent-run` refuses outright is in `decision-credentials.md`.)
 
 Second, a name is a stable thing to audit; a value is not. The audit record counts
 the allowlist (`env=7`) rather than listing it, on the same basis: a name is not a
@@ -537,12 +522,12 @@ program that checks.
 
 ### Narrow by construction, at one site
 
-Four `Command`s are built on the spawn path — `run_to_completion()`,
-`run_with_deadline()`, the supervisor's re-exec into stage 2, and stage 2's
-`.exec()` into the real program. None of them calls `Command::new`: all four go
-through `spawn::command`, which clears and re-adds as it builds, so a narrowed
-environment is a property of every `Command` in the crate rather than a step
-each site remembers.
+Three `Command`s are built on the spawn path — the harness's spawn of the helper
+(`helper_command`, shared by `run_to_completion` and `run_with_deadline`), the
+supervisor's spawn of stage 2, and stage 2's spawn of the real program. None of
+them calls `Command::new`: all go through `spawn::command`, which clears and
+re-adds as it builds, so a narrowed environment is a property of every `Command`
+in the crate rather than a step each site remembers.
 
 Three alternatives were on the table, and the first two were tried and discarded.
 
@@ -553,32 +538,30 @@ enforcement suite invokes the helper binary directly with nothing above it to ha
 cleared anything. A check there turns a supported invocation into a refusal, where
 filtering makes it correct instead.
 
-**Call `restrict` at each of the four sites.** What actually shipped first (#101),
-and the problem was not correctness but that every one of the four calls was
-unfalsifiable. The sites mask each other: any single clear could be deleted and a
-later one covered for it, leaving the command's `environ` byte-identical with no
-test able to tell. Four hand-written obligations, each individually unobservable,
-and a fifth spawn site added later would have inherited the harness's whole
-environment rather than nothing — failing *open*.
+**Call `restrict` at each site** (#101). Not incorrect, but every call was
+unfalsifiable: the sites mask each other, so any single clear could be deleted
+and a later one covered for it, leaving the command's `environ` byte-identical
+with no test able to tell. Hand-written obligations, each individually
+unobservable, and a spawn site added later would have inherited the harness's
+whole environment rather than nothing — failing *open*.
 
 **One factory.** `spawn::command` is the only `Command::new` in production code,
-and carries the only `#[allow(clippy::disallowed_methods)]` in a crate that ships.
-The two exceptions spawn the sandbox rather than running inside it, so there is
-nothing for the factory to narrow: `sandbx-helper-fixture`, which starts the
-helper and deliberately clears nothing, for the reason given above; and the tests
-that drive the built binary, which carry their own. Two properties fall out
-that no amount of per-site discipline gave:
+and carries the only `#[allow(clippy::disallowed_methods)]` exempting it in a
+crate that ships. The two exceptions spawn the sandbox rather than running inside
+it, so there is nothing for the factory to narrow: `sandbx-helper-fixture`, which
+starts the helper and deliberately clears nothing, for the reason given above;
+and the tests that drive the built binary, which carry their own. Two properties
+fall out that no amount of per-site discipline gave:
 
 - There is one line to delete, and deleting it fails 24 enforcement tests. The
-  invariant is now pinned, not merely upheld.
+  invariant is pinned, not merely upheld.
 - A new spawn site cannot forget. `clippy.toml` bans `Command::new` workspace-wide
   at `deny`, so the only way to build one is the way that narrows —
   checked by adding a bare `Command::new` elsewhere and watching the lint refuse
-  to compile it. The fail-open hole above is closed structurally rather than by
-  remembering.
+  to compile it.
 
-Keeping the first three sites, rather than narrowing only at the final `exec`, is
-not ceremony either. A helper process lives for milliseconds, but
+Narrowing at the harness's and the supervisor's spawns, rather than only at the
+last, is not ceremony either. A helper process lives for milliseconds, but
 `/proc/<pid>/environ` is readable for all of them, and the point is that the secret
 is never anywhere it does not need to be.
 
@@ -625,10 +608,10 @@ and `/usr/local/bin/tool` depends on whether a shell was in the way. The symptom
 is `No such file or directory` with nothing to connect it to the environment. A
 flat failure would at least be honest.
 
-`SandboxRun::policy()` therefore calls `allow_standard_env()` next to
-`allow_system_executables()`, and the two sit together with one rationale: both
-grant what a command needs merely to *begin*, and withholding either makes the
-sandbox look broken rather than strict.
+`Grants::policy` therefore calls `allow_standard_env()` next to
+`allow_system_executables()`, for both run subcommands, and the two sit together
+with one rationale: both grant what a command needs merely to *begin*, and
+withholding either makes the sandbox look broken rather than strict.
 
 `STANDARD_ENV_NAMES` is seven exact names (`PATH`, `HOME`, `TERM`, `LANG`,
 `LC_ALL`, `LC_CTYPE`, `TZ`) rather than a prefix glob for `LC_*`. A glob would need
@@ -637,7 +620,8 @@ one convenience; a caller wanting another `LC_` variable names it.
 
 ### Skip at the gate, refuse at the seam
 
-`allow_env` **drops** a name containing `=` or a NUL. `decode` **refuses** one.
+`allow_env` **drops** a name containing `=` or a NUL. `decode` **refuses** one
+containing `=`; a NUL cannot cross argv at all.
 
 Not an inconsistency. A caller composing a policy is in the position
 `allow_system_executables` is in when a path does not exist on this system:
@@ -672,8 +656,8 @@ which is *skip at the gate, refuse at the seam* in its other direction.
 `allow_env("RES_OPTIONS")` on a hinted policy is quietly overridden, keeping the
 builder total. But `--dns-over-tcp --allow-env RES_OPTIONS` is two flags
 disagreeing about one variable, and honouring both would drop the operator's
-value in silence — so `PolicyError::ImposedVariable`, the same answer
-`variable_name` gives `NAME=VALUE`. The refusal matches against `imposed_env`
+value in silence — so `PolicyError::ImposedVariable`, refused as
+`variable_name` refuses `NAME=VALUE`. The refusal matches against `imposed_env`
 rather than the literal name, so the CLI never spells `RES_OPTIONS` and a second
 imposed variable inherits the check.
 
@@ -692,25 +676,18 @@ drop "PATH" from STANDARD_ENV_NAMES
        sandbox-run --allow-exec $dir -- mytool        ENOENT
 ```
 
-Two things came out of running it. The CLI test passes because it compares
-`policy()` against `allow_standard_env()` rather than against seven literal names —
-derived from the same source, so it moves with the mutation. That is the trap
-*Derived vs. hard-coded expectations* names, and it is why
+The CLI test passes because it compares `policy()` against
+`allow_standard_env()` rather than against seven literal names — derived from
+the same source, so it moves with the mutation. That is the trap *Derived vs.
+hard-coded expectations* names, and it is why
 `standard_env_is_the_documented_startup_set` compares the whole set *in order*
-against spelled-out names: that one is the assertion doing the work, and it is what
-keeps the CLI's `--help` text naming those seven from drifting into a lie.
+against spelled-out names: that one is the assertion doing the work, and it is
+what keeps the CLI's `--help` text naming those seven from drifting into a lie.
 
-And `cat` still ran with no `PATH` at all, which is how the C library's fallback
-came to be documented above rather than guessed at. The mutation's honest symptom
-is the second command: a program outside `/bin:/usr/bin` is not found. So `PATH` is
-load-bearing, but not in the all-or-nothing way the first draft of this record
-claimed.
-
-The gap the tests close that the compiler cannot: the environment is deliberately
-not an `Axis` row, so no exhaustive `match` forces a new spawn site to narrow. The
-clippy ban covers most of that — a site that does not go through `spawn::command`
-does not compile — but a lint is not a proof that the factory narrows anything.
-What supplies that is in *What is deliberately not a row*, above.
+And `cat` still ran with no `PATH` at all, which is where the C library's
+fallback above was measured rather than guessed at. The mutation's honest
+symptom is the second command: a program outside `/bin:/usr/bin` is not found.
+So `PATH` is load-bearing, but not all-or-nothing.
 
 Stage 2's refusal needs a test of its own, because every path that reaches it
 honestly reaches it already narrowed, where the check is trivially satisfied:
@@ -727,20 +704,19 @@ and `open_grant` reads each descriptor back through `/proc/self/fd` and refuses
 the whole run when the link names something other than what it was told to open.
 A link redirected in between reads back as its target, and the run refuses.
 
-What that leaves open is substitution of one *real* directory for another at the
+That alone leaves substitution of one *real* directory for another at the
 same name. A `rename(2)` over the vetted path — no symlink anywhere — leaves the
-spelling identical, so the readback agrees and Landlock is handed rules over a
-directory the harness never vetted. The window is between the resolve in the
-harness and `PathFd::new` in the helper, and reaching it needs write access to
-the granted path's parent.
+spelling identical, so the readback agrees and Landlock would be handed rules
+over a directory the harness never vetted. The window is between the resolve in
+the harness and `PathFd::new` in the helper, and reaching it needs write access
+to the granted path's parent.
 
 The comparison is about the object, not the name (#212): the harness carries
 the `(dev, ino)` it vetted across the seam, the helper stats the descriptor and
 refuses a mismatch, and `FsGuard` measures the matched root per access and refuses
-that access as `root_replaced`. The decision this note records is not that — it is the
-question #212 mainly exists to settle, which is **what the helper does with a
-grant that arrives with no pin**. The answer is that it refuses, and that nothing
-can hand it one.
+that access as `root_replaced`. The decision this note records is not that — it
+is **what the helper does with a grant that arrives with no pin**. The answer is
+that it refuses, and that nothing can hand it one.
 
 ### Refusing is the only answer, so the work is making it unreachable
 
@@ -757,13 +733,12 @@ grants `allow_system_executables` adds for itself. A refusal at run time would b
 the worst version of a correct decision: the embedder learns at the refused run
 what a type could have told it at `cargo build`.
 
-So the pin travels **inside** the grant rather than beside it. A vetted-path value
+So the pin travels **inside** the grant rather than beside it. A `VettedPath`
 carries the resolved path and its `(dev, ino)` together, `grant` takes that
 instead of a bare path, and there is no unpinned state for the helper to have a
 policy about. The refusal still exists — `decode` refuses a wire grant with no
 pin — but no construction path in the crate can reach it, so what an embedder
-actually meets is a signature change. (#212 settles the type's name; this note
-settles that there is one.)
+actually meets is a signature change.
 
 ### `grant` stays I/O-free
 
@@ -810,20 +785,19 @@ the name and not the rule.
 
 ### Three tokens per grant, not two
 
-The wire form is a flag and a path, one pair per grant, in `Axis::ALL` order. The
-pin is a third token on the same pair, and `decode`'s path arm refuses a pair
-without it as `BadHelperArgs` — the same shape as the existing "path flag with no
-path after it", and for the same reason: the decoder gates enforcement, so it
-refuses anything it does not recognise rather than inferring.
+The wire form is a flag, a path and a pin, one triple per grant, in `Axis::ALL`
+order. `decode`'s path arm refuses a grant without the pin as `BadHelperArgs` —
+the same shape as "path flag with no path after it", and for the same reason:
+the decoder gates enforcement, so it refuses anything it does not recognise
+rather than inferring.
 
 *Seam 2*, above, requires a wire spelling to be one `decode`
 accepts by construction. A third mandatory token keeps that property; an optional
 one would not, because "is this token a pin or the next flag?" is a lookahead in
 the decoder, which is the thing that seam rejects.
 
-The path token already crosses through `Path::display()` and is lossy for a
-non-UTF-8 path. The pin neither fixes nor worsens that, and is not where it gets
-fixed.
+The path token crosses through `Path::display()` and is lossy for a non-UTF-8
+path. The pin neither fixes nor worsens that.
 
 ### The readback stays
 
@@ -838,32 +812,32 @@ itself. So the guard takes the stat alone, and `RuleTarget::Installed`'s unpinne
 case one layer over is the same asymmetry read from the other end: a rule already
 in a ruleset has no name left to compare.
 
-### A rule the helper makes for itself is pinned later
+### A rule the helper makes for itself is not pinned
 
-`open_grant` runs in stage 2, inside whatever stage 1 unshared, so a mount made
-there is a mount the comparison sees. #145 makes one: `/etc/hosts`,
-`/etc/nsswitch.conf` and `/etc/resolv.conf` are bind-mounted over before the rules
-are opened.
+`open_grant` runs in stage 2, inside the mount namespace stage 1 unshared, so a
+mount made there is a mount the comparison sees. A policy bounding resolution
+makes one (#145): stage 1 bind-mounts over `/etc/hosts`, `/etc/nsswitch.conf`
+and `/etc/resolv.conf` before stage 2 opens the rules.
 
 So a rule says which kind of thing it names. `RuleTarget::Granted` holds the
-harness's `VettedPath`; `RuleTarget::Installed` holds the `&'static` path the helper
-bind-mounted a moment ago, in this process. The readback runs on both — an installed
-path redirected under the bind is still a rule on an inode sandbx did not place. The
-pin runs only on the first, and the reason is not that the helper's object is
-trustworthy: it is that the helper has no second answer to compare against. A pin
-taken in stage 2 for a mount made in stage 2 compares this process's answer with
-itself, and agrees whatever happened.
+harness's `VettedPath`; `RuleTarget::Installed` holds the `&'static` path the
+helper bind-mounted itself, after the harness judged the policy. The readback
+runs on both — an installed path redirected under the bind is still a rule on
+an inode sandbx did not place. The pin runs only on the first, and the reason is
+not that the helper's object is trustworthy: it is that the helper has no second
+answer to compare against. A pin the helper takes on a mount the helper made
+compares the helper's answer with itself, and agrees whatever happened.
 
 Pinning both at one point refuses the helper's own resolver files, the mount having
 moved the inode under a name the harness had already pinned — indistinguishable from
 the attack unless the two are kept apart.
 
-This is also where the pin meets what can make a mount in stage 2 at all. The
-helper's mounts rest on the capability drop rather than on `BLOCKED_SYSCALLS`,
-and whether the newer mount API — `open_tree`, `move_mount`, `fsopen`, `fsmount`,
-`mount_setattr` — belongs in the filter is #145's question, not this note's. It
-is the same seam: a pin that has to survive mounts made in stage 2 is worth only
-as much as the bound on what can make one.
+This is also where the pin meets what can make a mount at all. Stage 1's
+capability drop leaves stage 2 and the command no `CAP_SYS_ADMIN`, and
+`BLOCKED_SYSCALLS` denies `mount` and the descriptor-based mount API
+(`open_tree`, `move_mount`, `fsopen`, `fsmount`, `mount_setattr`;
+`open_tree_attr` waits on libc, as `helper_seccomp_rules.rs` says). A pin that
+has to survive mounts made after the vet is worth only as much as that bound.
 
 Two orderings fall out of which crate owns which refusal, and are worth stating
 because nothing maintains them. A grant refusal reaches the operator before
@@ -872,24 +846,20 @@ because nothing maintains them. A grant refusal reaches the operator before
 `SandboxedCommand` can hold one, so `Grants::policy`'s path refusals strictly
 precede it. That is the right order for diagnosis — a grant refusal sends an operator
 to a path they can go and look at, a resolution refusal to flags they can read off
-their own command line. And `grant_bound_by_resolver` is checked after the five
-`Dns…` shapes in the CLI, because an operator with no egress at all should hear that
-first.
+their own command line. And `Grants::policy` refuses `DnsGrantsBoundFile` after
+the five other `Dns…` shapes, because an operator with no egress at all should
+hear that first.
 
-One cost the reviews surfaced and this note should carry: nested write grants pay the
-pin twice. `Grants::policy` grants read alongside every write-conferring axis, so a
-directory granted write is vetted once and pinned on two axes, and the helper opens
-and stats it twice. Reachable but unusual, and a stat beside a resolve that already
-walked every ancestor.
+Write grants pay the pin twice. `Grants::policy` grants read alongside every
+write-conferring axis, so a directory granted write is vetted once and pinned on
+two axes, and the helper opens and stats it twice — a stat beside a resolve that
+already walked every ancestor.
 
 ### What the pin costs
 
 **A breaking change to the policy builders.** `grant`, `allow_read`,
-`allow_write` and `allow_read_execute` change signature, so every embedder
-recompiles — `SandboxedCommand::new`, `FsGuard::new`, the guidance on
-`ExecutionContext::new`, and the policy constructions in the tool and agent
-tests. This is the cost that buys default-deny without a runtime refusal, and it
-is paid once at a pre-1.0 version.
+`allow_write` and `allow_read_execute` take a `VettedPath`, so every embedder
+recompiles. This is the cost that buys default-deny without a runtime refusal.
 
 **A stat per grant, in the harness.** Beside a resolve that already walks every
 ancestor, which is the expensive part.
@@ -919,18 +889,19 @@ and wraps — so the ext4 result is what to expect on a project tree and not a r
 a granted root deleted and re-created compares equal, on both layers, and is reached
 although nothing the harness judged survives.
 
-Worth separating from the attack the pin does close. A `rename(2)` substitution puts a
-directory that *already exists* at the granted name, and an existing directory cannot
-be holding the vetted number while the vetted object still is — so the pin sees it.
-Delete-then-create is the other order, and the freed number carries no evidence either
-way. Closing it for the *access* needed no third component in the end: the held-root
-descriptor pins the object instead of a number naming it, so what an access reaches is
-what was vetted and a reused number fools nothing — which was the argument for doing
-that one rather than widening the pair, and is what #230 did. Closing it for the
-*verdict* still needs a third component beside the pair, a creation time (`statx`'s
-`STATX_BTIME`, where the filesystem reports one) or a generation number
-(`FS_IOC_GETVERSION`, an ioctl), and that is not worth a filesystem-support matrix for
-the one case now that the access does not rest on it.
+Worth separating from the attack the pin does close. A `rename(2)` substitution
+puts a directory that *already exists* at the granted name, and an existing
+directory cannot be holding the vetted number while the vetted object still is —
+so the pin sees it. Delete-then-create is the other order, and the freed number
+carries no evidence either way. Closing it for the *access* needs no third
+component where the guard holds the root: the held descriptor pins the object
+instead of a number naming it, so what an access reaches is what was vetted and a
+reused number fools nothing (#230). Where the access goes by path — a file grant,
+or a kernel without `openat2` — it fools both. Closing it for the *verdict* would
+need a third component beside the pair, a creation time (`statx`'s `STATX_BTIME`,
+where the filesystem reports one) or a generation number (`FS_IOC_GETVERSION`, an
+ioctl), and that is not worth a filesystem-support matrix for the one case now
+that the access mostly does not rest on it.
 
 **A remount reads as a substitution.** A filesystem with no backing block device takes
 an anonymous `st_dev`, allocated fresh per mount, so a grant on a network or autofs
@@ -940,13 +911,11 @@ numbers, so this is the network case and not every remount. Fail-closed and wron
 reason, which is the trade the pin makes: nothing distinguishes a new `st_dev` for the
 same tree from a different tree without a second source of truth about the mount.
 
-**A property `guide-sandboxing.md` states, moving.** That file said the property to
-keep is about spellings and not about mounts: a file bind-mounted over `/etc/hosts`
-reads back `/etc/hosts`, measured, and is fine. Under the pin that holds only for a
-bind that existed when the grant was vetted. One made between the vet and the open
-refuses as `GrantReplaced` — correctly, because that is the attack, but it is a
-narrowing and not a clarification, and it is why the files the helper binds itself
-are reached by `RuleTarget::Installed` and not by a grant.
+**A bind made after the vet refuses.** The readback is about spellings, so a file
+bind-mounted over `/etc/hosts` reads back `/etc/hosts`; the pin is about objects,
+so a bind made between the vet and the open refuses as `GrantReplaced` —
+correctly, because that is the attack, and it is why the files the helper binds
+itself are reached by `RuleTarget::Installed` and not by a grant.
 
 **One pair an operator can type is refused.** `--allow-dns` alongside a grant naming
 one of the three files it replaces exactly. The harness vets the host's file and the
@@ -956,19 +925,18 @@ waiver in the process that made the substitution. `--allow-read /etc` beside the
 is unaffected — binding a file inside a directory does not change the directory's
 inode — and is what the refusal tells the operator to pass. Nothing else an operator
 types changes: no flag is added, no grant narrows, and a run whose granted
-directories are the ones that were vetted behaves as it did.
+directories are the ones that were vetted behaves as it would without the pin.
 
-One thing nobody types changes all the same, and it is a narrowing worth stating as a
-cost rather than only as a fix. A granted root replaced by a *symlink* used to have its
-grant follow the link: the guard resolved each root again at every access, so the link's
-target became the root and was reachable by its own path. The guard now holds the grant's
-own spelling and measures what sits at it, and `confirm` omits `O_NOFOLLOW` — so the
-object it gets is the link's target. Where that is another object the access refuses as
-`root_replaced` like any other substitution; where the link names the vetted object
-itself the root confirms, and the refusal comes off the resolved path leaving the granted
-spelling instead. Reaching either
-shape needs write access to the granted root's parent — which a run granted write on that
-parent has, so this is not only a racing-attacker case.
+**A granted root replaced by a symlink does not follow the link.** Re-resolving
+each root at every access would make the link's target the root, reachable by
+its own path. The guard holds the grant's own spelling and measures what sits at
+it, and `confirm` omits `O_NOFOLLOW` — so the object it gets is the link's
+target. Where that is another object the access refuses as `root_replaced` like
+any other substitution; where the link names the vetted object itself the root
+confirms, and the refusal comes off the resolved path leaving the granted
+spelling instead. Reaching either shape needs write access to the granted root's
+parent — which a run granted write on that parent has, so this is not only a
+racing-attacker case.
 
 ### What a grant can be refused for
 
@@ -996,9 +964,8 @@ not in `HelperRefusal` — see `decision-helper-audit-channel.md`.
 
 ### What was rejected for an unpinned grant
 
-**Accepting an unpinned grant.** Covered above: it makes a stated guarantee
-conditional on the caller asking for it, and SECURITY.md's claim is about the
-library level precisely because that is the level that is a boundary.
+**Accepting an unpinned grant.** It makes a stated guarantee conditional on the
+caller asking for it (*Refusing is the only answer*, above).
 
 **Refusing at run time, with the pin beside the grant.** Identical security,
 worse failure. A `SandboxPolicy` field next to the paths can be left unset, so
@@ -1036,12 +1003,11 @@ operator granted a tree, and the tree held something that is sandbx's rather tha
 the project's.
 
 The question is not which paths are sensitive. It is what a harness may do about
-a grant it was handed. `decision-credentials.md` left it open on purpose,
-having established the rule it has to be answered under; this is where it is
-answered, and the answer is two mechanisms rather than one. The two on-disk roots
-are refused. The procfs route is closed by sandbx hiding its own process instead,
-because refusing `/proc` would cost `sandbox-run` a legitimate use for a hazard
-that is not about a path at all.
+a grant it was handed. `decision-credentials.md` sets the rule it has to be
+answered under; this is where it is answered, and the answer is two mechanisms
+rather than one. The two on-disk roots are refused. The procfs route is closed
+by sandbx hiding its own process instead, because refusing `/proc` would cost
+`sandbox-run` a legitimate use for a hazard that is not about a path at all.
 
 ### Subtraction was never available
 
@@ -1098,17 +1064,17 @@ contents become what the model is told it said. `reaches_owned` therefore runs
 `starts_with` in both directions, on components rather than bytes, so a directory
 merely spelled like an owned one — `~/.config/sandbx-notes` — still derives.
 
-Grants are taken verbatim: nothing canonicalizes them, and nothing requires them
-to be absolute. A purely lexical comparison would therefore miss `--allow-read .`
-from `$HOME`, and miss the host where `/home` links to `/var/home` — Fedora
-Silverblue — where one spelling would be refused and the other would not.
-`resolved` closes both by canonicalizing the deepest ancestor that exists and
-re-joining what is left, applied to each side of the comparison. The deepest
+Nothing requires a grant to be absolute. A purely lexical comparison would
+therefore miss `--allow-read .` from `$HOME`, and miss the host where `/home`
+links to `/var/home` — Fedora Silverblue — where one spelling would be refused
+and the other would not. `resolved` closes both by canonicalizing the deepest
+ancestor that exists and re-joining what is left, applied to each side of the
+comparison. The deepest
 *existing* ancestor and not the whole path, because `canonicalize` needs every
 component to exist and a credential nobody has stored yet does not.
 
 A relative grant is joined to the working directory before any of that, which is
-what the helper opens it against too. Resolving it ancestor by ancestor is not
+what it is vetted and granted as too. Resolving it ancestor by ancestor is not
 enough on its own: the walk bottoms out at the empty path, so a relative grant
 whose *first* component does not exist yet — `--allow-write sandbx` from
 `~/.local/state`, with no transcript saved — would stay relative and match no
@@ -1118,11 +1084,10 @@ run the policy was derived for.
 
 A working directory that cannot be read refuses the relative grant rather than
 standing in as nothing, which would leave it matching no owned path (#203). An
-absolute grant needs no working directory and is not refused for one. That
-narrows what `current_root`'s placement rested on: an invocation that typed its
-own flags still never depends on `HOME`, but it depends on `getcwd` for a
-relative one, and the refusal says to write the grant absolute rather than
-advising the path flags it was already given.
+absolute grant needs no working directory and is not refused for one. So an
+invocation that typed its own flags still never depends on `HOME`, but it
+depends on `getcwd` for a relative one, and the refusal says to write the grant
+absolute rather than advising the path flags it was already given.
 
 Joining the cwd is therefore a step of its own — `absolute`, which the flag route
 calls and the derived route does not, over a `resolved` that is total. The cwd
@@ -1131,11 +1096,10 @@ on a deleted directory is one no test can pin.
 
 What `resolved` returns is a `ResolvedPath`, and `vetted_root` and `reaches_owned`
 take that type rather than a `PathBuf` — so each states the precondition in its
-signature. `resolved` is one producer; the other is a `VettedPath`, canonical
-already, converted with no I/O, which is how a grant is judged as the path it pins.
-Until #248 the precondition was a `debug_assert!`, absent from a release build and
-the workspace's only assertion outside a test module: what held the spellings above
-together was the two callers happening to comply.
+signature, rather than leaving the spellings above to the callers happening to
+comply (#248). `resolved` is one producer; the other is a `VettedPath`,
+canonical already, converted with no I/O, which is how a grant is judged as the
+path it pins.
 
 ### It does not ask whether anything is stored there
 
@@ -1166,12 +1130,11 @@ the one spelling that reads most like deliberate care.
 ### The derived default is the same hazard by another route
 
 A no-flag run from inside the session directory derives read and write over the
-working directory, and the working directory is the history. The issue did not
-name that route, and the existing path refusals could not see it: every one of
-them sits inside `if !self.paths_given()`, which is also why an explicit path
-flag bypassed all of them before this. So `vetted_root` gains the same arm as the
-per-grant loop, and one rule covers both — the refusal is about what a grant
-reaches, not about how the grant was spelled.
+working directory, and the working directory is the history. Every other
+derived-root refusal sits inside `if !self.paths_given()`, so it guards only the
+default, and the per-grant check guards only the flags. So `vetted_root` carries
+the same arm as the per-grant loop, and one rule covers both — the refusal is
+about what a grant reaches, not about how the grant was spelled.
 
 One rule, two messages, and they are different errors on purpose. The derived
 route refused nothing the operator typed, so it reads like its neighbours —
@@ -1212,28 +1175,30 @@ so a refusal there has to be 2 or a script reads it as an absence. Parsing argv
 exposes nothing, and nothing has been spawned yet either way — what the flag has
 to precede is the first sandboxed command, not the first line of `main`.
 
-The flag is set on the harness and nowhere else. The helper does not set it, and
-`helper_hardening.rs` says why: the kernel resets dumpable on every `execve` of
-an ordinary binary, so it would cover only the helper's pre-exec window. That
-same reset is what keeps the sandboxed command unaffected, which is correct — its
-`environ` holds only what `--allow-env` named.
+The supervisor does not set it, and `helper_hardening.rs` says why: the kernel
+resets dumpable on every `execve` of an ordinary binary, so it would cover only
+the pre-exec window. Stage 2 never `exec`s and clears it on itself, because the
+command shares its Landlock domain. That same reset is what keeps the sandboxed
+command unaffected, which is correct — its `environ` holds only what
+`--allow-env` named.
 
 What this does not close: every *other* same-uid process's `environ` is still
 reachable through a `/proc` grant, `/proc/<harness-pid>/cmdline` stays readable,
-and the helper's own entry is not concealed, which is what the audit channel's
-`/proc/<helper-pid>/fd/0` exposure rides on. "Do not grant `/proc`" stays.
+and the supervisor's own entry is not concealed, which is what the audit
+channel's `/proc/<helper-pid>/fd/0` exposure rides on. "Do not grant `/proc`"
+stays.
 
 ### What the refusal costs
 
-`--allow-read ~` and `--allow-read /` are now refused on every host, with no key
+`--allow-read ~` and `--allow-read /` are refused on every host, with no key
 stored and no session saved, because both roots derive under `$HOME`. Those two
 flags are the ones an operator reaches for when a command needs more than the
-project tree, so this is the change most likely to be met as a regression. The
+project tree, so this is the refusal most likely to be met as a regression. The
 message names the grant, the owned path inside it, and what sandbx keeps there;
 the answer is to grant the trees the command needs.
 
 Nothing else narrows. A grant over a project tree, a scratch directory, `/usr`,
-`/tmp` or `/etc` derives exactly what it did before, and no subcommand gained a
+`/tmp` or `/etc` derives as it would without the check, and no subcommand gains a
 policy difference.
 
 ### What was rejected for an owned path

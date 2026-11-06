@@ -6,9 +6,9 @@ carries a `thinking` block with an empty text and a real `signature`. Within a
 tool-use turn those blocks must be passed back complete and unmodified, and a
 mid-turn mismatch does not error — the API strips or disables thinking for that
 request — so a broken replay costs reasoning continuity and a prompt cache
-rewrite every tool round, with nothing in the output to say so (#217; it is also
-why #85's premise was false). Observed against the published docs on 2026-10-07;
-a model family that changes the default again changes this note.
+rewrite every tool round, with nothing in the output to say so (#217). Observed
+against the published docs on 2026-10-07; a model family that changes the
+default again changes this note.
 
 ## The prefix rule
 
@@ -59,8 +59,8 @@ A signature is a provider replay token. It is of no use to a resumed conversatio
 whose prefix is a rewrite, so the block is invalid anyway — and it is opaque, so
 nothing downstream can read it. `stored_block` names the two variants as arms and
 returns `None`, which is also what keeps `sandbx-session-message` from needing a
-`Content` variant for them. Rule 1 means nothing reaches that function today; it
-is the last edge before the file, and cheap to hold.
+`Content` variant for them. Rule 1 means nothing reaches that function; it is
+the last edge before the file, and cheap to hold.
 
 ## Switching reasoning on
 
