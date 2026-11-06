@@ -221,8 +221,8 @@ impl Grants {
     /// write only when no path flag was given; a path flag *replaces* that default rather
     /// than adding to it.
     ///
-    /// The derived root gets no execute, which `the_default_root_is_not_executable` pins; the
-    /// crate `//!`'s arm 5 is why that assertion can see every case.
+    /// The derived root gets no execute, which `the_default_root_is_not_executable` pins. That
+    /// assertion cannot see a cwd under a system path; the crate `//!`'s arm 5 refuses one.
     pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
         let mut policy = SandboxPolicy::default()
             .allow_system_executables()

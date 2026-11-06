@@ -128,8 +128,8 @@ pub(super) async fn run(
             )),
         },
         // Either leaves the batch on an unanswered `tool_result`: `first` stands, and prose
-        // already streamed is `Unfinished::Discarded`. Sound only while `RefuseAll` cannot
-        // abort (its doc).
+        // already streamed is `Unfinished::Discarded`. Reading every non-answer stop as a tool
+        // asked for is sound only while `RefuseAll` cannot abort (its doc).
         Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => WrapUp {
             answer: None,
             wrote,
