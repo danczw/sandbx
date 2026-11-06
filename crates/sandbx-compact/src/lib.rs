@@ -4,7 +4,8 @@
 //! No summarisation model, just a bounded window. The API rejects anything but a user-turn
 //! opener — two user turns running, an orphaned `tool_result`, or empty content — so only a
 //! *prefix* drops, onto the new first message, which `opens_a_request` decides; that makes
-//! the legal cut points exactly the human prose turns.
+//! the legal cut points exactly the user turns carrying prose. [`window`] sheds the results
+//! such a turn opens on along with the calls they answer.
 //!
 //! A caller threads the cut back as a floor (`Turn::withheld`), not the measurement alone.
 //! The measurement is of the request already compacted, so on usage alone the turn after a
@@ -135,30 +136,47 @@ pub fn plan_cut(
         })
 }
 
-/// Whether `history[cut..]` followed by the turn's own messages is still a conversation the
-/// API accepts, given that the uncut one already was: three conditions on the message that
-/// would become the first, and the module docs say why these are the whole of it.
+/// What a request carries of `history` once its oldest `cut` messages are withheld.
+///
+/// `history[cut..]`, less the `tool_result` blocks the first message opens on: their calls
+/// sit in the withheld `history[cut - 1]`, so they go with it. That message is the prompt
+/// resuming a turn out of rounds, merged into the results it answers beside (#188); without
+/// this a session capping on every turn had no cut point but its first (#208).
+///
+/// Every block is a `tool_result` or kept, so `cut` stays a whole-message count and needs
+/// no block offset beside it. Not checked against `opens_a_request`: that is
+/// [`plan_cut`]'s postcondition.
+#[must_use]
+pub fn window(history: &[RequestMessage], cut: usize) -> Vec<RequestMessage> {
+    let mut kept = history.get(cut..).unwrap_or_default().to_vec();
+    if cut > 0
+        && let Some(first) = kept.first_mut()
+    {
+        first
+            .content
+            .retain(|block| !matches!(block, ContentBlock::ToolResult { .. }));
+    }
+    kept
+}
+
+/// Whether [`window`] at `cut`, followed by the turn's own messages, is still a conversation
+/// the API accepts, given that the uncut one already was: two conditions on the message
+/// that would become the first, and the module docs say why these are the whole of it.
 ///
 /// 1. `Role::User`: a cut onto an assistant message strands `tool_use` blocks whose
 ///    answers would become a second user turn.
-/// 2. No `ToolResult` block: its `ToolUse` sits in the withheld `history[cut - 1]`, the
-///    clause that makes an arbitrary index illegal.
-/// 3. Non-empty content, which only a caller's own history can hold.
-///
-/// The second rules out the prompt resuming a turn that ran out of rounds, which is sent
-/// merged into the results it answers (#188): a session capping on every turn has no cut
-/// point but its first. A cut landing inside that message is #208.
+/// 2. A block that is not a `ToolResult`, which `window` keeps: a turn of nothing but
+///    results would be left empty, and so would a caller's own empty one.
 ///
 /// `cut == 0` is false, so a `Some` from [`plan_cut`] always means something was withheld.
 fn opens_a_request(history: &[RequestMessage], cut: usize) -> bool {
     cut > 0
         && history.get(cut).is_some_and(|first| {
             matches!(first.role, Role::User)
-                && !first.content.is_empty()
-                && !first
+                && first
                     .content
                     .iter()
-                    .any(|block| matches!(block, ContentBlock::ToolResult { .. }))
+                    .any(|block| !matches!(block, ContentBlock::ToolResult { .. }))
         })
 }
 

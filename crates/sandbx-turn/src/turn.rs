@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use sandbx_approval::CallGate;
-use sandbx_compact::{Compaction, PromptUsage, over_budget, plan_cut};
+use sandbx_compact::{Compaction, PromptUsage, over_budget, plan_cut, window};
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition};
 use sandbx_provider::{EventStream, ProviderError};
@@ -93,7 +93,8 @@ pub struct TurnOutcome {
     /// [`withheld`](Self::withheld) must thread back too.
     pub usage: Option<PromptUsage>,
 
-    /// How many of the oldest history messages the last request left out.
+    /// How many of the oldest history messages the last request left out, the results the
+    /// next one opened on going with them; see [`sandbx_compact::window`].
     ///
     /// `0` covers three cases a caller cannot tell apart: compaction off, on and under budget
     /// with nothing carried in, or over budget with nothing it could legally withhold.
@@ -260,7 +261,7 @@ where
         }
         sent_cut = Some(cut);
 
-        let mut messages = turn.history[cut..].to_vec();
+        let mut messages = window(turn.history, cut);
         messages.extend_from_slice(&produced);
 
         let prompt = Prompt {

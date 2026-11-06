@@ -6,9 +6,9 @@
 
 use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 
-use super::{PromptUsage, opens_a_request, over_budget, plan_cut};
+use super::{PromptUsage, opens_a_request, over_budget, plan_cut, window};
 
-/// A human prose turn: the only shape that is a legal cut point.
+/// A human prose turn, the plainest legal cut point.
 fn user_text(text: &str) -> RequestMessage {
     RequestMessage {
         role: Role::User,
@@ -65,7 +65,7 @@ fn exchange(id: &str, prose: &str) -> Vec<RequestMessage> {
 }
 
 /// Too short to cut, legal boundaries only, one exchange, a caller's own malformed
-/// message, and two exchanges.
+/// message, two exchanges, and a session capping on every turn.
 fn shapes() -> Vec<Vec<RequestMessage>> {
     let mut long = exchange("a", "first");
     long.extend(exchange("b", "second"));
@@ -76,6 +76,7 @@ fn shapes() -> Vec<Vec<RequestMessage>> {
         exchange("a", "first"),
         vec![empty_user(), user_text("two")],
         long,
+        capped(),
     ]
 }
 
@@ -222,31 +223,63 @@ fn a_cut_onto_an_empty_content_array_is_refused() {
     assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(3));
 }
 
-/// "Contains no `ToolResult`", not "is not solely a `ToolResult`": cutting onto a mixed
-/// message orphans the `tool_use` in the one before.
-#[test]
-fn prose_mixed_with_a_tool_result_is_not_a_boundary() {
-    let mixed = RequestMessage {
-        role: Role::User,
-        content: vec![
-            ContentBlock::ToolResult {
-                tool_use_id: "a".to_string(),
-                content: "ok".to_string(),
-                is_error: None,
-            },
-            ContentBlock::Text {
-                text: "and another thing".to_string(),
-            },
-        ],
-    };
-    let history = vec![
+/// The prompt resuming a turn out of rounds, merged into the result it answers beside (#188).
+fn resumed(id: &str, prose: &str) -> RequestMessage {
+    let mut message = user_result(id);
+    message.content.push(ContentBlock::Text {
+        text: prose.to_string(),
+    });
+    message
+}
+
+/// A session capping on every turn: before #208 every prompt but the first was refused.
+fn capped() -> Vec<RequestMessage> {
+    vec![
         user_text("one"),
         assistant_call("a"),
-        mixed,
-        user_text("four"),
-    ];
+        resumed("a", "two"),
+        assistant_call("b"),
+        resumed("b", "three"),
+        assistant_call("c"),
+    ]
+}
 
-    assert_eq!(plan_cut(&history, 0, Some(2), 0), Some(3));
+#[test]
+fn a_session_capping_every_turn_still_compacts() {
+    assert_eq!(plan_cut(&capped(), 0, Some(2), 0), Some(4));
+}
+
+/// The result goes with the call it answers, which the cut withheld.
+#[test]
+fn a_window_sheds_the_results_it_opens_on() {
+    let history = capped();
+
+    let window = window(&history, 4);
+
+    assert_eq!(window.len(), 2);
+    assert_eq!(window[0], user_text("three"));
+    assert_eq!(window[1], history[5]);
+}
+
+/// Only the first message's: every later result answers a call the window still carries.
+#[test]
+fn a_window_keeps_every_later_result() {
+    let history = capped();
+
+    assert_eq!(window(&history, 2)[2], history[4]);
+}
+
+/// Cut 0 withholds no call, so a result there has nothing to go with.
+#[test]
+fn an_uncut_window_is_the_whole_history() {
+    let history = vec![resumed("a", "one")];
+
+    assert_eq!(window(&history, 0), history);
+}
+
+#[test]
+fn a_window_past_the_history_is_empty() {
+    assert!(window(&capped(), 99).is_empty());
 }
 
 /// `None` rather than a panic on an empty range.
@@ -404,6 +437,17 @@ fn every_plan_opens_a_request() {
                         assert!(
                             opens_a_request(&history, cut),
                             "cut {cut} of {history:?} at {keep_recent:?}/floor {floor}"
+                        );
+                        // What the law promises of the request `window` builds from it.
+                        let first = &window(&history, cut)[0];
+                        assert!(
+                            matches!(first.role, Role::User)
+                                && !first.content.is_empty()
+                                && !first
+                                    .content
+                                    .iter()
+                                    .any(|block| matches!(block, ContentBlock::ToolResult { .. })),
+                            "cut {cut} of {history:?} opens on {first:?}"
                         );
                     }
                 }

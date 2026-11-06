@@ -142,8 +142,9 @@ pub struct Merged {
     /// takes.
     pub withheld: usize,
 
-    /// Where each merged message began in the unmerged history.
-    starts: Vec<usize>,
+    /// Where a cut onto each merged message lands in the unmerged history: its last part,
+    /// a run's results going with the calls they answer (`sandbx_compact::window`).
+    opens: Vec<usize>,
 
     /// The unmerged length, so an index past the history maps by its distance past it.
     length: usize,
@@ -151,13 +152,15 @@ pub struct Merged {
 
 impl Merged {
     /// A turn's reported `withheld` in the transcript's index space, which is what a
-    /// caller stores. A figure at or past [`Merged::history`]'s length names one of the
-    /// turn's own messages, which the merge never saw and append does not move.
+    /// caller stores. A cut onto a run names its prose, the transcript storing the results
+    /// it shed as messages of their own. A figure at or past [`Merged::history`]'s length
+    /// names one of the turn's own messages, which the merge never saw and append does not
+    /// move.
     #[must_use]
     pub fn unmerged(&self, withheld: usize) -> usize {
-        match self.starts.get(withheld) {
-            Some(start) => *start,
-            None => self.length + (withheld - self.starts.len()),
+        match self.opens.get(withheld) {
+            Some(open) => *open,
+            None => self.length + (withheld - self.opens.len()),
         }
     }
 }
@@ -173,7 +176,7 @@ impl Merged {
 pub fn merge_user_runs(history: Vec<RequestMessage>, withheld: usize) -> Merged {
     let length = history.len();
     let mut merged: Vec<RequestMessage> = Vec::with_capacity(length);
-    let mut starts: Vec<usize> = Vec::with_capacity(length);
+    let mut opens: Vec<usize> = Vec::with_capacity(length);
     let mut floor = withheld;
 
     for (index, message) in history.into_iter().enumerate() {
@@ -186,11 +189,14 @@ pub fn merge_user_runs(history: Vec<RequestMessage>, withheld: usize) -> Merged 
             floor = merged.len() - usize::from(onto);
         }
 
-        match merged.last_mut() {
-            Some(previous) if onto => previous.content.extend(message.content),
+        match (merged.last_mut(), opens.last_mut()) {
+            (Some(previous), Some(open)) if onto => {
+                previous.content.extend(message.content);
+                *open = index;
+            }
             _ => {
                 merged.push(message);
-                starts.push(index);
+                opens.push(index);
             }
         }
     }
@@ -198,7 +204,7 @@ pub fn merge_user_runs(history: Vec<RequestMessage>, withheld: usize) -> Merged 
     Merged {
         history: merged,
         withheld: floor,
-        starts,
+        opens,
         length,
     }
 }
