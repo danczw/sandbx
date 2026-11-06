@@ -137,10 +137,9 @@ fn both_rootings_answer_alike() {
         assert_eq!(fs::read_to_string(&fresh).unwrap(), "w");
     }
 
-    // The shapes a walk root can take that are not a readable directory. These are where
-    // the two descents diverged once — the rooted one propagated the open's errno where
-    // the by-path one skipped the directory and reported no files — and the divergence
-    // showed only here, every other input being a directory that opens.
+    // The shapes a walk root can take that are not a readable directory: the only inputs
+    // where the rooted descent can propagate the open's errno while the by-path one skips
+    // the directory and reports no files.
     let label = |walked: &Result<ReadableWalk, SandboxError>| match walked {
         Ok(walk) => format!("ok:{}", walk.files.len()),
         Err(error) => error.label().to_string(),

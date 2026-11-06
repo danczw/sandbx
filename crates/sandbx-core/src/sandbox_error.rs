@@ -153,9 +153,9 @@ pub enum SandboxError {
     },
 
     /// This process is not in the state a sandboxed command may be born into: capabilities
-    /// not dropped, core dumps not disabled, or an environment an earlier stage should have
-    /// narrowed. All three are inherited across `exec`, so this is one fact about this
-    /// process rather than three failures.
+    /// not dropped, core dumps not disabled, an environment an earlier stage should have
+    /// narrowed, the audit channel still on stdin, or the dumpable flag still set. Each is
+    /// state the command inherits or could reach, so this is one fact about this process.
     ProcessHardening {
         /// What failed, for the operator to act on.
         detail: String,

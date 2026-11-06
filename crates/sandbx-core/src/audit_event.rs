@@ -1,15 +1,14 @@
 //! The audit trail: what the sandbox did, as `tracing` events on [`AUDIT_TARGET`].
 //!
-//! All seven variants emit at `INFO`, the one property to defend: at `DEBUG` a trail would
-//! reach only those who opted in, and a record matters most where nobody did.
+//! Every variant emits at `INFO`: at `DEBUG` a trail would reach only those who opted in,
+//! and a record matters most where nobody did.
 //!
 //! `decision=` records the access, not the verdict (#182, #187): `allowed` means a handle was
-//! obtained, `absent` that the name denoted nothing, `denied` that something refused. The
-//! verdict is cheaper, being what the guard produces natively, but a trail of verdicts cannot
-//! say what the agent saw, and it forecloses `absent` — no policy refuses a path that was
-//! never there. `decision=` is a wire field, where adding a value is additive and removing
-//! one is not, so that was the expensive direction to get wrong. One record per access: a
-//! `grep` leaves one `allowed` for its walk and one per file it opens.
+//! obtained, `absent` that the name denoted nothing, `denied` that something refused. A trail
+//! of verdicts, though cheaper, cannot say what the agent saw and forecloses `absent` — no
+//! policy refuses a path that was never there — and a wire field's values can be added but not
+//! removed. One record per access: a `grep` leaves one `allowed` for its walk and one per file
+//! it opens.
 
 use crate::{Axis, NetworkPolicy, SandboxPolicy, SpawnId};
 use std::process::ExitStatus;
@@ -21,20 +20,17 @@ pub const AUDIT_TARGET: &str = "sandbx::audit";
 /// How much of a command's argument list a record carries, in characters of the **rendered**
 /// list — after the escaping, not before.
 ///
-/// The number is `gate::printable`'s and the reason is the same, but the measurement is not:
-/// that one caps the raw text and strips afterwards, so 512 there is 512 characters the
-/// model wrote. Here an escape costs what it renders as — six for an ESC, two for a
-/// newline or a quote — so an escape-heavy command is cut well short of 512 of its own
-/// characters. Capping the raw text instead would mean rendering after cutting, and a cut
-/// that landed inside a multi-byte character would then be escaped into visible garbage.
+/// The number is `sandbx-cli`'s `gate::printable`'s, but that one caps the raw text, so 512
+/// there is 512 characters the model wrote. Here an escape costs what it renders as — six for
+/// an ESC, two for a newline or a quote. Capping the raw text instead would mean rendering
+/// after cutting, and a cut inside a multi-byte character would be escaped into garbage.
 ///
-/// Not `gate::printable` itself: it reaches `sandbx_text::invisible`, an edge
-/// `crates/sandbx-text/src/lib.rs` refuses this crate. Nor is the coverage identical, and
-/// the gap is four codepoints: `escape_debug` escapes everything `is_control` plus the
-/// `Cf` and `Mn` classes — so every bidi override, every zero-width character and the C1
-/// range — but leaves the Hangul fillers U+115F, U+1160, U+3164 and U+FFA0, which are `Lo`
-/// letters. They render as blank width and cannot end the field or start a line, which is
-/// why that is a difference and not a hole.
+/// Not `gate::printable` itself: it reaches `sandbx_text::invisible`, an edge `deny.toml`
+/// refuses this crate. The coverage differs by four codepoints: `escape_debug` escapes
+/// `is_control` plus the `Cf` and `Mn` classes — every bidi override, zero-width character
+/// and the C1 range — but leaves the Hangul fillers U+115F, U+1160, U+3164 and U+FFA0, `Lo`
+/// letters. They render as blank width and cannot end the field or start a line, so that is
+/// a difference and not a hole.
 const ARGS_CAP: usize = 512;
 
 /// What a record carries where there is no session. Outside a `SessionId`'s `0-9a-z`, so a
@@ -136,14 +132,13 @@ pub enum AuditEvent<'a> {
         mechanism: &'a str,
         /// The run this weakened, or `SPAWN_ABSENT` for a step that belongs to no run —
         /// `rooted_access` is emitted while the in-process gate is built, before any spawn.
-        /// A degradation falls *between* a spawn and its outcome, so without this the
-        /// middle of a run would still be attributed by position (#249).
+        /// A degradation falls *between* a spawn and its outcome, so without this it would be
+        /// attributed by position (#249).
         spawn: &'a str,
         /// The session this ran under, as in [`Spawned`](Self::Spawned). `rooted_access`
-        /// does carry one despite having no run: what it weakens is every access for the
-        /// session, so this is the field that record is about — which is why
-        /// [`FsGuard::for_session`](crate::FsGuard::for_session) exists, the record being
-        /// written while the guard is built and so unreachable by a setter.
+        /// carries one despite having no run, since it weakens every access for the session;
+        /// it is written while the guard is built, hence
+        /// [`FsGuard::for_session`](crate::FsGuard::for_session) rather than a setter.
         session: &'a str,
         /// Why it did not, and what holds instead.
         detail: &'a str,
@@ -185,20 +180,17 @@ pub enum AuditEvent<'a> {
         /// Whether a digest had to match before the exec. Not the digest, already in
         /// `/proc/self/cmdline`; what an auditor cannot recover is that it was checked (#146).
         pinned: bool,
-        /// What the program was asked to do, cut to `ARGS_CAP`. Here because `program` is
-        /// `/bin/sh` for every `bash` call, so the `-c` string — the command itself — was
-        /// on no record at all (#249).
+        /// What the program was asked to do, cut to `ARGS_CAP`. `program` is `/bin/sh` for
+        /// every `bash` call, so without this the `-c` string is on no record (#249).
         ///
         /// **Last on the record, and that placement is load-bearing.** It is the one field
         /// a model writes and the one `emit` renders unquoted, so a command spelling
-        /// `readable=99 pinned=true` would shadow the real field of that name for anything
-        /// parsing first-match, and an odd number of quotes in it would desync a
-        /// quote-pairing reader for the rest of the line. Every field it could shadow now
-        /// precedes it. A last-wins reader is still fooled, which no ordering fixes, so a
-        /// structured sink has to quote this field rather than inherit the text format's bound.
+        /// `readable=99 pinned=true` would shadow the real field for a first-match parser,
+        /// and an odd number of quotes would desync a quote-pairing reader for the rest of
+        /// the line. A last-wins reader is still fooled, which no ordering fixes, so a
+        /// structured sink has to quote this field.
         ///
-        /// The cost is accepted, not argued away: a credential the model puts on a command line
-        /// now reaches the trail.
+        /// Accepted cost: a credential the model puts on a command line reaches the trail.
         args: &'a str,
     },
 
@@ -290,10 +282,8 @@ impl<'a> AuditEvent<'a> {
     /// enforcement layers are; the exhaustive match is what makes an added axis a compile
     /// error instead. `pin` is a parameter because a digest is not policy.
     ///
-    /// `session` is an `Option` here and a sentinel on the record: the rule a `None` field
-    /// breaks is about the field set `tracing` emits, not about this signature pretending
-    /// every run has a session. `args` comes pre-rendered from `args_field`, the cap
-    /// belonging to the trail rather than to each caller.
+    /// `session` is an `Option` here and a sentinel on the record, the `None` rule being
+    /// about the field set `tracing` emits. `args` comes pre-rendered from `args_field`.
     pub fn spawned(
         program: &'a str,
         args: &'a str,

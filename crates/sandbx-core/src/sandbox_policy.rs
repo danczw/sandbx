@@ -147,15 +147,13 @@ impl SandboxPolicy {
     }
 
     /// A grant naming a file this policy's own resolver will bind over, or `None` if none
-    /// does. The pin cannot hold here: the harness vets the host's file, `helper::resolver` binds
-    /// sandbx's own over it, and `open_grant` would measure the grant against an object sandbx
-    /// itself replaced — refused rather than waived in the substituting process itself (see
-    /// `context/decision-policy.md`). An exact name, not a prefix — which names
-    /// count is [`bound_by_resolver`]'s — since the pin is on the granted path's own inode,
-    /// so a bind over a file inside `/etc` leaves `/etc` alone and `--allow-read /etc`
-    /// collides with nothing. `HelperArgs::decode` does not re-run this check — it stays
-    /// I/O-free, and this reads the filesystem — so it lives on the policy, reaching an
-    /// embedder's argv spawn too.
+    /// does. The pin cannot hold here: the harness vets the host's file, `helper::resolver`
+    /// binds sandbx's own over it, and `open_grant` would measure the grant against an object
+    /// sandbx itself replaced — refused rather than waived in the substituting process itself
+    /// (see `context/decision-policy.md`). An exact name, not a prefix — which names count is
+    /// [`bound_by_resolver`]'s — since the pin is on the granted path's own inode, so
+    /// `--allow-read /etc` collides with nothing. `HelperArgs::decode` does not re-run this
+    /// check, staying I/O-free, so it lives on the policy, reaching an embedder's argv spawn too.
     ///
     /// [`bound_by_resolver`]: crate::bound_by_resolver
     pub fn grant_bound_by_resolver(&self) -> Option<&Path> {
@@ -347,9 +345,8 @@ impl SandboxPolicy {
     /// exist — a host without `/lib64` would otherwise fail to sandbox at all.
     /// [`vet`](VettedPath::vet) resolves first, which a merged-`/usr` host needs — it spells
     /// `/bin` as a symlink to `/usr/bin`, and a grant has to name what it opens. Pinned here
-    /// rather than left to the caller: this is the
-    /// one grant set reached without vetting a path, and an unpinned arm would reopen the
-    /// case [`grant`](Self::grant) was built to not have.
+    /// rather than left to the caller: this is the one grant set reached without the caller
+    /// vetting a path, and an unpinned arm would reopen the case [`grant`](Self::grant) closes.
     #[must_use]
     pub fn allow_system_executables(self) -> Self {
         SYSTEM_EXECUTABLE_PATHS
