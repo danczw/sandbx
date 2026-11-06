@@ -221,11 +221,8 @@ impl Grants {
     /// write only when no path flag was given; a path flag *replaces* that default rather
     /// than adding to it.
     ///
-    /// The derived root gets read and write and no execute, which
-    /// `the_default_root_is_not_executable` pins by asserting the execute axis is
-    /// byte-identical to `allow_system_executables`'. `root`'s overlap arm is what makes that
-    /// assertion mean something: the one way a derived root could have been executable anyway
-    /// was by sitting under a granted system path, and such a root is refused.
+    /// The derived root gets no execute, which `the_default_root_is_not_executable` pins; the
+    /// crate `//!`'s arm 5 is why that assertion can see every case.
     pub fn policy(&self) -> Result<SandboxPolicy, PolicyError> {
         let mut policy = SandboxPolicy::default()
             .allow_system_executables()
@@ -245,8 +242,7 @@ impl Grants {
 
         for axis in Axis::ALL {
             for path in self.paths(axis) {
-                // Outside the branch above: every other path refusal guards only the derived
-                // default, which is why a flag bypassed all of them.
+                // Outside the branch above: every refusal in it guards only the default.
                 // Granted as vetted, not as spelled: left relative, the helper would resolve
                 // it itself, against its own directory and whatever links point at by then (#205).
                 let typed = absolute(path, &env::current_dir)?;

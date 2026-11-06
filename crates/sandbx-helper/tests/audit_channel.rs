@@ -40,8 +40,8 @@ fn scratch() -> tempfile::TempDir {
         .expect("a temporary directory")
 }
 
-/// Collects audit events; repeated from `audit.rs` because cargo gives each
-/// `tests/*.rs` its own binary.
+/// Collects audit events; repeated from `sandbx-core`'s `tests/audit.rs` because cargo gives
+/// each `tests/*.rs` its own binary.
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<String>>>);
 
@@ -246,7 +246,7 @@ fn the_command_inherits_no_other_end_of_the_channel() {
 /// supervisor by construction: pid 1 is a supervisor claim no stage can legally receive,
 /// so `confirm_supervisor` refuses on every host. `env_clear` removes the inner stage's
 /// environment check as a second reason this could fail, and the stderr assertion
-/// attributes the record — three steps here return `namespace_setup_failed`.
+/// attributes the record, several steps here returning `namespace_setup_failed`.
 #[test]
 fn a_refusal_before_the_exec_names_itself_on_the_channel() {
     use std::io::Read;
@@ -453,7 +453,7 @@ fn a_pin_refusal_names_itself_on_the_channel() {
 
 /// Only the stage holding the descriptor can say what it opened, so the mismatch has to
 /// cross the channel as a refusal rather than reach the caller as a sandbox never installed
-/// (#205). The fixture redirects the grant *after* vetting it, because vetting resolves: the
+/// (#205). The test redirects the grant *after* vetting it, because vetting resolves: the
 /// name the policy carries is a real directory, and it is a symlink to somewhere else by
 /// the time the helper opens it.
 #[test]

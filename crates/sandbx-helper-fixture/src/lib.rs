@@ -2,31 +2,19 @@
 //!
 //! A dev-dependency only: nothing links this into a build that ships.
 //!
-//! The alternative is what this replaces — `sandbx-helper/tests/support/mod.rs`, declared
-//! `mod support;` by each of four roots in the same package, which worked. Two things
-//! make a crate better. A test root declaring a non-test submodule is what #333 set out
-//! to end, the `mod` line being indistinguishable from one naming a test file. And
-//! `dead_code` is per test target, so every item had to sit in the intersection all four
-//! roots use or warn in the ones that did not. Compiled once with a public surface, that
-//! constraint is gone, at a price set out at the end of this comment.
+//! A crate, not a `tests/support/mod.rs` each test root declares: that `mod` line is
+//! indistinguishable from one naming a test file (#333), and `dead_code` is per test target,
+//! so every item would have to be used by all four roots or warn. Nor a
+//! `#[cfg(feature = ..)]` export from `sandbx-helper`: its surface would differ between the
+//! `--all-targets` and release builds, so production code naming it would pass clippy and the
+//! suite and fail first at release — the case `context/guide-ci.md` records for a *self*
+//! dev-dependency, which feature unification makes this one.
 //!
-//! A `#[cfg(feature = ..)]` export from `sandbx-helper` would have kept one package at
-//! the price of a surface that diverges between builds — on in the rlib `--all-targets`
-//! builds, off in the release build — so production code naming the fixture would pass
-//! clippy and the whole suite and fail first at release. `context/guide-ci.md` records
-//! that for a *self* dev-dependency; feature unification makes this case the same one.
+//! The helper binary is a parameter and not an `env!`: `CARGO_BIN_EXE_sandbx-helper` is set
+//! only for a target of the package declaring that bin, so each root passes its own (#347).
 //!
-//! The helper binary is a **parameter** and not an `env!`, which is what made this
-//! movable at all: `CARGO_BIN_EXE_sandbx-helper` is set only for a target of the package
-//! declaring that bin, so the same `env!` compiled here would resolve nowhere. Each root
-//! passes the path its own Cargo run gave it (#328 decision 5, #347).
-//!
-//! The cost is that every item is `pub` and so under `missing_docs`, and that the crate
-//! is compiled by the default `cargo test`, `clippy --all-targets` and `doc` runs rather
-//! than only behind `sandbox-integration` as the module was. Both are worth paying: the
-//! fixture is now type-checked on every CI job instead of one. Ungated deliberately, and
-//! still Linux-only — not by a `cfg` of its own but because `sandbx-core` refuses to
-//! compile anywhere else, which the whole workspace already rests on.
+//! Ungated, so every CI job type-checks it, at the price of `missing_docs` on every item.
+//! Linux-only because `sandbx-core` refuses to compile anywhere else.
 
 use std::path::Path;
 use std::process::{Command, Output};

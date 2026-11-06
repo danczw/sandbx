@@ -7,10 +7,6 @@ use sandbx_core::SandboxError;
 
 /// What to type instead, appended to every [`PolicyError`] that refused the derived default
 /// so two of them cannot advise differently. A refusal of a flag says what to change about it.
-///
-/// Three variants are outside it deliberately. `ImposedVariable` is about neither a path nor
-/// the working directory, so path-flag advice would answer a question nobody asked, and the
-/// two `--pin-sha256` refusals say what to write instead on their own account.
 const ADVICE: &str = "pass --allow-read PATH and --allow-write PATH \
                       for the tree the command needs";
 
@@ -51,11 +47,12 @@ pub enum PolicyError {
         home: Option<PathBuf>,
     },
 
-    /// The working directory holds a path every command is already granted execute on.
+    /// The working directory holds, or is inside, a path every command is already granted
+    /// execute on.
     SystemExecutables {
         /// The directory a default would have been rooted at.
         cwd: PathBuf,
-        /// The granted path found inside it.
+        /// The granted path it overlaps.
         path: PathBuf,
     },
 
@@ -173,8 +170,7 @@ impl fmt::Display for PolicyError {
                  — {ADVICE}",
                 cwd.display()
             ),
-            // Naming the value matters where it is set and still rejected — `HOME=/home` is
-            // where homes live, not one of them, and "no usable HOME" reads as unset.
+            // Naming the value matters where it is set and still rejected, as `HOME=/home`.
             Self::UnnamedHome {
                 cwd,
                 home: Some(home),

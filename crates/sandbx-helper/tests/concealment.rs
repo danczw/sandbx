@@ -1,8 +1,8 @@
 //! What another process running as the same user can read out of sandbx's procfs entry.
 //!
-//! Cross-process because that is the claim: what the flag stops is a same-uid reader, and
-//! only a second process can be one. So the probe is spawned and read from here, before and
-//! after it conceals itself, which is what pins the refusal on the call.
+//! Cross-process because that is the claim: what the dumpable flag stops is a same-uid
+//! reader, and only a second process can be one. So the probe is read from here, before and
+//! after it conceals itself, which pins the refusal on the call.
 // `Command::new` spawns this crate's own probe; the workspace ban exists to stop code
 // executing around the sandbox.
 #![allow(clippy::disallowed_methods)]

@@ -1,8 +1,8 @@
 //! Reports when it is up, conceals itself when told to, and holds until stdin closes.
 //! Test-only.
 //!
-//! Two stages driven from the parent, because the reader the flag is about is another
-//! process: it has to look both before and after this call to pin the refusal on it.
+//! Two stages, so the reader the dumpable flag is about — another process — can look both
+//! before and after this call.
 
 use std::io;
 use std::io::{BufRead, Write};

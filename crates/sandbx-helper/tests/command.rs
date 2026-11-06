@@ -2,7 +2,7 @@
 //!
 //! The end-to-end half of `sandbx-core`'s `command.rs`: every test here spawns the helper
 //! binary, so it lives beside it where `CARGO_BIN_EXE_sandbx-helper` resolves (#328
-//! decision 5). The encode-and-parse half, which needs no binary, stayed in `sandbx-core`.
+//! decision 5). The encode-and-parse half, which needs no binary, is in `sandbx-core`.
 //!
 //! One file-level gate rather than one per test, as every other gated file here has: with
 //! per-test gates the imports and the two fixtures below are unused when the feature is
