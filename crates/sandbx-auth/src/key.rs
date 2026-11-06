@@ -36,7 +36,7 @@ pub struct Auth {
 /// The three things `auth` can do.
 #[derive(Debug, clap::Subcommand)]
 enum Action {
-    /// Store an API key, read from stdin.
+    /// Store an API key, read from stdin
     ///
     /// Refuses to prompt: stdin must be a pipe or a file, so the key is never echoed to
     /// the terminal and never reaches your shell's history. Pass it without putting it in
@@ -50,6 +50,7 @@ enum Action {
     /// `~/.config/sandbx/credentials.toml`, with mode 0600 in a directory with mode 0700.
     /// It is stored in cleartext: anything running as you, and root, can read it. An
     /// existing file is rewritten in place, keeping any entry this command did not write.
+    #[command(verbatim_doc_comment)]
     Login,
 
     /// Remove the stored API key.

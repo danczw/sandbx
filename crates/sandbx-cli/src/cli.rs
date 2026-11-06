@@ -28,7 +28,7 @@ pub struct Cli {
 /// What `sandbx` can be asked to do.
 #[derive(Debug, clap::Subcommand)]
 pub enum Command {
-    /// Run a command under the sandbox and report what it did.
+    /// Run a command under the sandbox and report what it did
     ///
     /// With no path flag, the working directory is readable and writable, so
     /// working on the project you are standing in needs no flags. A `--allow-…`
@@ -52,9 +52,10 @@ pub enum Command {
     /// sandbx sandbox-run -- grep -rn TODO .
     /// sandbx sandbox-run --allow-read /srv -- cat /srv/notes.txt
     /// ```
+    #[command(verbatim_doc_comment)]
     SandboxRun(SandboxRun),
 
-    /// Ask an agent one question, and let it use tools to answer.
+    /// Ask an agent one question, and let it use tools to answer
     ///
     /// The prompt goes out, the answer streams back on stdout, and every tool
     /// the model calls is bounded by the same flags: denied unless a flag grants
@@ -83,9 +84,10 @@ pub enum Command {
     /// ```text
     /// sandbx agent-run --allow-read /srv -- "what is in /srv?"
     /// ```
+    #[command(verbatim_doc_comment)]
     AgentRun(AgentRun),
 
-    /// Ask the same question on a screen you can watch, and stop.
+    /// Ask the same question on a screen you can watch, and stop
     ///
     /// Takes every flag `agent-run` takes and bounds a tool call the same way.
     /// What differs is the reporting: the answer, the model's reasoning and the
@@ -110,23 +112,25 @@ pub enum Command {
     /// ```text
     /// sandbx tui --allow-tool bash -- "what is in this directory?"
     /// ```
+    #[command(verbatim_doc_comment)]
     Tui(Tui),
 
-    /// Print a file's SHA-256, in the form `--pin-sha256` takes.
+    /// Print a file's SHA-256, in the form `--pin-sha256` takes
     ///
-    /// The only subcommand that runs nothing and confines nothing: it reads the
-    /// file in the harness, the way `sha256sum` does, because the digest has to
-    /// exist before there is a policy to pin anything under. The hex and a
-    /// newline, and nothing else, so it composes:
+    /// Runs nothing and confines nothing: it reads the file in the harness, the
+    /// way `sha256sum` does, because the digest has to exist before there is a
+    /// policy to pin anything under. The hex and a newline, and nothing else, so
+    /// it composes:
     ///
     /// ```text
     /// sandbx sandbox-run --allow-exec "$PWD/target/debug/mytool" \
     ///   --pin-sha256 "$(sandbx hash target/debug/mytool)" \
     ///   -- "$PWD/target/debug/mytool"
     /// ```
+    #[command(verbatim_doc_comment)]
     Hash(Hash),
 
-    /// Store, remove or check the API key `agent-run` authenticates with.
+    /// Store, remove or check the API key `agent-run` authenticates with
     ///
     /// Two sources, in this order: `ANTHROPIC_API_KEY` from the environment, then a
     /// credential file at `$XDG_CONFIG_HOME/sandbx/credentials.toml` — or
@@ -146,6 +150,10 @@ pub enum Command {
     /// The stored key is in cleartext. The file's mode keeps it from other users on the
     /// host; it does not keep it from anything running as you, and the sandbox does not
     /// confine sandbx itself — see SECURITY.md.
-    #[command(subcommand_required = true, arg_required_else_help = true)]
+    #[command(
+        subcommand_required = true,
+        arg_required_else_help = true,
+        verbatim_doc_comment
+    )]
     Auth(Auth),
 }
