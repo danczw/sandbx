@@ -1636,7 +1636,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-anthropic"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -1654,7 +1654,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-approval"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "sandbx-tools",
  "serde_json",
@@ -1662,7 +1662,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-auth"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "clap",
  "secrecy",
@@ -1672,7 +1672,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-cli"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "clap",
  "futures-util",
@@ -1705,7 +1705,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-compact"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "sandbx-prompt",
  "serde_json",
@@ -1713,7 +1713,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-core"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "caps",
  "landlock",
@@ -1728,14 +1728,14 @@ dependencies = [
 
 [[package]]
 name = "sandbx-event"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "sandbx-grants"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "clap",
  "sandbx-auth",
@@ -1746,7 +1746,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-helper"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "caps",
  "io-uring",
@@ -1761,14 +1761,14 @@ dependencies = [
 
 [[package]]
 name = "sandbx-helper-fixture"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "sandbx-core",
 ]
 
 [[package]]
 name = "sandbx-logging"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "sandbx-core",
  "tempfile",
@@ -1779,14 +1779,14 @@ dependencies = [
 
 [[package]]
 name = "sandbx-prompt"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "sandbx-provider"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "futures-util",
  "sandbx-event",
@@ -1794,14 +1794,14 @@ dependencies = [
 
 [[package]]
 name = "sandbx-pty-fixture"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "nix",
 ]
 
 [[package]]
 name = "sandbx-screen"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "nix",
  "ratatui",
@@ -1813,7 +1813,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-session-bridge"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "sandbx-compact",
  "sandbx-prompt",
@@ -1827,21 +1827,21 @@ dependencies = [
 
 [[package]]
 name = "sandbx-session-error"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "sandbx-session-id"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "sandbx-session-error",
 ]
 
 [[package]]
 name = "sandbx-session-message"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "serde",
  "serde_json",
@@ -1849,14 +1849,14 @@ dependencies = [
 
 [[package]]
 name = "sandbx-session-paths"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "sandbx-session-error",
 ]
 
 [[package]]
 name = "sandbx-session-store"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "nix",
  "sandbx-session-error",
@@ -1869,7 +1869,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-sse"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "bytes",
  "futures-util",
@@ -1879,11 +1879,11 @@ dependencies = [
 
 [[package]]
 name = "sandbx-text"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 
 [[package]]
 name = "sandbx-tools"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "sandbx-core",
  "schemars",
@@ -1896,7 +1896,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-tui-input"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "nix",
  "ratatui",
@@ -1906,7 +1906,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-tui-transcript"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "ratatui",
  "sandbx-event",
@@ -1916,7 +1916,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-turn"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "futures-util",
  "sandbx-anthropic",
@@ -1937,7 +1937,7 @@ dependencies = [
 
 [[package]]
 name = "sandbx-turn-fixture"
-version = "0.1.0-alpha.22"
+version = "0.1.0-alpha.23"
 dependencies = [
  "futures-util",
  "sandbx-approval",
