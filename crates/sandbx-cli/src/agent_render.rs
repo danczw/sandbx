@@ -71,10 +71,6 @@ pub(super) struct Render<W, E> {
     /// answers with nothing leaves no stray blank line.
     separating: bool,
 
-    /// Whether any text has arrived since the last [`Render::separate`], so a caller can
-    /// tell a round that wrote and then failed from one that wrote nothing.
-    after_gap: bool,
-
     /// Whether reasoning was asked for. Off unless
     /// [`crate::agent::AgentRun::show_thinking`] set it, so a summary streamed unasked is
     /// dropped here rather than put in front of an operator who did not want it.
@@ -99,7 +95,6 @@ impl<W: Write, E: Write> Render<W, E> {
             mid_line: false,
             wrote: false,
             separating: false,
-            after_gap: false,
             reasoning: Reasoning::Hidden,
             thinking_mid_line: false,
             err_device: Device::Redirected,
@@ -126,12 +121,6 @@ impl<W: Write, E: Write> Render<W, E> {
     /// Owed, not written: the wrap-up round it separates may answer with nothing at all.
     pub(super) fn separate(&mut self) {
         self.separating = self.wrote;
-        self.after_gap = false;
-    }
-
-    /// Whether anything has reached stdout since [`Render::separate`].
-    pub(super) fn wrote_after_gap(&self) -> bool {
-        self.after_gap
     }
 
     /// Terminate a part-written line of reasoning, so nothing continues it.
@@ -176,7 +165,6 @@ impl<W: Write, E: Write> Render<W, E> {
                 self.write(delta.as_bytes());
                 if !delta.is_empty() {
                     self.mid_line = !delta.ends_with('\n');
-                    self.after_gap = true;
                 }
             }
             // Stderr, stdout being the answer. Gated rather than trusted to be empty: the

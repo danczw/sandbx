@@ -1,4 +1,5 @@
-use super::merge;
+use super::super::render::Unfinished;
+use super::{WrapUp, merge};
 use sandbx_event::StopReason;
 use sandbx_turn::{TurnOutcome, TurnStop};
 
@@ -36,4 +37,23 @@ fn the_merged_turn_takes_the_wrap_ups_reason() {
     // rounds is never reported against the summary that replaced them.
     let unreported = merge(outcome(capped, cut), outcome(TurnStop::Answered, None));
     assert_eq!(unreported.round_stop, None);
+}
+
+/// What the round left decides the ending: an answer summarises, text that was not one is
+/// discarded, and a round that showed nothing leaves the turn as the cap cut it.
+#[test]
+fn the_ending_is_what_the_round_left() {
+    let ending = |summarised, wrote| {
+        WrapUp {
+            outcome: outcome(TurnStop::RoundLimit { rounds: 3 }, None),
+            summarised,
+            wrote,
+            said: None,
+        }
+        .ending(3)
+    };
+
+    assert_eq!(ending(true, true), Unfinished::Summarised(3));
+    assert_eq!(ending(false, true), Unfinished::Discarded(3));
+    assert_eq!(ending(false, false), Unfinished::CutShort(3));
 }

@@ -363,20 +363,6 @@ fn a_summary_sits_one_blank_line_below_the_cut() {
     assert_eq!(terminated, "looking\n\nfound three\n");
 }
 
-#[test]
-fn text_arriving_after_the_gap_is_noticed() {
-    let mut render = captured();
-    render.event(&text("looking"));
-    render.separate();
-    assert!(!render.wrote_after_gap());
-
-    render.event(&text(""));
-    assert!(!render.wrote_after_gap(), "an empty delta is not text");
-
-    render.event(&text("found three"));
-    assert!(render.wrote_after_gap());
-}
-
 /// The gap is owed, not written, so neither end of it can strand a blank line.
 #[test]
 fn a_gap_with_nothing_either_side_is_never_written() {

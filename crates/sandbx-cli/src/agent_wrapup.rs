@@ -17,16 +17,14 @@
 //! a script sees the same status either way, and stderr is what tells the two apart — the
 //! split `--max-tokens` truncation uses.
 
-use std::io::Write;
-
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
+use sandbx_event::AgentEvent;
 use sandbx_prompt::{Prompt, ToolChoice};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_tools::ExecutionContext;
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
-use super::prompt::Notes;
-use super::{Render, gate};
+use super::render::Unfinished;
 
 /// What the model is told in place of the tools it may no longer call.
 ///
@@ -49,9 +47,11 @@ const REFUSED: &str = "no tool may be called while answering a turn that ran out
 /// reach `sandbx-tools` on the strength of a flag meant for the turn before this one. A
 /// `Deny` and never an `ApprovalDecision::Abort`: this gate has no channel to lose, so the
 /// stop test below can read anything but [`TurnStop::Answered`] as a tool asked for.
-struct RefuseAll;
+///
+/// `S` is where the refusal is reported: stderr under `agent-run`, the pane under `tui`.
+struct RefuseAll<S>(S);
 
-impl CallGate for RefuseAll {
+impl<S: FnMut(Settled<'_>)> CallGate for RefuseAll<S> {
     fn approve(&mut self, _: ToolCall<'_>) -> ApprovalDecision {
         ApprovalDecision::Deny {
             reason: REFUSED.to_owned(),
@@ -59,20 +59,22 @@ impl CallGate for RefuseAll {
     }
 
     fn settled(&mut self, call: Settled<'_>) {
-        gate::settled(call);
+        (self.0)(call);
     }
 }
 
 /// Ask once more, over `turn`'s history plus `first`'s messages, and say whether it answered.
 ///
 /// A wrap-up round that fails leaves `first` exactly as it was — exit 2, its text
-/// already on stdout, and stored (#188) — rather than costing it any of them.
-pub(super) async fn run<W: Write, E: Write>(
+/// already shown, and stored (#188) — rather than costing it any of them. `observe` and
+/// `settle` are the caller's sinks, so the round is drawn where the turn was (#232).
+pub(super) async fn run(
     open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
     ctx: &ExecutionContext,
     turn: Turn<'_>,
     first: TurnOutcome,
-    render: &mut Render<W, E>,
+    mut observe: impl FnMut(&AgentEvent),
+    settle: impl FnMut(Settled<'_>),
 ) -> WrapUp {
     let mut continued = turn.history.to_vec();
     continued.extend(first.messages.iter().cloned());
@@ -100,42 +102,52 @@ pub(super) async fn run<W: Write, E: Write>(
         withheld: first.withheld,
     };
 
-    render.separate();
-    let second = run_turn(open, wrap_up, ctx, |event| render.event(event), RefuseAll).await;
+    let mut wrote = false;
+    let second = run_turn(
+        open,
+        wrap_up,
+        ctx,
+        |event| {
+            wrote |= matches!(event, AgentEvent::Text { delta } if !delta.is_empty());
+            observe(event);
+        },
+        RefuseAll(settle),
+    )
+    .await;
 
     match second {
         // Reported, not propagated: a `?` here would turn a turn that did real work
         // into exit 1 with its text already written.
-        Err(error) => {
-            render.note(&format!(
+        Err(error) => WrapUp {
+            outcome: first,
+            summarised: false,
+            wrote,
+            said: Some(format!(
                 "sandbx: the wrap-up request failed: {}",
                 crate::error_line(&error)
-            ));
-            WrapUp {
-                outcome: first,
-                summarised: false,
-            }
-        }
+            )),
+        },
         // Either leaves the batch on an unanswered `tool_result`: `first` stands, and prose
         // already streamed is `Unfinished::Discarded`. Reading every non-answer stop as a tool
         // asked for is sound only while `RefuseAll` cannot abort.
-        Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => {
-            render.note(&format!(
+        Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => WrapUp {
+            outcome: first,
+            summarised: false,
+            wrote,
+            said: Some(format!(
                 "sandbx: the wrap-up round {}",
                 if second.messages.is_empty() {
                     "replied with nothing"
                 } else {
                     "asked for a tool instead of answering"
                 }
-            ));
-            WrapUp {
-                outcome: first,
-                summarised: false,
-            }
-        }
+            )),
+        },
         Ok(second) => WrapUp {
             outcome: merge(first, second),
             summarised: true,
+            wrote,
+            said: None,
         },
     }
 }
@@ -144,7 +156,25 @@ pub(super) async fn run<W: Write, E: Write>(
 pub(super) struct WrapUp {
     /// The turn to store: `first` alone, or merged with the round that answered.
     pub(super) outcome: TurnOutcome,
-    pub(super) summarised: bool,
+    summarised: bool,
+    /// Whether the round streamed any text, answer or not.
+    wrote: bool,
+    /// Why the round is not the answer, for the caller to report ahead of its ending.
+    pub(super) said: Option<String>,
+}
+
+impl WrapUp {
+    /// How a turn that ran out after `rounds` ended, once this round was spent on it.
+    ///
+    /// A round that failed after streaming prose has already shown text that no
+    /// transcript will account for, which `CutShort` would deny.
+    pub(super) fn ending(&self, rounds: usize) -> Unfinished {
+        match (self.summarised, self.wrote) {
+            (true, _) => Unfinished::Summarised(rounds),
+            (false, true) => Unfinished::Discarded(rounds),
+            (false, false) => Unfinished::CutShort(rounds),
+        }
+    }
 }
 
 /// The two turns as the one turn a caller stores.
