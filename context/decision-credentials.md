@@ -8,17 +8,14 @@ value in full. That part is why nothing better is offered, and what is offered
 instead. The mechanism that exists is `decision-policy.md`; what
 enforces any of it is `guide-sandboxing.md`.
 
-The ordering matters: #41 could not be designed while the environment was shared
-wholesale, which is why #98 landed first and separately. A sandboxed command no
-longer inherits the harness's environment (#98): the policy names what crosses, so
-a key in sandbx's environment is not in the child's.
+Both rest on a sandboxed command not inheriting the harness's environment (#98):
+the policy names what crosses, so a key in sandbx's environment is not in the
+child's.
 
 ## The harness's own key
 
-Three tiers were designed and two are built. The argument for a second source is
-that `agent-run` once read the environment alone, so a user with no
-`ANTHROPIC_API_KEY` exported had no way to authenticate at all — an argument that
-did not exist before the turn loop had a caller (#109).
+Three tiers were designed and two are built. The second source exists so a user
+with no `ANTHROPIC_API_KEY` exported can still authenticate (#109).
 
 | Tier | Source | Where |
 |---|---|---|
@@ -52,8 +49,7 @@ prompt would echo the key into the terminal's scrollback, and the obvious
 alternative — an argument — would publish it through `/proc/<pid>/cmdline` to
 every process on the host. Refusing a tty means the documented idiom is
 `read -rs KEY && printf %s "$KEY" | sandbx auth login`, which keeps the key out of
-scrollback, shell history and argv alike. The cost is that the tty refusal cannot
-be tested without a pty; it is not covered.
+scrollback, shell history and argv alike. The tty refusal has no test.
 
 Where the credential file lives, what mode it is created with and why its mode
 rule differs from a session transcript's is in
@@ -99,11 +95,10 @@ reading untrusted text.
 
 ### A placeholder needs a proxy, and the proxy was declined
 
-The shape this project sketched first, and the one OpenShell implements: the
-sandboxed process sees an opaque placeholder, and a TLS-terminating proxy
-substitutes the real credential per request, only for a destination matching the
-credential's scope. The secret never enters the child's memory. This document
-used to carry that sketch; it is not a mechanism.
+The shape OpenShell implements: the sandboxed process sees an opaque
+placeholder, and a TLS-terminating proxy substitutes the real credential per
+request, only for a destination matching the credential's scope. The secret
+never enters the child's memory.
 
 Every component of it — the listener the command can reach, the interception that
 catches an uncooperative program, the TLS termination that makes the allowlist
@@ -113,10 +108,11 @@ side. Substitution leaves with the termination it needs to read a request, and
 the resolver is the one piece that stands without the rest — `--allow-dns NAME`
 (#145).
 
-Nor is the dependency free. No crate depends on a server-side HTTP stack; hyper
-arrives only through `wiremock`, a dev-dependency, and `tokio`'s `net` feature is
-enabled nowhere. A new network-facing service with a new trust boundary is a large
-thing to add to a project whose claim is that the boundaries are kernel ones.
+Nor is the dependency free. No crate depends on a server-side HTTP stack: hyper
+arrives as `reqwest`'s client, and its `server` feature only through `wiremock`,
+a dev-dependency. A new network-facing service with a new trust boundary is a
+large thing to add to a project whose claim is that the boundaries are kernel
+ones.
 
 ### Interception is cooperation, and sandbx ships the binary that defeats it
 
@@ -340,8 +336,7 @@ use there. What it does not do is answer how a sandboxed tool could be handed a
 credential: a brokered capability needs a channel that does not exist, and a
 placeholder needs a proxy `decision-port-allowlist.md` declines.
 
-The honest summary is that #41 ends in a decision rather than a mechanism, and in
-one refusal that is enforceable today.
+#41 ends in a decision rather than a mechanism, and in one enforceable refusal.
 
 ### The mutation check
 

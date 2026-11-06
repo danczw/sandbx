@@ -90,21 +90,20 @@ A gate that can no longer be *asked* is not a gate that said no.
 every call behind it in the round without asking, and ends the turn as
 `TurnStop::GateAborted`. `agent-run` exits 3 for it.
 
-#218 filed two defects against the old behaviour, and only the pair of them
-justifies a public variant. A hung-up terminal already refused correctly and
-promptly — but the turn went round again and opened another provider stream,
-paid for with nobody at the other end, and the process exited 0, so an
-unattended caller read a vanished operator as success.
+Only the pair of costs below justifies a public variant (#218). A hung-up
+terminal refuses correctly and promptly, but on a `Deny` the turn would go round
+again and open another provider stream, paid for with nobody at the other end,
+and the process would exit 0, so an unattended caller would read a vanished
+operator as success.
 
 **The trigger is the CLI's; the mechanism cannot be.** Distinguishing a channel
-failure from an operator's `n` is `agent_prompt.rs`'s alone — it is the only
+failure from an operator's `n` is `agent_prompt.rs`'s alone: it is the only
 layer that can tell them apart without guessing at intent, and `--allow-tool`'s
-own refusal
-stays a `Deny` because a tool no flag approved is a decision. But a CLI-confined
-fix has no lever on the cost: `Deny` is recoverable by design, so the round loop
-still iterates `max_rounds` times opening a stream each time. A latch read after
-`run_turn` returned would have closed "exits 0" and left "keeps paying" exactly
-as filed.
+own refusal stays a `Deny` because a tool no flag approved is a decision. But a
+CLI-confined fix has no lever on the cost: `Deny` is recoverable by design, so
+the round loop still iterates `max_rounds` times opening a stream each time. A
+latch read after `run_turn` returned would close "exits 0" and leave "keeps
+paying".
 
 - **Fail-closed, both ways.** The abort refuses the call it landed on; it never
   lets one through, which is the one way a fix here could be worse than the bug.
@@ -128,16 +127,15 @@ as filed.
   lost operator is neither bound nor anything they configured, and the two can
   co-occur. Reusing it would leave the defect distinguishable only by grepping
   stderr. `3` wins over a `max_tokens` cut, a bound being recoverable by raising
-  a flag where this is not. The same argument moved a usage error off 2 and onto
-  64: clap's default collided with the bound, so a mistyped flag and a cut round
-  were one number (#265). A code a caller has to grep stderr to read is not a
-  code.
+  a flag where this is not. A usage error exits 64 for the same reason: clap's
+  default 2 would make a mistyped flag and a cut round one number (#265). A code
+  a caller has to grep stderr to read is not a code.
 
-One typed `VEOF` ends the turn with it, which is a real behaviour change: `read`
-returns 0 for a bare close and for an end of input alike, and both mean nobody is
-answering. Probing with a write afterwards *would* separate them — a device that
-still accepts one is still there — but it is extra mechanism for a case where
-both readings point the same way.
+One typed `VEOF` ends the turn with it: `read` returns 0 for a bare close and
+for an end of input alike, and both mean nobody is answering. Probing with a
+write afterwards *would* separate them (a device that still accepts one is
+still there), but it is extra mechanism for a case where both readings point
+the same way.
 
 So three things record the refusal durably, none of which needs a live terminal:
 the exit code, the stderr line `Render` writes before it checks stdout at all,
@@ -154,19 +152,18 @@ not be written is a run with nothing to show and 1 is the honest report. Under
 operator is never drawn, and `given_back` writes it in the transcript printed
 once the screen is gone and on a redirected stderr, and the latch is read after
 the code is already decided, so a draw that stopped partway leaves that line
-standing and the earned 3 with it. Taking the code there reported a lost
-operator as a generic failure, which was the whole of #257.
+standing and the earned 3 with it. Letting the screen take the code would report
+a lost operator as a generic failure (#257).
 
-Two of the three durable things are thinner under `tui`, which is worth naming
-here rather than leaving to be discovered. The per-call `settled` line is *drawn*
-and not written while the turn runs, the alternate screen neither redirecting
-stderr nor giving it back, so it reaches a terminal only in the transcript
-printed after the screen is gone, and stderr only then, where that is redirected
-or the reprint could not be written (#224); and
-`--session` is off unless asked for, so the `tool_result` may not be stored at
-all. The account and the exit code are what survive unconditionally, which is
-why neither may be taken by a failure of the screen. `tui.rs`'s `given_back`
-states the same where it decides the codes.
+Two of the three durable things are thinner under `tui`. The per-call `settled`
+line is *drawn* and not written while the turn runs, the alternate screen
+neither redirecting stderr nor giving it back, so it reaches a terminal only in
+the transcript printed after the screen is gone, and stderr only then, where
+that is redirected or the reprint could not be written (#224); and `--session`
+is off unless asked for, so the `tool_result` may not be stored at all. The
+account and the exit code are what survive unconditionally, which is why
+neither may be taken by a failure of the screen. `tui.rs`'s `given_back` states
+the same where it decides the codes.
 
 All three survive the hangup *because* consent is a third device. With the
 question on `/dev/tty`, stdout and stderr can both be redirected to files
@@ -231,22 +228,22 @@ The offered set would have been a second, independent refusal — `answer_calls`
 enforces it above the gate — so declining it means one mistake in `approves` or in
 a tool's declared `RiskLevel` is enough for a `bash` to run. Taken deliberately:
 the refusal is what tells the operator which flag to pass, which a tool the model
-was never offered cannot do. A live run is the evidence — asked to write a file
+was never offered cannot do. A live run is the evidence: asked to write a file
 with no flag, the model tried `bash`, read the refusal, and switched to `write`.
-That round is no longer the price of it: the system prompt names the approved set
-before the first request (#197), so the refusal stays the operator's signal
-without being the model's only route to the list.
+The system prompt names the approved set before the first request (#197), so
+the refusal stays the operator's signal without being the model's only route to
+the list.
 
-Narrowing the offered set buys defence in depth and costs that signal, so the trade
-is worth revisiting if a second caller appears; `the_risk_each_tool_carries_is_documented`
-is what currently holds the classification a mistake would have to get past.
+Narrowing the offered set buys defence in depth and costs that signal;
+`the_risk_each_tool_carries_is_documented` is what holds the classification a
+mistake would have to get past.
 
 `RiskLevel` is a field of each tool's own `SPEC` rather than a table in the gate,
 so a new tool declares its level or fails to compile. A denylist in the CLI would
-have been silently missing it — which is the failure mode the level exists to
-prevent. `tests/registry.rs` spells the expected levels out by hand: derived from
-`risk()` the test would assert only self-consistency, and a `bash` reclassified as
-read-only would pass.
+have been silently missing it, which is the failure mode the level exists to
+prevent. `sandbx-tools/tests/registry.rs` spells the expected levels out by
+hand: derived from `risk()` the test would assert only self-consistency, and a
+`bash` reclassified as read-only would pass.
 
 ## The operator is the floor, argv the ceiling
 
@@ -278,8 +275,9 @@ fail-open one request later, so the turn ends instead.
 and the whole round's text streams before the gate asks anything, so the model
 can leave an SGR state behind or print prose that reads like a question. The
 reset covers the first, and is written before the account as well as before the
-question — concealing the record of what ran is the same attack one line later —
-including on stderr when stderr is a terminal, which a redirected one is not. The second is worse than it looks: a counterfeit question
+question (concealing the record of what ran is the same attack one line later),
+including on stderr when stderr is a terminal, which a redirected one is not.
+The second is worse than it looks: a counterfeit question
 cannot *consume* an answer, since only `approve` ever reads, but canonical mode
 queues a finished line until something reads it, so a `y` typed at the forgery
 was still sitting in the kernel's input queue when the real question's read

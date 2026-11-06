@@ -70,7 +70,7 @@ while the migration runs.
 **A reviewer cannot read conformance off the file in front of them.** Whether a
 violation is a finding depends on which phase has landed and whether the line is new.
 The diff answers the second question and only the tracking issue answers the first,
-so every review pays this until Phase 7 closes.
+so every review pays this while a phase is unlanded.
 
 **A file can hold both styles at once** — a module half-swept — and read as nobody's
 intent. That is the price of not doing the whole tree in one unreviewable commit.
@@ -78,29 +78,28 @@ intent. That is the price of not doing the whole tree in one unreviewable commit
 ## Library rules in `core`, application rules elsewhere
 
 `sandbx-core` follows the guide's library rules and every other crate its application
-rules. The split is about who the caller is: `core`'s callers are the other six
-crates and cannot be changed in lockstep with it, while a change inside
-`sandbx-tui-input` has one caller and it is in this repo.
+rules. The split is about who the caller is: `core`'s callers are the eight
+crates that depend on it and cannot be changed in lockstep with it, while a
+change inside `sandbx-tui-input` has one caller and it is in this repo.
 
 What this does *not* buy is `#[non_exhaustive]`. The guide scopes it to enums other
 teams consume; there are no other teams, and `sandbox_policy.rs` depends on its
-matches being exhaustive. Adding an axis has to break every match over axes — that compile error is
-the check that a new axis cannot arrive without a row. `#[non_exhaustive]` would turn
-it into a silently-taken wildcard arm, which is the defect `decision-policy.md`
-records as *A new axis without a row fails the test*. It is refused in `core` too,
-library rules notwithstanding.
+matches being exhaustive. Adding an axis has to break every match over axes: that
+compile error is the check that a new axis cannot arrive without a row.
+`#[non_exhaustive]` would turn it into a silently-taken wildcard arm, which is the
+defect `decision-policy.md` records as *A new axis without a row fails the test*.
+It is refused in `core` too, library rules notwithstanding.
 
 ## What this leaves open
 
-The one departure above is a consequence of a choice taken before any code moved —
+The one departure above is a consequence of a choice taken before any code moved:
 the larger crate. If that is revisited the departure goes with it, so it is not
-evidence that the guide was wrong about anything. The sibling-file test layout is the
-same shape and used to be recorded here too; phase 5 of #328 made it cost nothing to
-the guide's import rules, so it is a local preference on #328's decision 4 rather than
-a departure.
+evidence that the guide was wrong about anything. The sibling-file test layout is
+not a departure: it costs the guide's import rules nothing, and is a local
+preference on #328's decision 4.
 
 The weakness, stated rather than designed around: nothing checks this file against the
-tree. A third departure can be introduced and reviewed as ordinary code, because no
+tree. Another departure can be introduced and reviewed as ordinary code, because no
 lint knows what the guide says, and all that stands between a deviation and an
 unrecorded one is a reviewer who has read both. The dependency check and the
 public-API diff narrow that for the two cases where it would cost most — a crate

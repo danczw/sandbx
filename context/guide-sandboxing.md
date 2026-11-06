@@ -43,11 +43,11 @@ bash                          ──►  helper re-exec         ──►  Landl
 Six of seven built-ins never spawn anything, so Landlock never sees them.
 `FsGuard` is the *only* filesystem enforcement for those — a second consumer of
 the same table (`fs_guard.rs`), sorting grants into readable/writable roots and
-discarding `execute`. #49/#50 were the two layers answering differently for one
-policy; the shared table is the fix. The grants go in whole, pin included, and
-the guard confirms the matched root's object per access and then resolves the
-access beneath a descriptor it holds on that root, so the two layers answer a
-substituted root alike as well (#212, #230).
+discarding `execute`, so the two layers cannot answer one policy differently
+(#49, #50). The grants go in whole, pin included, and the guard confirms the
+matched root's object per access and then resolves the access beneath a
+descriptor it holds on that root, so the two layers answer a substituted root
+alike as well (#212, #230).
 
 > **The CLI grants read alongside write.** `--allow-write ~/project` also grants
 > `Read`, because at a command line the separation is a trap — a tool could
@@ -60,7 +60,8 @@ substituted root alike as well (#212, #230).
 
 ```
 allow_read     ──►  from_read(abi) & !Execute
-allow_write    ──►  from_all(abi)  & !from_read(abi)      ◄── the whole read set, not just Execute
+allow_write    ──►  from_all(abi)  & !from_read(abi) & !ResolveUnix
+                                       ◄── the whole read set, not just Execute
 allow_exec     ──►  from_read(abi) & !Execute | Execute
 non-directory  ──►  rights & from_file(abi)               ◄── narrowed once more
 ```
@@ -120,14 +121,12 @@ Two things make this fail-closed rather than fail-quiet:
   lower ABI than the kernel has, leaving every right above it unhandled — and
   Landlock leaves an unhandled access type unrestricted *everywhere*. The walk is
   split from the kernel it walks (`negotiated_abi_from` takes the probe), so this
-  discrimination is decidable with no Landlock host; replacing the refusing arm
-  with `continue` used to leave both suites green and both CI jobs passing (#87).
-  Two refusals that stay distinguishable: `Unsupported` names the ABI floor,
-  `Landlock` carries the kernel's own reason.
+  discrimination is decidable with no Landlock host (#87). Two refusals that stay
+  distinguishable: `Unsupported` names the ABI floor, `Landlock` carries the
+  kernel's own reason.
 - **Partial enforcement is a refusal** (#76). `enforcement_verdict` is total over
   `RulesetStatus`, so a variant added by a future landlock release fails to
-  compile rather than landing in an accepting arm. The old `== NotEnforced`
-  check let `PartiallyEnforced` through for as long as that variant existed.
+  compile rather than landing in an accepting arm.
 
 There is no pre-flight probe in sandbx itself. The check runs inside helper
 stage 2, so an unsupported kernel surfaces as the helper's non-zero exit, not as
@@ -165,13 +164,9 @@ restricts the other's setup calls — the denylist names no `landlock_*` syscall
 and Landlock polices no `seccomp(2)` — so the order between seccomp and Landlock
 is free.
 
-`negotiated_abi` is no longer a step of its own: the handled set and the rules
-have to come from *one* ABI, and `apply` used to derive them from two separate
-expressions with only a comment saying they must agree (#87). `requested`
-negotiates and returns both, so no ABI is in scope in `apply` at all and the
-divergence is unexpressible rather than merely commented against. `Access` and
-`AccessFs` dropped out of `apply`'s imports with it, so reintroducing the split
-means reintroducing two imports — visible in a diff.
+There is no negotiation step in `apply`: the handled set and the rules have to
+come from *one* ABI, so `requested` negotiates and returns both, and with no ABI
+in scope in `apply` a divergence between them is unexpressible (#87).
 
 The network axis is split across `create` because Landlock is: `handle_access`
 exists only before it and `add_rule` only after. So `apply` destructures `net`
@@ -179,7 +174,8 @@ once and gates both uses on the same `Option`, which is the whole of why there
 is no path that installs a port rule without handling the axis, or handles it
 for a policy that asked for no ports. Getting that wrong in the second direction
 is loud; getting it wrong in the first leaves TCP unrestricted while the CLI
-reports an allowlist, and only `tests/enforcement_network.rs` sees it.
+reports an allowlist, and only `sandbx-helper/tests/enforcement_network.rs`
+sees it.
 
 A dir-only right on a regular file **fails `add_rule`** under `HardRequirement` —
 so the `& from_file(abi)` narrowing is not a tidying step. Dropping it would
@@ -236,8 +232,8 @@ bind-mounted over `/etc/hosts` still reads back `/etc/hosts`, measured, and
 passes. The pin is not — a bind over a granted path is fine only if it predates
 the vet, since one made after leaves the spelling alone and changes the object,
 which refuses as `grant_replaced`. What is not fine is a `pivot_root`, an
-`MS_MOVE` over a granted root, or
-a bind whose source is unlinked — `read_link` then appends `" (deleted)"`. Any of
+`MS_MOVE` over a granted root, or a bind whose source is unlinked (`read_link`
+then appends `" (deleted)"`). Any of
 those makes every grant read back as something else, so the run refuses under a
 label naming the grant rather than the mount that moved it, which is the hardest
 shape to attribute: the message accuses the innocent party.
@@ -258,9 +254,9 @@ substituted root resolves wherever the substitute points, so a root picked after
 resolution is a root the substitute picked. The verdict still comes off the
 resolved path, which is admitted only under a root that confirms; it is the
 *reason* the spelling decides, a substitution reached only by resolving being
-refused as plainly outside. There is no
-readback half here — a spelling comparison would be this process agreeing with
-itself, since the guard both resolves the path and performs the access. So
+refused as plainly outside. There is no readback half here: a spelling
+comparison would be this process agreeing with itself, since the guard both
+resolves the path and performs the access. So
 `root_replaced` is sandbx's own and stays out of `HelperRefusal`: no helper runs
 the measurement, and a record claiming it would name the wrong decider.
 
@@ -302,19 +298,18 @@ of evidence, strongest first:
 
 | Rung | Where | Covers |
 |---|---|---|
-| a real kernel refuses the call | `tests/enforcement_syscalls.rs` | 4 of them — `io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd` — and, separately, the `socket(AF_UNIX)` and `socketpair(AF_UNIX)` rules, which are not list entries |
+| a real kernel refuses the call | `sandbx-helper/tests/enforcement_syscalls.rs` | 4 of them (`io_uring_setup`, `memfd_create`, `pidfd_open`, `pidfd_getfd`), a fifth (`userfaultfd`) only where `vm.unprivileged_userfaultfd` lets the call through without the filter, and, separately, the `socket(AF_UNIX)` and `socketpair(AF_UNIX)` rules, which are not list entries |
 | the compiled program returns `EPERM` for it | `eval` in `helper_seccomp_tests_bpf.rs` | every entry, plus what the two `AF_UNIX`, `clone`-flag and x32 rules compare against |
-| the documented set matches the list | `tests/denylist.rs` | every entry |
+| the documented set matches the list | `sandbx-core/tests/denylist.rs` | every entry |
 
 The middle rung is a test-only classic-BPF interpreter run over a synthetic
 `seccomp_data`, which is why it can cover every entry without spawning anything.
 What it establishes is what sandbx *asked the kernel for*. It is not what the
 kernel does: the effective action is the most severe across every installed
 filter, so a program returning `ALLOW` is not a syscall that runs, and nothing
-here proves the kernel loads the program at all. That stays `enforcement.rs`'s
-job. It replaced two tests that read the program's instruction *layout* — the
-coupling to seccompiler's codegen is relocated into `eval`, not removed, and
-`eval` panics by name on an opcode it does not implement rather than guessing a
+here proves the kernel loads the program at all; that is the `sandbx-helper`
+enforcement suite's job. The coupling to seccompiler's codegen lives in `eval`,
+which panics by name on an opcode it does not implement rather than guessing a
 verdict (#99).
 
 `EPERM`, not kill — a denied syscall should look like a permission error to the
@@ -342,15 +337,14 @@ as one: `unix_stream_connect` refuses anything not in `TCP_CLOSE`, and a pair is
 born `TCP_ESTABLISHED`. Closing the peer leaves the survivor established — it
 takes `sk_shutdown` and `ECONNRESET`, not a state reset — and a
 `shutdown(SHUT_RDWR)` only ORs into `sk_shutdown` too, so all four combinations
-still answer `EISCONN`,
-each tried against a *listening* host socket of the matching type so that no type
-check could stand in for the state check. `AF_UNSPEC` is refused earlier by
-`unix_validate_addr`, and a SEQPACKET `sendmsg` carrying `msg_name` drops the
-address and delivers to the peer. Measured on 6.18; a kernel that let a connected
-half be re-aimed would make the two permitted types a hole, so this is the
-paragraph to re-measure against, not to reason from.
-`a_socketpair_cannot_reach_a_pathname_socket` is the kernel rung,
-`socketpair_refuses_a_connectionless_unix_pair` and
+still answer `EISCONN`, each tried against a *listening* host socket of the
+matching type so that no type check could stand in for the state check.
+`AF_UNSPEC` is refused earlier by `unix_validate_addr`, and a SEQPACKET
+`sendmsg` carrying `msg_name` drops the address and delivers to the peer.
+Measured on 6.18; a kernel that let a connected half be re-aimed would make the
+two permitted types a hole, so this is the paragraph to re-measure against, not
+to reason from. `a_socketpair_cannot_reach_a_pathname_socket` is the kernel
+rung, `socketpair_refuses_a_connectionless_unix_pair` and
 `every_connectionless_socketpair_type_is_refused` the program rung.
 
 ### Three filters, three actions
@@ -399,7 +393,7 @@ only an x32 caller reaches for those numbers.
 | Step | Hard or best-effort | Note |
 |---|---|---|
 | `unshare(CLONE_NEWUSER\|CLONE_NEWPID[\|CLONE_NEWNET][\|CLONE_NEWNS])` | **hard** — EPERM refuses | one call; the user and PID namespaces are unconditional for every policy. `CLONE_NEWNET` is dropped whenever network is granted *at all*, a bare grant and a port allowlist alike, because a port rule inside an empty netns has nothing to permit. `CLONE_NEWNS` is added only when the policy bounds resolution — `--allow-dns` — and `helper::resolver` is what fills it; a mount namespace with nothing mounted into it confines nothing |
-| the three resolver binds | **hard** — a failed mount refuses | only for a policy that bounds resolution, and only on a host where an unprivileged user namespace may mount: a kernel restricting them (Ubuntu's `kernel.apparmor_restrict_unprivileged_userns=1`) lets the `unshare` succeed, transitions the process into the `unprivileged_userns` profile and denies `CAP_SYS_ADMIN` inside it, so the propagation change below returns `EACCES` before any bind is attempted and the run is refused rather than left unbounded. `MS_REC\|MS_PRIVATE` on `/` first, which does two things: it stops a mount the host makes *later* from appearing inside — `unshare` leaves a shared `/` a slave, and a slave still receives its master's events — and it makes the outbound half ours rather than a side effect of how the namespace was copied, a shared `/` being turned slave only because the user namespace was unshared in the same call. Then `hosts`, `nsswitch.conf` and `resolv.conf` bound from a tmpfs and remounted `MS_RDONLY`, since `MS_RDONLY` does not take on the first bind and stage 2 denies `mount(2)`. The tmpfs is detached, never unlinked: an unlinked bind source reads back from `/proc/self/fd` with `" (deleted)"` appended, under a path no policy names. A symlinked `/etc/hosts` or `/etc/nsswitch.conf` refuses the run, `mount(2)` resolving the target so the bind lands on what the link points to and leaves the link itself replaceable under a write grant on `/etc`; `resolv.conf` is exempt, being a symlink nearly everywhere and reaching no nameserver that a policy bounding resolution allows. `nsswitch.conf` is rewritten line by line — `hosts` and `networks` only — so a host resolving its users through `systemd` or `sss` keeps doing so |
+| the three resolver binds | **hard** — a failed mount refuses | only for a policy that bounds resolution. Where AppArmor restricts unprivileged user namespaces the `unshare` succeeds but `CAP_SYS_ADMIN` is denied inside it, so the first mount returns `EACCES` and the run is refused rather than left unbounded. `MS_REC\|MS_PRIVATE` on `/` first, then `hosts`, `nsswitch.conf` (its `hosts` and `networks` lines rewritten, the rest copied) and `resolv.conf` bound from a tmpfs and remounted `MS_RDONLY`. A symlinked `/etc/hosts` or `/etc/nsswitch.conf` refuses the run; `resolv.conf` is exempt. Each step's reason is on its function in `helper_resolver.rs` |
 | `no_new_privs` | **hard** | set in both stages |
 | effective/permitted/inheritable/ambient capsets | **hard** | |
 | `RLIMIT_CORE = 0` | **hard** | chosen over `PR_SET_DUMPABLE`: only the rlimit survives `execve` |
@@ -434,26 +428,26 @@ SandboxPolicy { env: Vec<String> }        names only, never values
                  envs(imposed_env)                         constants, and the last word
 ```
 
-Not applied *at* the four spawn sites — it is what builds them. All four get their
-`Command` from `spawn::command`, so narrowing is a property of construction rather
-than a call each site has to remember:
+Not applied *at* the three spawn sites; it is what builds them. All three get
+their `Command` from `spawn::command`, so narrowing is a property of
+construction rather than a call each site has to remember:
 
 ```
 sandbx ──► helper stage 1 ──► stage 2 ──► the command
-       ↑               ↑            ↑             ↑
-   output()      run_with_        re-exec      .exec()   ◄── the load-bearing one
-                 deadline()
-       └──────────────┴────────────┴─────────────┘
-                  all four via spawn::command
+       ↑                  ↑           ↑
+ helper_command()      inner stage   .spawn()   ◄── the load-bearing one
+ (output, run_with_deadline)
+       └──────────────────┴───────────┘
+              all three via spawn::command
 ```
 
 `clippy.toml` bans `std::process::Command::new` workspace-wide, and
-`spawn::command` holds the only `#[allow]` for it in code that ships — so a fifth
+`spawn::command` holds the only `#[allow]` for it in code that ships, so a fourth
 spawn site does not compile unless it goes through the narrowing or says in an
 `#[allow]` of its own why it is spawning the sandbox and not running under it, as
-`sandbx-helper-fixture` does. The first three keep a secret out of a
-helper's `/proc/<pid>/environ` for the seconds it lives; the last decides what the
-real command can read out of its own. Stage 1 narrowing on the way in is why a
+`sandbx-helper-fixture` does. The first two keep a secret out of a helper's
+`/proc/<pid>/environ` for the seconds it lives; the last decides what the real
+command can read out of its own. Stage 1 narrowing on the way in is why a
 helper invoked **directly**, with no `sandbx` above it, is sanitised rather than
 trusted.
 
@@ -461,10 +455,10 @@ Stage 2 is the one that does not trust its input: before applying anything it
 refuses outright if it finds a variable the policy neither names nor imposes in the
 environment it *inherited*, because on every supported path stage 1 has already
 cleared it. Both sides ask `permits_env`, so what the factory puts there cannot be
-what this refuses. So a
-*direct* stage-2 invocation is refused rather than sanitised — the one place the two
-stages differ, and what makes the clear something a test can catch the absence of
-rather than merely something the code does.
+what this refuses. So a *direct* stage-2 invocation is refused rather than
+sanitised: the one place the two stages differ, and what makes the clear
+something a test can catch the absence of rather than merely something the code
+does.
 
 `default()` is empty, so there is no `PATH` unless something grants one, and a
 bare program name is then resolved against whatever default the lookup falls back
@@ -473,10 +467,9 @@ own compiled-in one (wider: dash and bash include `/usr/local/bin` and the `sbin
 directories). So `cat` starts either way, `~/.cargo/bin/anything` starts neither
 way, and `/usr/local/bin/anything` depends on which spawned it. Partial and
 inconsistent, which is the reason to grant `PATH` rather than reason about it. The
-CLI calls
-`allow_standard_env()`; library callers either do the same or pass an absolute
-path, as every test in `crates/sandbx-core/tests/` does. Rationale in
-`decision-policy.md`.
+CLI calls `allow_standard_env()`; library callers either do the same or pass an
+absolute path, as every test in `sandbx-core/tests/` and `sandbx-helper/tests/`
+does. Rationale in `decision-policy.md`.
 
 ## What this does NOT protect against
 
@@ -486,9 +479,9 @@ path, as every test in `crates/sandbx-core/tests/` does. Rationale in
 
 | Gap | Residual |
 |---|---|
-| Per-host egress | **No kernel mechanism matches a destination.** Per-*port* does — Landlock TCP port rules plus a seccomp denial of UDP, raw sockets, non-TCP stream protocols, IP-tunnelling families, `TCP_ULP` conversion and TCP Fast Open — so per-host means terminating connections in a proxy sandbx does not have, and that proxy is declined rather than pending: its interception is cooperation and TLS termination widens the boundary it would narrow, per `decision-port-allowlist.md`. What that note carves out is `--allow-dns NAME`, which bounds which *names* resolve (#145) and is not a destination control: an IP literal, or an address the command already holds, reaches any allowlisted port exactly as before. The UDP denial breaks name resolution, which `--allow-dns` closes on both libcs and `--dns-over-tcp` routes around under glibc only. |
-| Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). `handled_access` is `AccessFs::from_all(abi)`, so on a kernel whose probe settles at V9 the right lands in the handled set and `connect(2)` to a pathname socket is denied unless a rule confers it. `--allow-unix-sockets` is what confers it, on every path the policy granted: `unix_socket_rights` in `helper_ruleset_rights.rs`, masked by `from_all(abi)` so nothing moves below V9. No axis confers it — the write set is `from_all(abi) & !from_read(abi) & !ResolveUnix`, the third subtraction added by #259, because `from_all` would otherwise hand the bit to every `--allow-write` grant with no line edited. `no_axis_confers_the_unix_socket_right` and `the_unix_socket_flag_is_what_confers_resolve_unix` pin the two halves, `the_flag_confers_nothing_below_the_abi_that_has_the_right` the mask. `negotiated_abi` hard-requiring a whole level makes V9 a step rather than a slide: below it the seccomp denials on `socket(AF_UNIX)` and a connectionless `socketpair(AF_UNIX)` are the only control, and *nothing* conditions a unix `connect` on the filesystem policy — measured on a V8 kernel by dropping the directory grants from `an_explicit_unix_grant_permits_the_connection`, which still connects. What has to be *written* is a grant narrower than a write root, if a narrower one is wanted. Same asymmetry as `context/decision-policy.md` records. |
-| `FsGuard` TOCTOU | **Closed on Linux 5.6+ for a directory grant; open below it, and for a grant naming a file.** `FsGuard::new` opens an `O_PATH \| O_DIRECTORY \| O_NOFOLLOW` descriptor per granted directory — both flags load-bearing: `O_NOFOLLOW` is what makes a granted name replaced by a symlink refuse here rather than root the resolution at whatever it points to, and `O_DIRECTORY` is what makes `O_NOFOLLOW` bite, since `O_PATH \| O_NOFOLLOW` alone hands back a handle to the link itself. `open_read`, `open_write`, `read_dir` and `walk_readable` then resolve the *canonical* path's remainder with `openat2(dirfd, rel, RESOLVE_BENEATH \| RESOLVE_NO_SYMLINKS)`; the walk descends by `openat2` per directory, opening a child when it is popped so live descriptors are bounded by the tree's depth and not its breadth. `RESOLVE_NO_SYMLINKS` is not spare and costs nothing: `RESOLVE_BENEATH` alone follows a link that stays inside the root, which would open an object the confirmation never measured, and the remainder is canonical so it holds no link to refuse. Together they narrow `EXDEV` to the one thing left — a `rename(2)` that moved a component out from under the root mid-resolution, which records as `resolution left the granted root since the check` rather than as a dangling link. Three cases keep the older shape, confirm then open by path with `O_NOFOLLOW`: no `openat2`, a file grant, and a granted name that no longer reaches the directory it was vetted on — another object at that name, or the vetted one only through a link, which the root open refuses by measuring the descriptor against the grant's pin before keeping it, the open and the per-access confirmation being different moments. That third case is the only one recorded, as `degraded` with `mechanism=rooted_access` naming the root: the other two are properties of the host and the policy, and a granted directory replaced by a regular *file* is invisible to the pin at all, the freed inode number being commonly reused — the same floor the reused-inode non-claim names. There the window is a few syscalls wide for the four single-path tools — `edit` confirms twice — and the whole traversal for `find` and `grep`. `VettedPath::confirm` stays in every case — it is the only layer that can refuse a root the operator's name no longer holds, and it omits `O_NOFOLLOW` on purpose where the root open requires it, the two asking different questions. `both_rootings_answer_alike` and `the_rooting_decision_reads_only_its_own_errnos` pin the two branches, the second through an injected probe since no CI runner is below 5.6. One window the pin cannot close is the one before it: a root is *vetted* while the policy is derived and *pinned* when the guard is built, and a swap landing between the two reaches the recorded `rooted_access` branch rather than being refused. So that span is kept to what cannot be stalled — a bounded number of path lookups on operator-named paths, `system_prompt` resolving each granted path a second time, and no blocking I/O or model-chosen input. `sandbx-cli` builds the context immediately after deriving the policy and opens the session *ahead* of both, which is why a refused policy there can leave a header-only transcript (#249). An `eprintln!` in the middle would be the whole window on a stderr nobody drains, which is what that ordering exists to prevent rather than to improve on: the span is `main`'s, restored, not narrowed past it. |
+| Per-host egress | **No kernel mechanism matches a destination.** Per-*port* does, so per-host means a terminating proxy, which `decision-port-allowlist.md` prices and declines. `--allow-dns NAME` bounds which *names* resolve (#145) and is not a destination control. |
+| Per-socket unix grants | **Needs Landlock `ResolveUnix`** (ABI V9, Linux 7.1). `handled_access` is `AccessFs::from_all(abi)`, so on a kernel whose probe settles at V9 the right lands in the handled set and `connect(2)` to a pathname socket is denied unless a rule confers it. `--allow-unix-sockets` is what confers it, on every path the policy granted: `unix_socket_rights` in `helper_ruleset_rights.rs`, masked by `from_all(abi)` so nothing moves below V9. No axis confers it: the write set's third subtraction, `& !ResolveUnix`, is there because `from_all` would otherwise hand the bit to every `--allow-write` grant with no line edited. `no_axis_confers_the_unix_socket_right` and `the_unix_socket_flag_is_what_confers_resolve_unix` pin the two halves, `the_flag_confers_nothing_below_the_abi_that_has_the_right` the mask. `negotiated_abi` hard-requiring a whole level makes V9 a step rather than a slide: below it the seccomp denials on `socket(AF_UNIX)` and a connectionless `socketpair(AF_UNIX)` are the only control, and *nothing* conditions a unix `connect` on the filesystem policy — measured on a V8 kernel by dropping the directory grants from `an_explicit_unix_grant_permits_the_connection`, which still connects. What has to be *written* is a grant narrower than a write root, if a narrower one is wanted. Same asymmetry as `context/decision-policy.md` records. |
+| `FsGuard` TOCTOU | **Closed on Linux 5.6+ for a directory grant; open below it, and for a grant naming a file.** `FsGuard::new` opens an `O_PATH \| O_DIRECTORY \| O_NOFOLLOW` descriptor per granted directory (`open_root` says why both flags), and `open_read`, `open_write`, `read_dir` and `walk_readable` resolve the canonical path's remainder beneath it with `openat2(…, RESOLVE_BENEATH \| RESOLVE_NO_SYMLINKS)` (`BENEATH` says why both). `EXDEV` is then only a `rename(2)` that moved a component out from under the root mid-resolution, recorded as `resolution left the granted root since the check`. Three cases keep the older shape, confirm then open by path: no `openat2`, a file grant, and a granted name that no longer reaches the directory it was vetted on, which the root open refuses by measuring the descriptor against the grant's pin. Only the third is recorded, as `degraded` with `mechanism=rooted_access`; a granted directory replaced by a regular *file* is invisible to the pin, the freed inode number being commonly reused. `VettedPath::confirm` stays in every case and omits `O_NOFOLLOW` on purpose, asking a different question from the root open. `both_rootings_answer_alike` and `the_rooting_decision_reads_only_its_own_errnos` pin the two branches, the second through an injected probe since no CI runner is below 5.6. One window the pin cannot close is the one before it: a root is *vetted* while the policy is derived and *pinned* when the guard is built, and a swap between the two reaches the recorded `rooted_access` branch rather than being refused. So that span holds only a bounded number of path lookups on operator-named paths (`system_prompt` resolves each granted path a second time), with no blocking I/O or model-chosen input: `sandbx-cli` opens the session *ahead* of deriving the policy and builds the context right after, which is why a refused policy can leave a header-only transcript (#249). An `eprintln!` in the span would make it as wide as a stderr nobody drains. |
 | Capability coverage | **Pinned by `tests/capability_coverage.rs`**, which reads `/proc/sys/kernel/cap_last_cap`, so a kernel adding a capability the `caps` crate does not know about is a test failure, not a silent leftover. |
 | `Degraded` raised by nothing a test enters | **Pinned on any host.** Both best-effort steps take their fallible call as a parameter, so a refusal becoming a record is asserted anywhere; `sandbx-helper/tests/audit_channel.rs` then asserts the record is present or absent according to the LSM — see *Host environment*. |
 

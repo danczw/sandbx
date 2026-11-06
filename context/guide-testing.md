@@ -2,8 +2,7 @@
 
 What a test has to assert to be worth having, where it lives, and the two house rules
 the Google style guide leaves to the project. `decision-google-style.md` is why the
-guide governs everything else here, and its grace rule is why existing tests may not
-yet match the layout below.
+guide governs everything else here.
 
 ## The framework is plain `#[test]`
 
@@ -41,13 +40,10 @@ name says nothing about what it holds. A `lib.rs` takes the crate's own name —
 `main_tests.rs`. `sandbx-cli` is why the two differ: it has both roots, so
 naming either after the crate would leave the other with no name to take.
 
-The sibling imports what it uses by name. `use super::*` was a recorded
-departure until phase 5 of #328 replaced all 41 of them — along with the eight
-globs of a *different* module in `sandbx-core`'s seccomp test files, which the
-departure never covered — so there is no glob import left in the workspace and
-nothing in `decision-google-style.md` excusing one. An import block that grows
-with the file is what the rule costs; a reader who can see which private items
-the tests reach is what it buys.
+The sibling imports what it uses by name: no `use super::*`, and nothing in
+`decision-google-style.md` excusing one. An import block that grows with the
+file is what the rule costs; a reader who can see which private items the tests
+reach is what it buys.
 
 ## What a test has to assert to assert anything
 
@@ -79,9 +75,10 @@ Hard-code the expected value rather than reading it off the thing under test.
 the assertion only proves it agrees with itself, and a reclassification passes.
 
 A set of negative cases also needs one positive per mechanism, or the mechanism's
-total absence is indistinguishable from it working. `enforcement.rs` grants
-`/bin/touch` everything it needs for exactly that reason — without the grant the
-exec itself would be denied and the test would stay green for the wrong reason.
+total absence is indistinguishable from it working.
+`sandbx-helper/tests/enforcement.rs` grants `/bin/touch` everything it needs for
+exactly that reason: without the grant the exec itself would be denied and the
+test would stay green for the wrong reason.
 
 A test over audit records has to capture them from the thread that emits. Tools
 run on `spawn_blocking`, so a tool's record is emitted on a thread that did not
