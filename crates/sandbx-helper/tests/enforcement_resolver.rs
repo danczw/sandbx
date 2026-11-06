@@ -16,8 +16,6 @@ use std::{fs, thread};
 use sandbx_core::SandboxPolicy;
 use sandbx_helper_fixture::{allow_probe, runtime_paths, vetted};
 
-/// `CARGO_BIN_EXE_*` resolves only for a target of the package declaring the bin, which
-/// is why the fixture takes this as an argument.
 fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
 }

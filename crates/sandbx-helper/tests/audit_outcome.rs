@@ -16,8 +16,8 @@ use sandbx_core::{AUDIT_TARGET, HelperRefusal, SandboxError, SandboxPolicy, Sand
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
-/// Collects audit events; repeated from `audit.rs` because cargo gives each `tests/*.rs`
-/// its own binary.
+/// Collects audit events; repeated from `sandbx-core`'s `tests/audit.rs` because cargo gives
+/// each `tests/*.rs` its own binary.
 #[derive(Clone, Default)]
 struct Captured(Arc<Mutex<Vec<String>>>);
 
@@ -182,8 +182,8 @@ fn a_run_records_exactly_one_outcome() {
     );
 }
 
-/// A `degraded` record is written while the helper is still running, which is before the
-/// parent knows how the run ended, on every host.
+/// A `degraded` report crosses the channel while the helper is still running, before the
+/// parent knows how the run ended; the outcome must still be the last record.
 #[test]
 fn the_outcome_is_the_last_record_of_a_run() {
     let Run { lines, .. } = sandboxed("true");

@@ -1,8 +1,8 @@
 //! Where a no-flag run may root its default policy, and what a path flag is vetted against;
 //! nothing here reads a flag.
 //!
-//! One order is load-bearing and it is not one function's: [`vetted_root`] refuses in the
-//! order written. The comparisons need a [`ResolvedPath`], from [`resolved`] or a [`VettedPath`].
+//! [`vetted_root`] refuses in the order written, which decides the error a cwd matching two
+//! arms gets. The comparisons need a [`ResolvedPath`], from [`resolved`] or a [`VettedPath`].
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -17,33 +17,23 @@ use crate::PolicyError;
 /// Refused by location, whatever the environment says; only the child reading below is gated
 /// on `$HOME` at all.
 ///
-/// Two rejected shapes, both likely to be re-proposed. **Depth** — refusing direct children
-/// of `/` — because depth is not sensitivity: `/srv`, `/opt`, `/workspace` and `/data` are
-/// ordinary project roots, in a container `/app` *is* the working directory, and `~/.ssh` is
-/// three levels down and far worse. And a **denylist of the dangerous children** (`/etc`,
-/// `/root`, `/proc`), whose first omission is silent — the shape
-/// `context/decision-policy.md` already rejected for variable names. A list of names is
-/// nonetheless what this is, and the difference is that a depth rule guesses at which
-/// directories are *sensitive* where this names the one place on a Unix system whose entire
-/// purpose is to hold other people's trees. Nor is there a subdirectory-of-`$HOME` rule:
-/// `~/code/project` is the entire use case, and the accidental no-flag run is standing in
-/// `$HOME` itself.
+/// Rejected shapes, all likely to be re-proposed. **Depth** — refusing direct children of
+/// `/` — because depth is not sensitivity: `/srv`, `/opt` and `/data` are ordinary project
+/// roots, a container's `/app` *is* the working directory, and `~/.ssh` is three levels down.
+/// A **denylist of dangerous children** (`/etc`, `/root`, `/proc`), whose first omission is
+/// silent — rejected for variable names in `context/decision-policy.md`; this list instead
+/// names the one place whose purpose is to hold other people's trees. A
+/// **subdirectory-of-`$HOME` rule**: `~/code/project` is the entire use case.
 ///
 /// Non-goal: a home root this does not list. `/srv/people`, autofs and `HOME=/tmp` with cwd
-/// `/home/other` all still derive, a real directory somewhere unlisted being what a
-/// legitimate non-standard home looks like. Consulting `/etc/passwd` was considered and does
-/// not fix it — the LDAP and autofs layouts that need it are the ones `/etc/passwd` cannot
-/// see either — so it moves the omission at the cost of parsing a file inside the guard. One
-/// layout degrading to no protection is the accepted cost, rather than the mechanism having
-/// a hole, and `--allow-read`/`--allow-write` answer for such a site either way.
+/// `/home/other` all still derive. Consulting `/etc/passwd` does not fix it — the LDAP and
+/// autofs layouts that need it are the ones it cannot see — so it only moves the omission.
 const HOME_PARENTS: [&str; 4] = ["/home", "/Users", "/var/home", "/root"];
 
 /// Whether `cwd` is one of [`HOME_PARENTS`] or holds one.
 ///
 /// Not gated on `$HOME`: a service account's `HOME=/var/lib/svc` would let `/home` through,
-/// where a root there is write over every user's home whatever the variable names. It is this
-/// arm — the one depending on `$HOME` not at all — that never had any of the four holes
-/// [`Homes`] records, and that is the reason to prefer it.
+/// where a root there is write over every user's home whatever the variable names.
 fn holds_home_directories(cwd: &Path) -> bool {
     HOME_PARENTS
         .into_iter()
@@ -53,9 +43,8 @@ fn holds_home_directories(cwd: &Path) -> bool {
 /// The [`HOME_PARENTS`] that hold other users' homes rather than being one.
 ///
 /// `/root` is a home as well as the place for root's, so `HOME=/root` names one where
-/// `HOME=/home` names none. Widening this to all four refuses root's own `/root/app`, the
-/// conventional root container, over a `$HOME` that is set, resolvable and names exactly the
-/// home it should. The cwd arms still read all four — a cwd *at* `/root` is refused whatever
+/// `HOME=/home` names none. Widening this to all four refuses `/root/app`, the conventional
+/// root container. The cwd arms still read all four — a cwd *at* `/root` is refused whatever
 /// `$HOME` says — which is the asymmetry the two lists encode.
 const SHARED_HOME_PARENTS: [&str; 3] = ["/home", "/Users", "/var/home"];
 
@@ -78,29 +67,20 @@ fn looks_like_a_home(cwd: &Path) -> bool {
 
 /// The spellings of `$HOME` a cwd is compared against, and whether it names a home at all.
 ///
-/// Two fields because an unresolvable `$HOME` is still a path a cwd can hold, and still no
-/// usable home for the stand-in to defer to. One list answering both questions was the shape
-/// of four reproduced holes, each deriving `readable=1 writable=1` where it should refuse, so
-/// a fifth tightening of one list is not the fix:
+/// Two fields because an unresolvable `$HOME` is still a path a cwd can hold, yet no usable
+/// home for the stand-in to defer to. One list answering both was four reproduced holes, each
+/// deriving read and write where it should refuse, so do not fold them back:
 ///
-/// 1. The whole rule gated on the list being empty: `cd /home && env -u HOME sandbx
-///    sandbox-run -- true` derived read and write over every user's home.
-/// 2. Empty asks whether `HOME` was *set*, not whether it named anything useful. `HOME=`,
-///    `HOME=relative/path`, `HOME=/nonexistent` and — the ordinary case — a service
-///    account's `HOME=/var/lib/svc` all leave a non-empty list holding a path no cwd under
-///    `/home` can match, disabling the exact arm and skipping the stand-in at once.
-/// 3. The same conflation one layer in, on the child reading, where `$HOME` legitimately
-///    gates: any absolute path kept for *comparison* also silenced the stand-in.
-///    `HOME=/nonexistent` with cwd `/home/other` derived over a neighbour's tree (#154), as
-///    did `HOME=/dev/null` and the `HOME=/` Docker hands a UID with no passwd entry.
-/// 4. `usable` asking only that `$HOME` resolve to a directory. `HOME=/home` does, and is a
-///    place that holds homes rather than being one, so `/home/other` derived over a
-///    neighbour's tree (#162) — which is why the resolved form is tested by location too,
-///    subsuming `HOME=/` for free.
+/// 1. Gating the home-parent arm on an empty list: `env -u HOME` from `/home` derived.
+/// 2. An empty list asks only whether `HOME` was *set*: `HOME=/var/lib/svc` disabled the
+///    exact arm and skipped the stand-in at once.
+/// 3. Any absolute path kept for comparison silencing the stand-in: `HOME=/nonexistent`,
+///    `/dev/null` or Docker's `/` with cwd `/home/other` derived (#154).
+/// 4. `usable` asking only for a directory: `HOME=/home` holds homes, and `/home/other`
+///    derived (#162).
 ///
 /// An unresolvable `$HOME` is still compared: `cd /srv/people` with `HOME=/srv/people/alice`
-/// unprovisioned is refused for *holding* a home, which a filter that dropped the path would
-/// have lost.
+/// unprovisioned is refused for *holding* a home.
 #[derive(Debug, PartialEq, Eq)]
 struct Homes {
     paths: Vec<PathBuf>,
@@ -109,42 +89,26 @@ struct Homes {
 
 /// `cwd` itself, or why no default may be rooted there.
 ///
-/// An unusable `$HOME` leaves the exact home rule nothing to compare — so
-/// [`looks_like_a_home`] stands in for it rather than being skipped, and such a cwd still
+/// An unusable `$HOME` leaves the exact home rule nothing to compare, so
+/// [`looks_like_a_home`] stands in for it rather than being skipped, and any other cwd still
 /// derives rather than being refused: `HOME` unset with cwd `/app` is the container case.
 /// That is the one constraint here a plausible edit would quietly reverse.
 ///
-/// A derived write grant is reachable by accident in a way a typed one is not, so every arm
-/// refuses outright rather than deriving a narrower root: falling back to the system paths
-/// alone makes an ordinary command fail for a reason the message would not explain, and
-/// granting the directory anyway is the thing being refused. So each refusal names the two
-/// flags to type instead, behind one `const` so two of them cannot advise differently. What
-/// that costs, visibly: a cwd shaped like a home under [`HOME_PARENTS`] with an unusable
-/// `$HOME` is refused where it once derived, and so is `/usr/src/app`, the stock `WORKDIR`
-/// in the official Node images. Both are real losses on deployments this feature is for, and
-/// both are the trade being made — less than expected, heard about immediately, by name.
+/// Why each arm refuses rather than narrowing is the crate `//!`'s. What that costs: a cwd
+/// shaped like a home with an unusable `$HOME` is refused, and so is `/usr/src/app`, the
+/// stock `WORKDIR` in the official Node images.
 ///
-/// **No arm compares the running `sandbx` against the cwd, and that is deliberate.** Whether
-/// a derived root may hold the enforcer is settled by not needing an answer: `command_line`
-/// hands the kernel `/proc/self/exe`, a magic link to the image this process is running
-/// (#149). What a path guard had to stop was live rather than theoretical — resolved by path
-/// on *every* spawn, the helper could be swapped between two tool calls in one turn by
-/// renaming a replacement over the binary, and the next spawn would exec it, choosing its own
-/// confinement with nothing asking the operator first. (`ETXTBSY` blocks overwriting in
-/// place; rename-over is what `cargo build` does.) A link to the inode cannot be redirected.
-/// Any replacement for `exe.starts_with(cwd)` would be comparing a name nothing is reached
-/// by, and a carve-out — grant the tree except the binary — is not expressible: a
-/// `SandboxPolicy` is grants-only, matching is prefix-only, and Landlock composes rules by
-/// union with no subtraction.
+/// **No arm compares the running `sandbx` against the cwd, and that is deliberate.**
+/// `command_line` hands the kernel `/proc/self/exe`, a link to the running image's inode
+/// (#149), so a replacement renamed over the binary cannot redirect the next spawn. A path
+/// comparison would test a name nothing is reached by, and a carve-out — grant the tree except
+/// the binary — is not expressible: a `SandboxPolicy` is grants-only, matching is prefix-only,
+/// and Landlock composes rules by union with no subtraction.
 ///
-/// Dropping that arm widened something, and it is named here rather than filed under bounded
-/// cost. A `/usr`-rooted prefix is still refused, by the overlap arm below and not by it, since
-/// `/usr/local/bin` holds `/usr`. It was the only thing refusing a *user-level* prefix, so a
-/// no-flag run from `~/.cargo/bin`, `~/.local/bin` or `/opt/x/bin` now derives read and write
-/// over the directory holding the installed binary. The residue is the *next* invocation of
-/// `sandbx`: a write grant over the binary replaces what runs then, by a human or a script.
-/// No guard reaches that, it is the same property as `.git/hooks/*` in a granted tree, and it
-/// stays a non-claim in `SECURITY.md`.
+/// So a no-flag run from `~/.cargo/bin`, `~/.local/bin` or `/opt/x/bin` derives read and
+/// write over the installed binary; a `/usr`-rooted prefix is refused by the overlap arm. The
+/// residue — a write grant replacing what the *next* `sandbx` invocation runs — is the
+/// `.git/hooks/*` property, a non-claim in `SECURITY.md`.
 fn vetted_root<'a>(
     root: &'a ResolvedPath,
     homes: &Homes,
@@ -157,8 +121,7 @@ fn vetted_root<'a>(
         return Err(PolicyError::FilesystemRoot);
     }
 
-    // `starts_with` is true of equal paths, so one test covers "cwd is $HOME" and "cwd
-    // holds it", and whole-component, so `/home/u/project-tools` is outside `/home/u/project`.
+    // `starts_with` is true of equal paths and whole-component.
     if let Some(home) = homes.paths.iter().find(|home| home.starts_with(cwd)) {
         return Err(PolicyError::HomeDirectory {
             cwd: cwd.to_path_buf(),
@@ -175,20 +138,16 @@ fn vetted_root<'a>(
     if !homes.usable && looks_like_a_home(cwd) {
         return Err(PolicyError::UnnamedHome {
             cwd: cwd.to_path_buf(),
-            // The written spelling; `named_homes` keeps it only when absolute. Named because
-            // this arm fires on a `$HOME` that is *set*: "with no usable HOME" read as unset
-            // and sent the operator to check whether they had exported it.
+            // Named because this arm also fires on a `$HOME` that is set, which "no usable
+            // HOME" would read as unset.
             home: homes.paths.first().cloned(),
         });
     }
 
-    // Either direction, since Landlock rights cover a subtree. Both sides are resolved — the
-    // cwd by its type, grants by `allow_system_executables` — so a merged-`/usr` host
-    // compares `/usr/bin` with `/usr/bin` rather than with `/bin`. One way round was tried
-    // and is not a control: a merged-`/usr` cwd of `/bin` resolves to `/usr/bin`, which
-    // *holds* no granted path, handing a no-flag run write over every system binary. This
-    // arm is also what keeps the derived root non-executable — the one way it could have
-    // been was by sitting under a granted system path.
+    // Either direction, since Landlock rights cover a subtree: a cwd under a granted path,
+    // `/usr/src/app` say, holds none of them. Both sides are resolved — the cwd by its type,
+    // grants by `allow_system_executables` — so a merged-`/usr` host compares `/usr/bin` with
+    // `/usr/bin` rather than with `/bin`.
     if let Some(path) = granted
         .iter()
         .map(VettedPath::path)
@@ -200,8 +159,6 @@ fn vetted_root<'a>(
         });
     }
 
-    // The default grants write over the cwd, and inside the session directory the cwd is the
-    // history — #173 with no flag.
     if let Some(found) = reaches_owned(root, owned) {
         return Err(PolicyError::CwdReachesOwned {
             cwd: cwd.to_path_buf(),
@@ -281,11 +238,10 @@ pub(crate) fn owned_paths(lookup: &impl Fn(&str) -> Option<OsString>) -> Vec<Own
 
 /// `granted` made absolute, a relative flag being joined to the working directory.
 ///
-/// This process's, while it is still the one that knows it: the grant crosses the seam in this
-/// form, so what it names cannot depend on where the helper happens to stand. [`resolved`]
-/// cannot stand in — its walk bottoms out at the empty path, leaving a relative grant relative.
-/// A cwd that cannot be read refuses rather than standing in as nothing, which would match no
-/// owned path (#203).
+/// Joined here because the grant crosses to the helper in this form, so what it names cannot
+/// depend on where the helper stands. [`resolved`] cannot stand in — its walk bottoms out at
+/// the empty path, leaving a relative grant relative. An unreadable cwd refuses rather than
+/// standing in as nothing, which would match no owned path (#203).
 pub(crate) fn absolute(
     granted: &Path,
     cwd: &impl Fn() -> io::Result<PathBuf>,
@@ -305,9 +261,8 @@ pub(crate) fn absolute(
 /// A path [`resolved`] produced, or a [`VettedPath`]'s; those are the only ways to hold one.
 ///
 /// Every comparison below needs this form: one symlinked spelling reaches what the other is
-/// refused for, and a relative one resolves against nothing and so reaches no owned path at
-/// all (#205). Not [`VettedPath`] alone, which canonicalizes and so cannot name a path whose
-/// leaf does not exist yet.
+/// refused for, and a relative one reaches no owned path at all (#205). Not [`VettedPath`]
+/// alone, which canonicalizes and so cannot name a path whose leaf does not exist yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedPath(PathBuf);
 
@@ -350,18 +305,17 @@ pub(crate) fn resolved(path: &Path) -> ResolvedPath {
 /// Whether a flag names a file a bounded resolver bind-mounts sandbx's own copy over, which
 /// `SandboxPolicy::grant_bound_by_resolver` refuses the policy for.
 ///
-/// Both spellings, overlapping on purpose: `granted` is the form the policy carries and is
-/// what matches a flag spelled relative or through a symlink, `typed` what still matches where
-/// an entry cannot be canonicalized at all. The names come from `sandbx_core::bound_by_resolver`.
+/// Both spellings, overlapping on purpose: `granted` is the form the policy carries and
+/// matches a flag spelled relative or through a symlink, `typed` still matches where an entry
+/// cannot be canonicalized at all.
 pub(crate) fn bound_by_resolver(typed: &Path, granted: &Path) -> bool {
     sandbx_core::bound_by_resolver(typed) || sandbx_core::bound_by_resolver(granted)
 }
 
 /// The path in `owned` that `granted` reaches, if it reaches one.
 ///
-/// Either direction, since Landlock rights cover a subtree: a grant above an owned path and
-/// one naming something inside it both reach it. Both callers pass what they grant: vetting
-/// one spelling and granting another is the window this closes.
+/// Either direction, since Landlock rights cover a subtree. Both callers pass what they
+/// grant: vetting one spelling and granting another is the window this closes.
 pub(crate) fn reaches_owned<'a>(
     granted: &ResolvedPath,
     owned: &'a [OwnedPath],

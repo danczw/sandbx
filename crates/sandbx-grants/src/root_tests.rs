@@ -28,7 +28,7 @@
 //!        an_unset_home_still_derives_a_root                  passes  ◄── /app is no home par.
 //!        a_named_home_leaves_a_neighbour_alone               passes
 //!
-//! that arm re-gated on homes.is_empty() (the draft-2 hole)
+//! that arm re-gated on homes.paths.is_empty()
 //!    ──► the_home_parents_are_refused_when_home_is_elsewhere fails   ◄── $HOME=/var/lib/svc
 //!        refuses_to_run_from_home_whatever_home_names        fails
 //!        the_home_parents_are_refused_with_no_home_set       passes  ◄── the gate is satisfied
@@ -81,29 +81,16 @@
 //!        a_directory_named_like_a_system_one_is_a_valid_root     passes
 //! ```
 //!
-//! Deleting the overlap arm and testing it one way round fail the same two tests, which is
-//! the signal being asked for: the loop covers each granted path *and* a directory under it,
-//! so a one-way test is detected as the absence it is. That loop reads [`granted`] rather
-//! than naming paths, because `allow_system_executables` skips a path the host lacks —
-//! `/lib64` is absent on arm64, which failed a hardcoded list on CI's aarch64 leg while
-//! passing x86_64.
+//! Deleting the overlap arm and testing it one way round fail the same two tests: the loop
+//! covers each granted path *and* a directory under it, so a one-way test shows as an absence.
 //!
-//! Two things the first mutation shows. Dropping the guard breaks tests in two suites that
-//! never mention the default — `each_allow_flag_widens_only_its_own_axis` and
-//! `allow_flags_repeat_to_grant_several_paths` both assert on the whole policy — so
-//! suppression is pinned by tests older than it. And
-//! `the_default_matches_what_sandbox_run_derives` passes, because both sides of the
-//! comparison mutate together: that is the derived-expectation trap
-//! `context/decision-policy.md` names, and it is why it is a cross-subcommand consistency
-//! test and not the one pinning what the default *is*.
+//! `the_default_matches_what_sandbox_run_derives` passes the first mutation because both
+//! sides of its comparison mutate together — the derived-expectation trap
+//! `context/decision-policy.md` names — so it checks consistency, not what the default *is*.
 //!
-//! The gap the tests do not close, narrowed by #154 and #162: [`named_homes`] takes `$HOME`
-//! as a value and is unit-tested over every shape — unset, empty, relative, unresolvable,
-//! resolving to a non-directory, resolving to `/`, resolving to a place homes live, resolving
-//! to a real home, and symlinked, that last against a `tempfile` symlink rather than argued
-//! from a Silverblue host. All that is left reading the live process is [`current_root`]'s
-//! two lookups themselves, `getcwd` and `var_os("HOME")`; `sandbx-cli`'s `tests/cwd_policy.rs`
-//! covers what it can of them by setting `HOME` on the spawned binary.
+//! The gap: [`named_homes`] is unit-tested over every shape of `$HOME`, leaving only
+//! [`current_root`]'s `getcwd` and `var_os("HOME")` reading the live process;
+//! `sandbx-cli`'s `tests/cwd_policy.rs` covers what it can by setting `HOME` on the binary.
 
 use std::ffi::OsString;
 use std::os::unix::fs as unix_fs;
@@ -578,7 +565,7 @@ fn a_host_with_no_home_owns_no_path() {
     );
 }
 
-/// #184 and #173: the one flag it takes, on the axis each issue was reported with.
+/// #184 and #173: a grant above the config or the session root.
 #[test]
 fn a_grant_above_an_owned_root_is_refused() {
     let owned = owned_under("/home/u");
@@ -645,8 +632,8 @@ fn a_relative_grant_is_resolved_before_comparing() {
     );
 }
 
-/// The grant `--session` creates during the run it was given to: nothing on disk resolves
-/// it, so joining the cwd is the only thing that can.
+/// A relative grant naming a path not yet created: nothing on disk resolves it, so joining
+/// the cwd is the only thing that can.
 #[test]
 fn a_relative_grant_resolves_before_it_exists() {
     let cwd = std::env::current_dir().expect("a test runs from a real directory");
@@ -661,7 +648,7 @@ fn a_relative_grant_resolves_before_it_exists() {
     );
 }
 
-/// A relative grant joined to nothing reached no owned path, and so was honoured (#203).
+/// A relative grant joined to nothing would reach no owned path, and be honoured (#203).
 #[test]
 fn an_unreadable_cwd_refuses_a_relative_grant() {
     let error = absolute(Path::new("sandbx"), &no_cwd())

@@ -73,7 +73,7 @@ fn every_path_axis_refuses_an_owned_root() {
 }
 
 /// A grant is pinned to the object at its path, and a path naming nothing has none — so
-/// this refuses in the harness where Landlock used to refuse it in the helper (#212).
+/// this refuses in the harness, not the helper (#212).
 #[test]
 fn a_grant_naming_nothing_cannot_be_pinned() {
     let directory = tempfile::tempdir().expect("a temporary directory");

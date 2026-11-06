@@ -19,8 +19,6 @@ use sandbx_core::{HelperArgs, SandboxPolicy};
 
 use sandbx_helper_fixture::{allow_probe, runtime_paths, vetted};
 
-/// `CARGO_BIN_EXE_*` resolves only for a target of the package declaring the bin, which
-/// is why the fixture takes this as an argument.
 fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
 }
@@ -151,10 +149,8 @@ fn malformed_arguments_do_not_run_the_command() {
     );
 }
 
-/// The supervisor can die between spawning this stage and the stage arming its parent
-/// death signal, so the stage checks the pid it was told to expect is still its parent. Off
-/// `/proc/self/stat`, not `getppid`, which returns 0 inside a PID namespace whose parent
-/// lives outside it; `/proc` is the host's, so its ppid field still names the supervisor.
+/// The stage refuses unless the pid it was told to expect is still its parent;
+/// `confirm_supervisor` has why, and why it reads `/proc/self/stat`.
 #[test]
 fn the_inner_stage_refuses_a_foreign_supervisor() {
     // Bound, not a temporary: `tempdir().path()` drops the directory at the end of the
@@ -402,10 +398,9 @@ fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
 const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
 
 /// Can this machine drop the capability bounding set at all? Needs `CAP_SETPCAP`, held
-/// only in a self-created user namespace, and not even there once an LSM strips
-/// capabilities from one: AppArmor's `restrict_unprivileged_userns` (default on Ubuntu
-/// 24.04+, GitHub's runners) lets `unshare` succeed but makes `PR_CAPBSET_DROP` return
-/// `EPERM`, so this assertion is conditional — kept identical with its copy in
+/// only in a self-created user namespace, and not there under AppArmor's
+/// `restrict_unprivileged_userns` (Ubuntu 24.04+, GitHub's runners), which lets `unshare`
+/// succeed but makes `PR_CAPBSET_DROP` return `EPERM`. Kept identical with its copy in
 /// `audit_channel.rs`.
 fn bounding_set_is_droppable() -> bool {
     use std::os::unix::fs::MetadataExt;
@@ -703,9 +698,8 @@ fn a_grant_renamed_over_between_the_vet_and_the_open_is_refused() {
     );
 }
 
-/// The kernel gets read alongside execute, since `AccessFs::from_read` bundles
-/// `ReadFile`/`ReadDir` with `Execute`; if `FsGuard` read only read and write, `bash` could
-/// `cat` a file the native `read` tool refuses under one policy.
+/// The execute axis confers read at the kernel (`Axis::grants`); if `FsGuard` read only the
+/// read and write axes, `bash` could `cat` a file the native `read` tool refuses.
 #[test]
 fn an_execute_grant_reads_the_same_in_both_layers() {
     let dir = scratch();
@@ -788,8 +782,8 @@ fn a_read_execute_grant_does_make_files_executable() {
     );
 }
 
-/// Write grants map to `from_all`, which also contains `Execute`, so fixing only the read
-/// side leaves this open.
+/// `from_all` also contains `Execute`, so a write grant mapped straight onto it would carry
+/// execute with the read side fixed.
 #[test]
 fn a_write_grant_does_not_make_files_executable() {
     let dir = scratch();

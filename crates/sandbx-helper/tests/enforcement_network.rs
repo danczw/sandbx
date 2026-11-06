@@ -1,7 +1,7 @@
 //! Does the kernel refuse a port the allowlist does not name?
 //!
-//! The network half of the enforcement suite; `enforcement.rs` states the kernel floor all
-//! three files run on. Under a port allowlist network is *allowed*, so there is no netns and
+//! The network half of the enforcement suite; `enforcement.rs` states the kernel floor the
+//! suite runs on. Under a port allowlist network is *allowed*, so there is no netns and
 //! the command shares the host's — which is how it reaches a `127.0.0.1` listener this file
 //! binds itself. No external network is needed.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
@@ -15,8 +15,6 @@ use std::thread::JoinHandle;
 use sandbx_core::SandboxPolicy;
 use sandbx_helper_fixture::{allow_probe, runtime_paths};
 
-/// `CARGO_BIN_EXE_*` resolves only for a target of the package declaring the bin, which
-/// is why the fixture takes this as an argument.
 fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
 }

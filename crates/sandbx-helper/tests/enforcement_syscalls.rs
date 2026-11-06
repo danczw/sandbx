@@ -2,7 +2,7 @@
 //!
 //! The seccomp half of the enforcement suite: calls Landlock cannot express, because they
 //! touch no path — unix sockets, io_uring, memfd, pidfd, userfaultfd. `enforcement.rs` is
-//! the filesystem half, and states the kernel floor both files run on.
+//! the filesystem half, and states the kernel floor the suite runs on.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
@@ -14,8 +14,6 @@ use std::{fs, thread};
 use sandbx_core::SandboxPolicy;
 use sandbx_helper_fixture::{allow_probe, runtime_paths, vetted};
 
-/// `CARGO_BIN_EXE_*` resolves only for a target of the package declaring the bin, which
-/// is why the fixture takes this as an argument.
 fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
 }
@@ -75,9 +73,9 @@ fn an_explicit_unix_grant_permits_the_connection() {
     });
 
     let probe = env!("CARGO_BIN_EXE_sandbx-unix-probe");
-    // Granted for V9, not for today: at the V8 this kernel negotiates nothing conditions a
-    // unix `connect` on the filesystem policy — measured by dropping these two. At V9
-    // `ResolveUnix` is that condition, and `allow_unix_sockets` confers it on granted paths.
+    // Granted for V9: below it nothing conditions a unix `connect` on the filesystem policy,
+    // measured at V8 by dropping these two. At V9 `ResolveUnix` is that condition, and
+    // `allow_unix_sockets` confers it on granted paths.
     let policy = allow_probe(
         runtime_paths(SandboxPolicy::default().allow_unix_sockets()),
         probe,
@@ -133,7 +131,7 @@ fn unix_socket_connect_to_ungranted_path_is_denied() {
 
 /// `socketpair` returns an `AF_UNIX` descriptor with no `socket(2)` call, so the rule the two
 /// tests above rest on never sees it — and a datagram pair is connectionless, so `connect`
-/// re-targets one half at any path. Measured reachable before the rule existed: with network
+/// re-targets one half at any path. Measured reachable without the rule: with network
 /// denied, `unix_sockets=false` and no grant naming the socket, a sandboxed command delivered
 /// to it.
 #[test]
