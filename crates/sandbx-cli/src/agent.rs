@@ -26,10 +26,9 @@ pub use tui::Tui;
 pub(crate) use prompt::APPROVE_CALL;
 
 // Reached as `super::…` from the sibling modules rather than used here: `tui` takes the
-// two prompt types and the two exit codes, `render` the exit codes, `wrapup` the renderer.
+// two prompt types and the two exit codes, `render` the exit codes.
 use agent_run::{INCOMPLETE, NO_CONSENT};
 use prompt::{Approve, Terminal};
-use render::Render;
 
 /// Whether a stream reaches a terminal: what decides both that an SGR escape renders on it
 /// and that a screen can be drawn on it.

@@ -419,18 +419,21 @@ impl AgentRun {
         // Exhaustive on `TurnStop`, so a fourth way to end cannot reach `finish` as a clean one.
         let (outcome, ending) = match (stop, outcome) {
             (Some(TurnStop::RoundLimit { rounds }), Ok(first)) if !self.no_wrap_up => {
-                let wrapup::WrapUp {
-                    outcome,
-                    summarised,
-                } = wrapup::run(&mut open, ctx, turn, first, &mut render).await;
-                // A round that failed after streaming prose has already put text on
-                // stdout that no transcript will account for, which `CutShort` denies.
-                let ending = match (summarised, render.wrote_after_gap()) {
-                    (true, _) => Unfinished::Summarised(rounds),
-                    (false, true) => Unfinished::Discarded(rounds),
-                    (false, false) => Unfinished::CutShort(rounds),
-                };
-                (Ok(outcome), Some(ending))
+                render.separate();
+                let wrapped = wrapup::run(
+                    &mut open,
+                    ctx,
+                    turn,
+                    first,
+                    |event| render.event(event),
+                    gate::settled,
+                )
+                .await;
+                if let Some(line) = &wrapped.said {
+                    Notes::note(&mut render, line);
+                }
+                let ending = wrapped.ending(rounds);
+                (Ok(wrapped.outcome), Some(ending))
             }
             (Some(TurnStop::RoundLimit { rounds }), outcome) => {
                 (outcome, Some(Unfinished::CutShort(rounds)))
