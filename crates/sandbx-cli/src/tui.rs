@@ -193,51 +193,17 @@ impl Tui {
         let mut keys = Keys::listen();
         paint(&pane, |_| {});
 
-        let outcome = {
-            // Both rounds in one future, so the interrupt below covers the wrap-up too.
-            let turn = async {
-                let first = run_turn(
-                    &mut open,
-                    turn.clone(),
-                    ctx,
-                    |event| paint(&pane, |transcript| transcript.event(event)),
-                    Gate {
-                        argv: gate::ArgvGate::new(self.run.allow_tool.as_deref(), None),
-                        pane: &pane,
-                    },
-                )
-                .await?;
-
-                let TurnStop::RoundLimit { rounds } = first.stop else {
-                    return Ok((first, None));
-                };
-                if self.run.no_wrap_up {
-                    return Ok((first, Some(Unfinished::CutShort(rounds))));
-                }
-
-                // Ahead of the request: the status bar counts this round too, and would
-                // otherwise read one past `--max-rounds` with nothing saying why.
-                noted(
-                    &pane,
-                    &format!(
-                        "sandbx: out of rounds after {rounds}; asking once more, with no tool"
-                    ),
-                );
-                let wrapped = wrapup::run(
-                    &mut open,
-                    ctx,
-                    turn,
-                    first,
-                    |event| paint(&pane, |transcript| transcript.event(event)),
-                    |call| noted(&pane, &gate::line(call)),
-                )
-                .await;
-                if let Some(line) = &wrapped.said {
-                    noted(&pane, line);
-                }
-                let ending = wrapped.ending(rounds);
-                Ok::<_, TurnError>((wrapped.outcome, Some(ending)))
-            };
+        let first = {
+            let turn = run_turn(
+                &mut open,
+                turn.clone(),
+                ctx,
+                |event| paint(&pane, |transcript| transcript.event(event)),
+                Gate {
+                    argv: gate::ArgvGate::new(self.run.allow_tool.as_deref(), None),
+                    pane: &pane,
+                },
+            );
 
             // The whole of the interrupt: the turn's future is dropped where it stood, so
             // the loop gains no stop of its own. What that costs is said below — a running
@@ -249,7 +215,44 @@ impl Tui {
             }
         };
 
-        // The borrows the two seams held end with the future above. Every paint ran on this
+        let driven = match first {
+            Err(stopped) => Driven::Stopped(stopped),
+            Ok(Err(error)) => Driven::Failed(error),
+            Ok(Ok(first)) => match first.stop {
+                TurnStop::RoundLimit { rounds } if !self.run.no_wrap_up => {
+                    // Ahead of the request: the status bar counts this round too, and would
+                    // otherwise read one past `--max-rounds` with nothing saying why.
+                    (&pane).note("sandbx: out of rounds; asking once more, with no tool");
+
+                    // A stop of its own and not the first round's: the turn before it has
+                    // finished, so a stop here costs the wrap-up's prose and nothing else.
+                    let wrapped = tokio::select! {
+                        wrapped = wrapup::run(
+                            &mut open,
+                            ctx,
+                            turn,
+                            &first,
+                            |event| paint(&pane, |transcript| transcript.event(event)),
+                            |call| (&pane).note(&gate::line(call)),
+                        ) => Ok(wrapped),
+                        stopped = keys.stop() => Err(stopped),
+                    };
+                    match wrapped {
+                        Ok(wrapped) => {
+                            let (outcome, ending) = wrapped.finish(first, rounds, &mut &pane);
+                            Driven::Finished(outcome, Some(ending))
+                        }
+                        Err(stopped) => Driven::StoppedWrapping(stopped, first, rounds),
+                    }
+                }
+                TurnStop::RoundLimit { rounds } => {
+                    Driven::Finished(first, Some(Unfinished::CutShort(rounds)))
+                }
+                _ => Driven::Finished(first, None),
+            },
+        };
+
+        // The borrows the two seams held end with the futures above. Every paint ran on this
         // task, so one that panicked would have unwound past here already.
         let mut pane = pane
             .into_inner()
@@ -259,29 +262,24 @@ impl Tui {
         // a write that can stall on a paused terminal while the trail is still held.
         pane.over = true;
 
-        let (code, outcome, closing) = match outcome {
-            Err(stopped) => {
-                let (code, said) = match stopped {
-                    Stopped::Pressed => (INCOMPLETE, interrupted()),
-                    // 3 and not 2, the code a lost gate already takes: a turn nobody could
-                    // see is one nobody watched, and that is not the recoverable stop an
-                    // interrupt is.
-                    Stopped::Gone => (NO_CONSENT, lost()),
-                };
+        let (code, outcome, closing) = match driven {
+            Driven::Stopped(stopped) => {
+                let Ending { code, said } = stop(stopped, None);
                 // The call the dropped future stood on never settles, so this is the only
                 // line it gets.
                 let running = mem::take(&mut pane.running).stopped();
-                (
-                    Ok(code),
-                    None,
-                    [Some(said), running].into_iter().flatten().collect(),
-                )
+                (Ok(code), None, said.into_iter().chain(running).collect())
             }
-            Ok(Ok((outcome, unfinished))) => {
+            Driven::StoppedWrapping(stopped, first, rounds) => {
+                let Ending { code, said } = stop(stopped, Some(rounds));
+                let kept = (first, Some(Unfinished::CutShort(rounds)));
+                (Ok(code), Some(kept), said)
+            }
+            Driven::Finished(outcome, unfinished) => {
                 let Ending { code, said } = ending(&outcome, unfinished);
                 (Ok(code), Some((outcome, unfinished)), said)
             }
-            Ok(Err(error)) => {
+            Driven::Failed(error) => {
                 // In the reprint only where stderr went elsewhere: `main` prints the error
                 // once it is returned, which a terminal would otherwise read twice.
                 if shown == Device::Redirected {
@@ -340,20 +338,48 @@ fn held(stderr: Device) -> Option<sandbx_logging::Held> {
     (stderr == Device::Terminal).then(sandbx_logging::hold)
 }
 
-fn interrupted() -> String {
-    "sandbx: interrupted. Nothing of this turn is stored, and a tool call already running \
-     finishes unseen: the process waits for it before it exits (#26)"
-        .to_string()
+/// What the turn's futures came to, before any of it is accounted for.
+enum Driven {
+    /// Stopped before the turn had finished, so nothing of it is kept.
+    Stopped(Stopped),
+    /// Stopped in the wrap-up round of a turn that ran out after `usize` rounds, which is
+    /// kept as the cap left it.
+    StoppedWrapping(Stopped, TurnOutcome, usize),
+    Finished(TurnOutcome, Option<Unfinished>),
+    Failed(TurnError),
 }
 
-/// The account of a terminal that went away mid-turn.
+/// The code a stop exits with, and its line. `wrapping` is the rounds of a turn the stop
+/// found in its wrap-up round, which is kept, where any other stop keeps nothing.
 ///
-/// Its own line and not the interrupt's: the operator did not stop this turn, and telling
-/// them they did is the one reading of a hangup that is certainly wrong (#264).
-fn lost() -> String {
-    "sandbx: the terminal went away, so the turn stopped where it stood. Nothing of it is \
-     stored, and a tool call already running finishes unseen before the process exits (#26)"
-        .to_string()
+/// A hangup has its own line and not the interrupt's: the operator did not stop this turn,
+/// and telling them they did is the one reading of a hangup that is certainly wrong (#264).
+/// It exits 3 and not 2, the code a lost gate already takes: a turn nobody could see is one
+/// nobody watched, and that is not the recoverable stop an interrupt is.
+fn stop(stopped: Stopped, wrapping: Option<usize>) -> Ending {
+    let (code, how) = match stopped {
+        Stopped::Pressed => (INCOMPLETE, "sandbx: interrupted"),
+        Stopped::Gone => (
+            NO_CONSENT,
+            "sandbx: the terminal went away, so the turn stopped where it stood",
+        ),
+    };
+    let what = match wrapping {
+        // No tool call to name: the wrap-up round's gate lets none run.
+        Some(rounds) => format!(
+            "{how} in the wrap-up round. The {rounds} rounds before it are stored as the \
+             cap left them; what the wrap-up wrote is not"
+        ),
+        None => format!(
+            "{how}. Nothing of this turn is stored, and a tool call already running finishes \
+             unseen: the process waits for it before it exits (#26)"
+        ),
+    };
+
+    Ending {
+        code,
+        said: vec![what],
+    }
 }
 
 /// Write what the run has to say on a terminal the screen has given back, and report the
@@ -440,12 +466,11 @@ fn ending(outcome: &TurnOutcome, unfinished: Option<Unfinished>) -> Ending {
             ));
             INCOMPLETE
         }
-        (_, Some(Unfinished::Discarded(_))) => {
-            said.push(
-                "sandbx: what the wrap-up round wrote is not an answer, and is not stored; \
-                 raising `--max-rounds` would let the turn go further"
-                    .to_string(),
-            );
+        (_, Some(Unfinished::Discarded(rounds))) => {
+            said.push(format!(
+                "sandbx: out of rounds after {rounds}; what the wrap-up round wrote is not an \
+                 answer, and is not stored. Raising `--max-rounds` would let the turn go further"
+            ));
             INCOMPLETE
         }
         (_, Some(Unfinished::CutShort(rounds))) | (TurnStop::RoundLimit { rounds }, None) => {
@@ -539,10 +564,13 @@ impl Running {
     }
 }
 
-/// Note `line` on the pane, as [`paint`] draws: not at all under a poisoned lock.
-fn noted(pane: &Mutex<Pane>, line: &str) {
-    if let Ok(mut pane) = pane.lock() {
-        pane.note(line);
+/// The pane as the seams share it: a line is noted as [`paint`] draws, not at all under a
+/// poisoned lock.
+impl Notes for &Mutex<Pane> {
+    fn note(&mut self, line: &str) {
+        if let Ok(mut pane) = self.lock() {
+            pane.note(line);
+        }
     }
 }
 

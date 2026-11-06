@@ -1,7 +1,8 @@
 //! The second turn a round limit earns: no tool may be called, so the reply is prose.
 //!
-//! Its own module because it changes for a different reason than the rest of `agent-run`:
-//! what a turn out of rounds is worth asking next, not what was asked or allowed.
+//! Its own module because it changes for a different reason than the rest of `agent-run`
+//! and `tui`, its two callers: what a turn out of rounds is worth asking next, not what was
+//! asked or allowed.
 //!
 //! The request is spent because the cap otherwise leaves stdout empty in the common case, a
 //! model that opened with a tool call: tokens burnt, edits applied, no answer. Hence on by
@@ -14,8 +15,8 @@
 //! what is asked for, not what runs; [`RefuseAll`] is the bound.
 //!
 //! The exit stays 2. A summary is prose about work that was cut off, not a finished turn, so
-//! a script sees the same status either way, and stderr is what tells the two apart — the
-//! split `--max-tokens` truncation uses.
+//! a script sees the same status either way, and the account is what tells the two apart —
+//! the split `--max-tokens` truncation uses.
 
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_event::AgentEvent;
@@ -24,6 +25,7 @@ use sandbx_provider::{EventStream, ProviderError};
 use sandbx_tools::ExecutionContext;
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
+use super::prompt::Notes;
 use super::render::Unfinished;
 
 /// What the model is told in place of the tools it may no longer call.
@@ -65,14 +67,13 @@ impl<S: FnMut(Settled<'_>)> CallGate for RefuseAll<S> {
 
 /// Ask once more, over `turn`'s history plus `first`'s messages, and say whether it answered.
 ///
-/// A wrap-up round that fails leaves `first` exactly as it was — exit 2, its text
-/// already shown, and stored (#188) — rather than costing it any of them. `observe` and
-/// `settle` are the caller's sinks, so the round is drawn where the turn was (#232).
+/// `first` is borrowed, so a caller whose wait is cut short still holds the turn to store.
+/// `observe` and `settle` are the caller's sinks, so the round is drawn where the turn was.
 pub(super) async fn run(
     open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
     ctx: &ExecutionContext,
     turn: Turn<'_>,
-    first: TurnOutcome,
+    first: &TurnOutcome,
     mut observe: impl FnMut(&AgentEvent),
     settle: impl FnMut(Settled<'_>),
 ) -> WrapUp {
@@ -108,7 +109,7 @@ pub(super) async fn run(
         wrap_up,
         ctx,
         |event| {
-            wrote |= matches!(event, AgentEvent::Text { delta } if !delta.is_empty());
+            wrote |= streamed(event);
             observe(event);
         },
         RefuseAll(settle),
@@ -119,8 +120,7 @@ pub(super) async fn run(
         // Reported, not propagated: a `?` here would turn a turn that did real work
         // into exit 1 with its text already written.
         Err(error) => WrapUp {
-            outcome: first,
-            summarised: false,
+            answer: None,
             wrote,
             said: Some(format!(
                 "sandbx: the wrap-up request failed: {}",
@@ -131,8 +131,7 @@ pub(super) async fn run(
         // already streamed is `Unfinished::Discarded`. Reading every non-answer stop as a tool
         // asked for is sound only while `RefuseAll` cannot abort.
         Ok(second) if second.messages.is_empty() || second.stop != TurnStop::Answered => WrapUp {
-            outcome: first,
-            summarised: false,
+            answer: None,
             wrote,
             said: Some(format!(
                 "sandbx: the wrap-up round {}",
@@ -144,35 +143,49 @@ pub(super) async fn run(
             )),
         },
         Ok(second) => WrapUp {
-            outcome: merge(first, second),
-            summarised: true,
+            answer: Some(second),
             wrote,
             said: None,
         },
     }
 }
 
-/// What [`run`] leaves the turn as.
+/// Whether `event` shows the operator any text. An empty delta arrives at every block's
+/// close, so counting it would call a silent round [`Unfinished::Discarded`].
+fn streamed(event: &AgentEvent) -> bool {
+    matches!(event, AgentEvent::Text { delta } if !delta.is_empty())
+}
+
+/// What [`run`] came to, before it is joined to the turn it followed.
 pub(super) struct WrapUp {
-    /// The turn to store: `first` alone, or merged with the round that answered.
-    pub(super) outcome: TurnOutcome,
-    summarised: bool,
+    /// The round, where it answered.
+    answer: Option<TurnOutcome>,
     /// Whether the round streamed any text, answer or not.
     wrote: bool,
-    /// Why the round is not the answer, for the caller to report ahead of its ending.
-    pub(super) said: Option<String>,
+    /// Why the round is not the answer.
+    said: Option<String>,
 }
 
 impl WrapUp {
-    /// How a turn that ran out after `rounds` ended, once this round was spent on it.
+    /// The turn to store, and how a turn that ran out after `rounds` ended. A round that
+    /// did not answer leaves `first` exactly as it was (#188), and says why on `notes`.
     ///
     /// A round that failed after streaming prose has already shown text that no
     /// transcript will account for, which `CutShort` would deny.
-    pub(super) fn ending(&self, rounds: usize) -> Unfinished {
-        match (self.summarised, self.wrote) {
-            (true, _) => Unfinished::Summarised(rounds),
-            (false, true) => Unfinished::Discarded(rounds),
-            (false, false) => Unfinished::CutShort(rounds),
+    pub(super) fn finish(
+        self,
+        first: TurnOutcome,
+        rounds: usize,
+        notes: &mut impl Notes,
+    ) -> (TurnOutcome, Unfinished) {
+        if let Some(line) = &self.said {
+            notes.note(line);
+        }
+
+        match (self.answer, self.wrote) {
+            (Some(second), _) => (merge(first, second), Unfinished::Summarised(rounds)),
+            (None, true) => (first, Unfinished::Discarded(rounds)),
+            (None, false) => (first, Unfinished::CutShort(rounds)),
         }
     }
 }

@@ -1,6 +1,7 @@
+use super::super::prompt::Notes;
 use super::super::render::Unfinished;
-use super::{WrapUp, merge};
-use sandbx_event::StopReason;
+use super::{WrapUp, merge, streamed};
+use sandbx_event::{AgentEvent, StopReason};
 use sandbx_turn::{TurnOutcome, TurnStop};
 
 fn outcome(stop: TurnStop, round_stop: Option<StopReason>) -> TurnOutcome {
@@ -39,21 +40,53 @@ fn the_merged_turn_takes_the_wrap_ups_reason() {
     assert_eq!(unreported.round_stop, None);
 }
 
+/// Records every line noted, for a test to read back.
+#[derive(Default)]
+struct Said(Vec<String>);
+
+impl Notes for Said {
+    fn note(&mut self, line: &str) {
+        self.0.push(line.to_string());
+    }
+}
+
 /// What the round left decides the ending: an answer summarises, text that was not one is
 /// discarded, and a round that showed nothing leaves the turn as the cap cut it.
 #[test]
 fn the_ending_is_what_the_round_left() {
-    let ending = |summarised, wrote| {
-        WrapUp {
-            outcome: outcome(TurnStop::RoundLimit { rounds: 3 }, None),
-            summarised,
+    let capped = || outcome(TurnStop::RoundLimit { rounds: 3 }, None);
+    let finish = |answer, wrote, said| {
+        let mut notes = Said::default();
+        let (kept, ending) = WrapUp {
+            answer,
             wrote,
-            said: None,
+            said,
         }
-        .ending(3)
+        .finish(capped(), 3, &mut notes);
+        (kept.stop, ending, notes.0)
     };
 
-    assert_eq!(ending(true, true), Unfinished::Summarised(3));
-    assert_eq!(ending(false, true), Unfinished::Discarded(3));
-    assert_eq!(ending(false, false), Unfinished::CutShort(3));
+    let summarised = finish(Some(outcome(TurnStop::Answered, None)), true, None);
+    assert_eq!(
+        summarised,
+        (TurnStop::Answered, Unfinished::Summarised(3), Vec::new())
+    );
+
+    // Neither answered, so `first` stands and the reason is noted.
+    let why = || Some("sandbx: the wrap-up round replied with nothing".to_string());
+    let (stop, ending, said) = finish(None, true, why());
+    assert_eq!((stop, ending), (capped().stop, Unfinished::Discarded(3)));
+    assert_eq!(said.len(), 1);
+    let (stop, ending, _) = finish(None, false, why());
+    assert_eq!((stop, ending), (capped().stop, Unfinished::CutShort(3)));
+}
+
+/// An empty delta closes every block, so a silent round must not read as one that wrote.
+#[test]
+fn only_text_with_something_in_it_is_streamed() {
+    let text = |delta: &str| AgentEvent::Text {
+        delta: delta.to_string(),
+    };
+    assert!(streamed(&text("found three")));
+    assert!(!streamed(&text("")));
 }

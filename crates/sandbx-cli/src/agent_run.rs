@@ -420,20 +420,17 @@ impl AgentRun {
         let (outcome, ending) = match (stop, outcome) {
             (Some(TurnStop::RoundLimit { rounds }), Ok(first)) if !self.no_wrap_up => {
                 render.separate();
-                let wrapped = wrapup::run(
+                let (outcome, ending) = wrapup::run(
                     &mut open,
                     ctx,
                     turn,
-                    first,
+                    &first,
                     |event| render.event(event),
                     gate::settled,
                 )
-                .await;
-                if let Some(line) = &wrapped.said {
-                    Notes::note(&mut render, line);
-                }
-                let ending = wrapped.ending(rounds);
-                (Ok(wrapped.outcome), Some(ending))
+                .await
+                .finish(first, rounds, &mut render);
+                (Ok(outcome), Some(ending))
             }
             (Some(TurnStop::RoundLimit { rounds }), outcome) => {
                 (outcome, Some(Unfinished::CutShort(rounds)))

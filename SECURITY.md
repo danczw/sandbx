@@ -324,7 +324,10 @@ architecture the filter gates on.
   finishes. What the turn showed is printed back to the terminal once the screen
   is gone, and the running call is named on stderr but never its result. Where
   the terminal is what went away, only a redirected stderr still has either
-  ([#271](https://github.com/danczw/sandbx/issues/271)).
+  ([#271](https://github.com/danczw/sandbx/issues/271)). The one exception is a
+  stop during the wrap-up round after `--max-rounds`: the rounds before it are
+  stored as the cap left them, and only the wrap-up's prose is lost
+  ([#232](https://github.com/danczw/sandbx/issues/232)).
 
   Ownership and integrity are enforced, not secrecy: directory `0700`, transcript
   `0600`, a wider directory narrowed, and a resume refused when another user can
