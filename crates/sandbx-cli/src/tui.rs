@@ -196,8 +196,8 @@ impl Tui {
         paint(&pane, |_| {});
 
         // Inside the loop rather than raced against it, so the rounds before the stop come
-        // back to be stored (#271). What it still costs is said below: a running tool
-        // finishes, and the process waits on it, `Runtime::drop` having no timeout (#26).
+        // back to be stored. A running tool still finishes, and the process waits on it,
+        // `Runtime::drop` having no timeout (#26).
         let mut seen = None;
         let first = run_turn_until(
             &mut open,
