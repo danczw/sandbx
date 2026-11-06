@@ -56,7 +56,8 @@ struct Answered<'a> {
 struct Gate<F> {
     decide: F,
 
-    /// One entry per call that reached [`CallGate::approve`], which three outcomes do not.
+    /// One entry per call that reached [`CallGate::approve`]: an unknown name, an unoffered
+    /// tool and a call after an abort do not.
     asked: Vec<Asked>,
 
     /// One `{name}:{outcome}` per `tool_use` block, in the order the round settled them.
@@ -1325,7 +1326,7 @@ async fn a_capped_turn_names_both_bounds_it_hit() {
 }
 
 /// A cut that outlived its round would make `agent-run` exit non-zero on a finished
-/// answer. `usage`, three lines above it in the loop, keeps what a round did not report.
+/// answer. `usage`, set just above it in the loop, keeps what a round did not report.
 #[tokio::test]
 async fn a_later_round_overwrites_an_earlier_cut() {
     let root = tempfile::tempdir().unwrap();

@@ -1,14 +1,13 @@
-//! Two spawns overlapping in time, which is what #242 will make ordinary.
+//! Two spawns overlapping in time, which parallel tool calls (#242) would make ordinary.
 //!
-//! Today the turn loop awaits each `spawn_blocking` before the next, so two sandboxed
+//! The turn loop awaits each `spawn_blocking` before the next, so two sandboxed
 //! children never overlap in one process and pairing a spawn to its outcome works
 //! *positionally*. That invariant lives in `sandbx-turn` and the records relying on it live
 //! in `sandbx-core`, which cannot see it — so this drives two concurrent calls through one
 //! `ExecutionContext` and asserts the pairing holds without it (#249).
 //!
-//! Its own binary because the subscriber has to be the global one: the threads that emit
-//! are not the thread that asked, and a `set_default` subscriber is thread-local — the test
-//! would capture nothing and pass. `context/guide-testing.md` has the rule.
+//! Its own binary because the subscriber has to be the global one; `context/guide-testing.md`
+//! has why.
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};

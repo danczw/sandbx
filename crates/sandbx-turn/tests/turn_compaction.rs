@@ -1,8 +1,8 @@
 //! Compaction's wiring: that the trigger reads a measurement, that the measurement gets
 //! out of the turn, and that what reaches the API is a conversation it would accept.
 //!
-//! The planner's own algebra is unit-tested beside the private `plan_cut`. What is
-//! asserted here is `Script::sent` — the request itself.
+//! The planner's own algebra is unit-tested beside `plan_cut`, in `sandbx-compact`. What
+//! is asserted here is `Script::sent` — the request itself.
 
 use sandbx_core::SandboxPolicy;
 use sandbx_event::{AgentEvent, StopReason};
@@ -12,7 +12,7 @@ use sandbx_turn::{Compaction, PromptUsage, TurnError, TurnLimits, run_turn};
 
 use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
-/// Large enough to put any test over the budgets used below.
+/// A round's usage report, counting `input` tokens in.
 fn measured(input: u32) -> AgentEvent {
     AgentEvent::Usage {
         input_tokens: Some(input),
@@ -756,8 +756,8 @@ async fn a_cut_onto_a_resumed_prompt_sheds_its_results() {
     assert_eq!(sent(&script, 0), [said("go on"), replied("done")]);
 }
 
-/// Rung 3: cutting anyway turns a request that *might* be too long into one the API is
-/// certain to reject.
+/// `plan_cut`'s last fallback: cutting anyway turns a request that *might* be too long into
+/// one the API is certain to reject.
 #[tokio::test]
 async fn an_unbreakable_history_is_sent_oversized() {
     let mut history = vec![said("only prose turn")];

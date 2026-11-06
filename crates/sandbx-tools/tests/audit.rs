@@ -108,9 +108,9 @@ fn bash(command: &str, ctx: &ExecutionContext) {
     let _ = BuiltinTool::Bash.execute(json!({ "command": command }), ctx);
 }
 
-/// `for_session` to `ExecutionContext` to `SandboxedCommand` to the record, which is the
-/// whole of the plumbing #249 added — and `program` is `/bin/sh` for every `bash` call, so
-/// without `args` the command itself is on no record at all.
+/// `for_session` to `ExecutionContext` to `SandboxedCommand` to the record (#249) — and
+/// `program` is `/bin/sh` for every `bash` call, so without `args` the command itself is on
+/// no record at all.
 #[test]
 fn a_bash_spawn_records_the_session_and_the_command() {
     let lines = capture(|| bash("echo hi", &spawning_ctx()));
@@ -199,9 +199,9 @@ fn two_bash_calls_take_two_spawn_ids() {
 }
 
 /// The guard reports a substituted root while the context is *built*, so the session has to
-/// be known by then — which is why `for_session` is a constructor and `with_session` is
-/// gone. This is the end-to-end evidence: a context that was told its session afterwards
-/// would emit this record naming none, and nothing downstream could repair it (#249).
+/// be known by then, which is why `for_session` is a constructor. A context told its
+/// session afterwards would emit this record naming none, and nothing downstream could
+/// repair it (#249).
 #[test]
 fn a_substituted_root_names_the_session_it_weakened() {
     let work = tempfile::tempdir().expect("a scratch tree");

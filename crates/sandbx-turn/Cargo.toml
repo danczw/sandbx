@@ -24,17 +24,16 @@ workspace = true
 
 [dev-dependencies]
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "time", "macros", "test-util"] }
-# Dev-only since `compact_tests.rs` left for `sandbx-compact`: nothing under `src/`
-# names it, and the three files under `tests/` build the inputs a scripted turn asks for.
+# Dev-only: nothing under `src/` names it; the files under `tests/` build the inputs a
+# scripted turn asks for.
 serde_json = "1.0.151"
 sandbx-core = { path = "../sandbx-core" }
-# The turn-loop suite's shared fixture, a crate rather than the `tests/support/mod.rs` it
-# replaces for the reasons its own `//!` gives. The cycle — it depends on this crate —
-# never exists in the unit graph: these *test* targets link it, and it links this *lib*.
+# A crate rather than a `tests/support/mod.rs` for the reasons its own `//!` gives. The
+# cycle — it depends on this crate — never exists in the unit graph: these *test* targets
+# link it, and it links this *lib*.
 sandbx-turn-fixture = { path = "../sandbx-turn-fixture" }
-# Dev-only since #366 took `EventStream` and `ProviderError`: #364 had already taken the
-# request shapes, so nothing under `src/` names this crate at all and the one reference
-# left is `turn_loop.rs`'s spawnability pin, which types a field as an `AnthropicClient`.
+# Dev-only: nothing under `src/` names this crate; the one reference is `turn_loop.rs`'s
+# spawnability pin, which types a field as an `AnthropicClient`.
 sandbx-anthropic = { path = "../sandbx-anthropic" }
 tempfile = "3.27.0"
 # To read the trail a scripted turn leaves, never to write one: `tracing` is a

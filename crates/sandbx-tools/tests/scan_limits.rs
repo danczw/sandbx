@@ -1,10 +1,9 @@
 //! The work a tool does must stay bounded, not just what it returns.
 //!
-//! `tool_limits.rs` covers the output caps, which trim an answer already paid for. These
+//! `limits.rs` covers the output caps, which trim an answer already paid for. These
 //! cover the input budget: `grep` and `find` walk a tree and `grep` reads every file
-//! in it, so on a large root the cost is paid before any output cap applies. The
-//! in-process tools have no timeout — `ExecutionContext`'s bounds the spawned
-//! command alone — so this budget is all that bounds one broad search.
+//! in it, so on a large root the cost is paid before any output cap applies, and no
+//! timeout reaches an in-process tool (`ToolLimits` has why).
 
 use sandbx_core::{SandboxPolicy, VettedPath};
 use sandbx_tools::{BuiltinTool, ExecutionContext, ToolLimits};

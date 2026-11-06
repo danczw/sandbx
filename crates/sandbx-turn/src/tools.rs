@@ -15,8 +15,8 @@ use crate::TurnError;
 /// `ExecutionContext` settled first (#242). `BuiltinTool::execute` may sit in a `write`, a
 /// directory walk or a 90-second command, which on a current-thread runtime would freeze
 /// every other task — hence `spawn_blocking`, whose uncancellability `run_turn` documents.
-/// Every block reports to [`CallGate::settled`], including the two refusals above the
-/// gate, which the gate's own verdict cannot account for.
+/// Every answered block reports to [`CallGate::settled`], including the two refusals above
+/// the gate, which the gate's own verdict cannot account for.
 pub(crate) async fn answer_calls<G>(
     blocks: &[ContentBlock],
     ctx: &ExecutionContext,
