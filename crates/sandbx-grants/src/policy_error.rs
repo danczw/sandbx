@@ -189,7 +189,7 @@ impl fmt::Display for PolicyError {
             ),
             Self::SystemExecutables { cwd, path } => write!(
                 f,
-                "refusing to derive a policy from {}: it holds {}, which every command may \
+                "refusing to derive a policy from {}: it overlaps {}, which every command may \
                  already execute, so a write grant there rewrites what runs next — {ADVICE}",
                 cwd.display(),
                 path.display()
