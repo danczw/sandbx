@@ -333,8 +333,7 @@ fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
 }
 
 /// A stop in the wrap-up round finds the turn before it finished, and hands it to `save` as
-/// the cap left it; a stop anywhere else hands it nothing (#232). The claim `SECURITY.md`
-/// makes of both, which `drive` cannot be driven to show without a terminal.
+/// the cap left it; a stop anywhere else hands it nothing (#232).
 #[test]
 fn only_a_stop_in_the_wrap_up_round_keeps_the_turn() {
     let capped = TurnStop::RoundLimit { rounds: 4 };
