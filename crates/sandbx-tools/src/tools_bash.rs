@@ -94,8 +94,8 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
             subject: ran(),
             after,
         },
-        // Exhaustive over the refusals and not over `SandboxError`: the rest of that enum is
-        // `FsGuard`'s, which no spawn reaches, so an arm for one would claim an unreachable
+        // Exhaustive over the refusals and not over `SandboxError`, most of which is
+        // `FsGuard`'s and unreachable from a spawn: an arm for one would claim an unreachable
         // path is handled.
         // The label stands in when the stderr is gone: a stage killed between the channel
         // write and its own print leaves the record but not the prose.
@@ -106,8 +106,8 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
             };
 
             match refusal {
-                // Reachable only through `SandboxedCommand::pin_sha256`, which no built-in sets
-                // today; kept because the builder is public and the next spawning tool may.
+                // Reachable only through `SandboxedCommand::pin_sha256`, which no built-in sets;
+                // kept because the builder is public and a later spawning tool may.
                 HelperRefusal::PinMismatch
                 | HelperRefusal::PinUnreadable
                 | HelperRefusal::PinnedScript => ToolError::Denied {
@@ -135,8 +135,9 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
                 },
             }
         }
-        // `SpawnFailed` is the only other thing `output` returns, and the sandbox is what
-        // would not start.
+        // The rest `output` returns: `SpawnFailed`, or the policy shapes `command_line` will
+        // not build (`UnboundedResolution`, `GrantBoundByResolver`). Either way the sandbox
+        // is what would not start.
         error => ToolError::Failed {
             subject: applied(),
             detail: error.to_string(),

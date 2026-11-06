@@ -45,11 +45,11 @@ impl ExecutionContext {
     /// each spawn's pair, each in-process access, and the `rooted_access` degradation the
     /// guard may report as it is built.
     ///
-    /// A constructor and not a setter, which is the whole reason this exists: the guard
-    /// reports while it is *built*, so a context told its session afterwards has already
-    /// emitted a record disclaiming one. The caller therefore has to hold a session before
-    /// it builds a context — `sandbx-cli` opens one ahead of deriving the policy, since
-    /// nothing may come between that derivation and this call (#249).
+    /// A constructor and not a setter: the guard reports while it is *built*, so a context
+    /// told its session afterwards has already emitted a record disclaiming one. The caller
+    /// has to hold a session before it builds a context — `sandbx-cli` opens one ahead of
+    /// deriving the policy, since nothing may come between that derivation and this call
+    /// (#249).
     pub fn for_session(policy: SandboxPolicy, session: String) -> Self {
         Self::build(policy, Some(session))
     }
@@ -57,7 +57,7 @@ impl ExecutionContext {
     /// Both constructors, so the guard cannot be built one way on one path.
     ///
     /// A spelling and not a `SessionId`: the type lives in `sandbx-session-id`, and taking
-    /// it would be this crate's second dependency for a value it only passes along.
+    /// it would be this crate's second workspace dependency for a value it only passes along.
     fn build(policy: SandboxPolicy, session: Option<String>) -> Self {
         Self {
             guard: match &session {
@@ -111,8 +111,8 @@ impl ExecutionContext {
     /// The only route to the policy, and one that spends it rather than lending it
     /// out: an accessor returning `&SandboxPolicy` would let an in-process tool read
     /// the path lists and open files itself, bypassing the TOCTOU-safe handles
-    /// [`FsGuard`] hands back, which it once did (#56). Timeout, helper and session are
-    /// applied here so a second spawning built-in cannot forget them.
+    /// [`FsGuard`] hands back (#56). Timeout, helper and session are applied here so a
+    /// second spawning built-in cannot forget them.
     #[must_use]
     pub fn sandboxed_command(&self, program: String) -> SandboxedCommand {
         let mut command = SandboxedCommand::new(program, self.policy.clone()).timeout(self.timeout);

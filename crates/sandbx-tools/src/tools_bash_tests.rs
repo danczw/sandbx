@@ -90,7 +90,7 @@ fn a_sandbox_that_would_not_apply_names_the_sandbox_and_not_the_command() {
             rendered.starts_with(&format!("sandbox `{COMMAND}` failed")),
             "{refusal:?} did not name the sandbox: {rendered}"
         );
-        // The distinction the changed subject exists to make: a model cannot read this
+        // The distinction the `sandbox` subject exists to make: a model cannot read this
         // as the command having run and exited non-zero.
         assert!(
             !rendered.contains("run `"),

@@ -29,7 +29,7 @@ impl ToolOutput {
         &self.content
     }
 
-    /// Take the text, for a caller that owns the result anyway.
+    /// Take the text.
     pub fn into_content(self) -> String {
         self.content
     }
@@ -42,13 +42,10 @@ const EMPTY_OUTPUT: &str = "(no output)";
 /// module. The schema is a function rather than a value because `schema_for!`
 /// allocates and so cannot be a `const`.
 ///
-/// The fields are `pub(crate)` because the seven `SPEC` literals that set them live in
-/// `tools/`, no longer below this module — private here would reach only `builtin_tool` and
-/// below, and every literal would stop compiling. That is the same set they had as private
-/// fields of the crate root, and it survives a later widening of the struct: a `pub(crate)`
-/// field is invisible outside the crate even on a `pub` struct, so `run` — a direct handle
-/// to each tool's executor, bypassing [`BuiltinTool`]'s match — stays crate-private either
-/// way.
+/// The fields are `pub(crate)` because the `SPEC` literals live in `tools::*`, outside this
+/// module. A `pub(crate)` field stays invisible outside the crate even on a `pub` struct, so
+/// `run` — a direct handle to each tool's executor, bypassing [`BuiltinTool`]'s match —
+/// stays crate-private if the struct is ever widened.
 pub(crate) struct ToolSpec {
     pub(crate) name: &'static str,
     pub(crate) description: &'static str,
@@ -131,9 +128,8 @@ impl BuiltinTool {
         self.spec().name
     }
 
-    /// What this tool does, in the words the model is shown. The text lives in the
-    /// tool's own `SPEC`, beside the `execute` it describes, so it cannot drift from
-    /// the behaviour.
+    /// What this tool does, in the words the model is shown. Lives in the tool's own
+    /// `SPEC`, beside the `execute` it describes.
     pub fn description(&self) -> &'static str {
         self.spec().description
     }
@@ -143,8 +139,7 @@ impl BuiltinTool {
         self.spec().risk
     }
 
-    /// JSON schema of this tool's arguments, derived from its input struct — a
-    /// `serde_json::Value` because that is what a provider request carries.
+    /// JSON schema of this tool's arguments, derived from its input struct.
     pub fn input_schema(&self) -> serde_json::Value {
         (self.spec().schema)()
     }
