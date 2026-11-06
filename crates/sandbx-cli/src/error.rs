@@ -7,7 +7,7 @@
 //! converts from both.
 //!
 //! Only [`sandbox_run_error`] and [`agent_error`] carry `From` impls. [`hash_error`] wraps
-//! errors too, but what wraps mostly needs a path or `detail` a conversion cannot know.
+//! an io error too, but with the path, which a conversion cannot know.
 //!
 //! [`error_line()`] is how any of them reaches the operator, with the causes below it.
 

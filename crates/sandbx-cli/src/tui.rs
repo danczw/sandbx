@@ -49,12 +49,12 @@ pub struct Tui {
 }
 
 impl Tui {
-    /// Draw one turn, and report the code to exit with. `ending` decides which.
+    /// Draw one turn, and report the code to exit with.
     ///
     /// # Errors
     ///
-    /// [`AgentError::NotATerminal`] and [`AgentError::ApproveUnderTui`] land before anything
-    /// else, including before the credential is read. The rest are
+    /// [`AgentError::NotATerminal`] and [`AgentError::ApproveUnderTui`] land after only
+    /// [`AgentError::EmptyPrompt`], before the policy and the credential. The rest are
     /// [`AgentRun::execute`]'s, plus [`AgentError::Screen`].
     pub async fn execute(&self) -> Result<i32, AgentError> {
         let prompt = self.run.to_prompt();
@@ -104,9 +104,9 @@ impl Tui {
 
     /// Whether this run can be drawn at all.
     ///
-    /// `terminal` is whether stdout is one, passed in rather than read here: under
-    /// `cargo test` file descriptor 1 is still the developer's own terminal, so a check
-    /// that read it would answer differently depending on where the tests were run.
+    /// `stdout` is passed in rather than read here: under `cargo test` file descriptor 1 is
+    /// still the developer's own terminal, so a check that read it would answer differently
+    /// depending on where the tests were run.
     ///
     /// # Errors
     ///
