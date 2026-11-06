@@ -98,10 +98,8 @@ pub enum Command {
     /// already running finishes — sandbx cannot cancel one mid-call, and the
     /// process waits for it before it exits.
     ///
-    /// Two flags read differently here. `--show-thinking` draws the reasoning in
-    /// the pane rather than on stderr, and `--no-wrap-up` changes nothing: no
-    /// wrap-up round is sent under `tui` at all, so a turn out of rounds ends on
-    /// tool work either way.
+    /// `--show-thinking` reads differently here: it draws the reasoning in the
+    /// pane rather than on stderr.
     ///
     /// Needs a terminal on stdout, and refuses `--approve call`: that prompt
     /// wants the terminal this screen has taken. Use `agent-run` for either.
