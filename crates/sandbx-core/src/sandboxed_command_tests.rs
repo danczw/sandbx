@@ -68,8 +68,8 @@ impl tracing::field::Visit for Collect {
     }
 }
 
-/// The id `record_reports` puts on a degradation is the run it weakened; that function's
-/// own doc has why position cannot stand in for it.
+/// The id `record_reports` puts on a degradation is the run it weakened;
+/// `AuditEvent::Degraded`'s `spawn` has why position cannot stand in for it.
 #[test]
 fn a_degradation_names_the_run_that_weakened() {
     let run = crate::SpawnId::next();

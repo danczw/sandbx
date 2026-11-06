@@ -1133,10 +1133,9 @@ fn a_degradation_is_emitted_at_info_not_debug() {
 }
 
 /// A granted name that no longer holds its vetted object when the guard opens it loses the
-/// descriptor its accesses would have resolved beneath, and so loses the mitigation #230
-/// added, for the whole session. That is fail-safe — the per-access confirmation still
-/// bounds it, exactly as it did before #230 — but it is a substitution rather than a
-/// property of the host, so an operator is told rather than left to infer it from an
+/// descriptor its accesses would have resolved beneath (#230), for the whole session. That is
+/// fail-safe — the per-access confirmation still bounds it — but it is a substitution rather
+/// than a property of the host, so an operator is told rather than left to infer it from an
 /// absence. No race needed: the swap lands before the guard is built, not during an access.
 #[test]
 fn a_root_that_lost_its_object_records_the_weakened_access() {

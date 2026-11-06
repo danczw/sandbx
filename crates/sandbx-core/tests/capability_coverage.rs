@@ -3,7 +3,7 @@
 //! hardcoded list in the crate rather than from the running kernel, so a capability the
 //! crate has never heard of stays in `CapBnd` while `SECURITY.md` promises an empty set.
 //! Not behind `sandbox-integration`, since it spawns nothing and runs where the `CapBnd`
-//! assertion in `enforcement.rs` cannot.
+//! assertion in `sandbx-helper`'s `enforcement.rs` cannot.
 #![cfg(target_os = "linux")]
 
 use std::fs;

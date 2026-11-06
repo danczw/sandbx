@@ -1,5 +1,5 @@
 //! Does the seccomp denylist still contain what the security docs claim?
-//! `enforcement_syscalls.rs` probes only four of the entries end to end, so another could
+//! `sandbx-helper`'s `enforcement_syscalls.rs` probes four entries end to end, so another could
 //! leave the list with every test still passing while `SECURITY.md` went on promising it.
 //! Weaker evidence than a probe — the number is in the list the filter is built from, not
 //! refused by the kernel — but it is all that is available for syscalls with no safe

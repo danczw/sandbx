@@ -107,8 +107,8 @@ impl VettedPath {
 
     /// The pin as it crossed the helper argv, with no I/O at all. Not a weaker source than
     /// [`vet`](Self::vet): argv is the harness's own, passed from stage 1 to stage 2 verbatim,
-    /// and the path token has always been trusted on that basis. Crate-private, so the
-    /// helper's producer is not an embedder's.
+    /// and the path token is trusted on the same basis. Crate-private, so the helper's
+    /// producer is not an embedder's.
     pub(crate) fn from_wire(path: impl Into<PathBuf>, object: ObjectId) -> Self {
         Self {
             path: path.into(),

@@ -2,8 +2,8 @@
 //! confirmed against its grant's pin per access, and a permitted access then resolves
 //! beneath a descriptor the guard holds on that root — so the object confirmed and the
 //! object reached are the same one, and the confirmation-to-open window is closed rather
-//! than narrowed. `openat2` is Linux 5.6; below it, and for a grant naming a file rather
-//! than a directory, the access goes by path and the window is confirmation to open (#230).
+//! than narrowed. `openat2` is Linux 5.6; below it, and for a root with no descriptor (see
+//! `Root`), the access goes by path and the window is confirmation to open (#230).
 //!
 //! One module on purpose: check, access and record are one sequence, and a
 //! split puts the record in a different file from the check it has to agree with.
@@ -45,9 +45,9 @@ pub struct FsGuard {
 /// `dir` is `None` for three causes: a kernel without `openat2`, a grant naming a file
 /// rather than a directory, and a granted name that no longer reaches the directory it was
 /// vetted on. All three mean the same thing to an *access* — resolve by path, bounded by the
-/// confirmation alone, which is what every access did before #230 — which is why nothing
-/// below this point distinguishes them. [`open_root`] does, because at construction the
-/// third is a substitution and the other two are not: see [`Rooting`].
+/// confirmation alone — which is why nothing below this point distinguishes them.
+/// [`open_root`] does, because at construction the third is a substitution and the other
+/// two are not: see [`Rooting`].
 #[derive(Debug, Clone)]
 struct Root {
     vetted: VettedPath,
@@ -90,10 +90,9 @@ impl FsGuard {
     fn with_rooting(policy: &SandboxPolicy, session: Option<&str>, kernel: Openat2) -> Self {
         let mut readable = Vec::new();
         let mut writable = Vec::new();
-        // One record per *root*, not per grant entry. `granted_paths` yields a path once per
-        // axis, and the shipped CLI puts every `--allow-write` on two of them — so recording
-        // per entry would report one substituted root twice and an operator counting them
-        // would overcount on the ordinary shape.
+        // One record per *root*, not per grant entry: `granted_paths` yields a path once per
+        // axis, and the CLI puts every `--allow-write` on two of them, so per entry would
+        // report one substituted root twice.
         let mut told = Vec::new();
 
         for crate::GrantedPath { axis, vetted } in policy.granted_paths() {
@@ -109,10 +108,9 @@ impl FsGuard {
             let dir = match (kernel == Openat2::Present).then(|| open_root(vetted)) {
                 Some(Rooting::Beneath(dir)) => Some(Arc::new(dir)),
                 Some(Rooting::Unpinned) => {
-                    // At `INFO`, like every other degraded step: nothing the agent asked for
-                    // was refused, and the grant is still bounded by the per-access
-                    // confirmation — it has only lost the descriptor that would have made a
-                    // swap unreachable rather than merely refused. Naming the root discloses
+                    // Degraded, not denied: the grant is still bounded by the per-access
+                    // confirmation, and has only lost the descriptor that would have made a
+                    // swap unreachable rather than refused. Naming the root discloses
                     // nothing: it is a path the operator granted.
                     if !told.iter().any(|path| path == vetted.path()) {
                         let detail = format!(
@@ -121,8 +119,7 @@ impl FsGuard {
                              confirmation alone",
                             vetted.path().display()
                         );
-                        // No run to name: the guard is built before anything is spawned, and
-                        // this weakens every access for the session rather than one spawn.
+                        // No run to name: see `AuditEvent::Degraded`'s `spawn`.
                         crate::AuditEvent::degraded("rooted_access", None, session, &detail).emit();
                         told.push(vetted.path().to_path_buf());
                     }
@@ -228,8 +225,8 @@ impl FsGuard {
     /// Open `path` for reading, refusing anything the policy does not allow. Prefer this to
     /// [`check_read`](FsGuard::check_read) wherever the caller will open the file anyway:
     /// returning a path means re-resolving it, and in between the leaf can be swapped for a
-    /// symlink out of the roots. `O_NOFOLLOW` fails such an open with `ELOOP`, but guards the
-    /// final component only; a swapped parent needs `openat`-chain resolution.
+    /// symlink out of the roots. A rooted grant resolves beneath its descriptor; by path,
+    /// `O_NOFOLLOW` fails a swapped leaf with `ELOOP` but guards the final component only.
     pub fn open_read(&self, path: &Path) -> Result<File, SandboxError> {
         let permitted = self.permit_read(path)?;
 
@@ -318,10 +315,10 @@ impl FsGuard {
     /// which also makes the walk cycle-safe — and a symlinked file is included only if it
     /// resolves inside an allowed root. Regular files only, since a FIFO with no writer would
     /// block forever; sorted, `read_dir` order being filesystem-dependent. `max_files` bounds
-    /// the walk, not the result: it stops at the `max_files + 1`th file,
-    /// where trimming afterwards would bound neither time nor memory. The widest confirmation
-    /// window of the five tools: `root` is confirmed once for the whole walk, one record
-    /// covering it, and re-confirming per directory would refuse mid-result.
+    /// the walk, not the result: it stops at the `max_files + 1`th file, where trimming
+    /// afterwards would bound neither time nor memory. The widest confirmation window of the
+    /// in-process tools: `root` is confirmed once for the whole walk, one record covering it,
+    /// and re-confirming per directory would refuse mid-result.
     pub fn walk_readable(
         &self,
         root: &Path,
@@ -340,12 +337,11 @@ impl FsGuard {
                 nix::sys::stat::Mode::empty(),
             );
 
-            // Only `EXDEV` refuses, and only because it is the one refusal a by-path descent
-            // cannot make: a component renamed out from under the root between the check and
-            // this open, which recorded as a successful read of an empty tree would hide the
-            // substitution this closes. Every other failure answers as it did before —
-            // a walk root that is a regular file or unreadable yields no files rather than an
-            // error — so the two descents cannot disagree about anything but the escape.
+            // Only `EXDEV` refuses, being the one refusal a by-path descent cannot make: a
+            // component renamed out from under the root since the check, which recorded as a
+            // successful read of an empty tree would hide the substitution. Every other
+            // failure answers as the by-path descent does — a walk root that is a regular file
+            // or unreadable yields no files — so the two disagree about nothing but the escape.
             let walked = match top {
                 Ok(top) => self.walk_beneath(top, &permitted.resolved, max_files),
                 Err(source) if source.raw_os_error() == Some(libc::EXDEV) => {
@@ -390,8 +386,7 @@ impl FsGuard {
                     let Ok(resolved) = link.canonicalize() else {
                         continue;
                     };
-                    // The link's own spelling answers first: inside the confirm-to-walk window
-                    // the entries are the substitute's, so a resolved reason is one it chose.
+                    // The spelling answers first, as in `walked_link`.
                     let placement = match moved_root(&link, &self.readable) {
                         Some(moved) => Containment::Outside(Some(moved)),
                         None => contains(&resolved, &self.readable),
@@ -446,9 +441,8 @@ impl FsGuard {
         // A stack entry costs an `Arc` clone of its *parent*, never a descriptor of its own,
         // and the child is opened when it is popped. Opening at push time would hold one
         // descriptor per pending sibling, so a wide tree runs out of them and loses whole
-        // subtrees with nothing marking the result partial — which the by-path stack could
-        // not do, `std::fs::read_dir` holding one directory at a time. Popping bounds the
-        // live set by the tree's depth instead: siblings share one parent handle.
+        // subtrees with nothing marking the result partial. Popping bounds the live set by
+        // the tree's depth: siblings share one parent handle.
         let mut stack = vec![Pending {
             parent: Arc::new(top),
             name: None,
@@ -461,7 +455,7 @@ impl FsGuard {
                 None => parent,
                 Some(name) => match open_dir_at(&parent, &name) {
                     Ok(opened) => Arc::new(opened),
-                    // An unreadable subdirectory is skipped, not fatal, as it was by path.
+                    // An unreadable subdirectory is skipped, not fatal, as by path.
                     Err(_) => continue,
                 },
             };
@@ -938,9 +932,8 @@ fn listing(dir: OwnedFd) -> io::Result<Listing> {
 fn entries_at(dir: OwnedFd) -> io::Result<Vec<Dirent>> {
     let mut dir = nix::dir::Dir::from_fd(dir)?;
 
-    // `flatten`, not `?`: one unreadable `dirent` costs that entry and not the whole
-    // directory, which is what the by-path walk's `entries.flatten()` did. Aborting here
-    // would discard the entries already read and mark nothing partial.
+    // `flatten`, not `?`, as in the by-path walk: one unreadable `dirent` costs that entry
+    // and not the whole directory, whose entries already read would be discarded unmarked.
     let mut entries = Vec::new();
     for entry in dir.iter().flatten() {
         let name = entry.file_name().to_bytes().to_vec();

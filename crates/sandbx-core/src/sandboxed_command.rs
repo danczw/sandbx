@@ -166,8 +166,7 @@ impl SandboxedCommand {
     /// the only thing that ends a descendant.
     ///
     /// A run is two records (#96): `spawned`, then any `degraded`, then exactly one `exited`
-    /// or `failed`, emitted here and nowhere else. The command's own streams come after,
-    /// this collecting them whole.
+    /// or `failed`, emitted here and nowhere else.
     pub fn output(&self) -> Result<Output, SandboxError> {
         let CommandLine { helper, argv } = self.command_line()?;
         let (audit, write_end) = audit_channel()?;
@@ -217,8 +216,7 @@ impl SandboxedCommand {
         .emit();
 
         // A record replaces a status, never an error: an `Err` is sandbx's own account of a
-        // kill it performed — keeping `timeout` out of the admitted set exists to not
-        // suppress that.
+        // kill it performed, which is why the channel does not admit `timeout`.
         match (result, refused) {
             (Ok(output), Some(refusal)) => Err(refusal.relayed(&output.stderr)),
             (result, _) => result,
@@ -284,11 +282,8 @@ fn audit_channel() -> Result<(PipeReader, PipeWriter), SandboxError> {
 /// command never ran if there was one. Emitted here because this is the process with a
 /// subscriber. Reads to EOF with the helper already waited on, which is safe only because
 /// `degradation::encode` bounds the records: a channel that outgrew the pipe buffer would
-/// deadlock the run it reports on.
-///
-/// `spawn` and `session` name the run each degradation weakened: these records fall between
-/// a spawn and its outcome, so without them the middle of a run is attributed by position
-/// while both ends are named (#249).
+/// deadlock the run it reports on. `spawn` and `session` name the run each degradation
+/// weakened (#249).
 fn record_reports(
     mut audit: PipeReader,
     spawn: &crate::SpawnId,
