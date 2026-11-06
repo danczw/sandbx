@@ -93,8 +93,8 @@ pub struct TurnOutcome {
     /// [`withheld`](Self::withheld) must thread back too.
     pub usage: Option<PromptUsage>,
 
-    /// How many of the oldest history messages the last request left out, the results the
-    /// next one opened on going with them; see [`sandbx_compact::window`].
+    /// How many of the oldest history messages the last request left out; the first one kept
+    /// loses its results too, see [`sandbx_compact::window`].
     ///
     /// `0` covers three cases a caller cannot tell apart: compaction off, on and under budget
     /// with nothing carried in, or over budget with nothing it could legally withhold.

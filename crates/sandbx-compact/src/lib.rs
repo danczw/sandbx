@@ -138,9 +138,9 @@ pub fn plan_cut(
 
 /// What a request carries of `history` once its oldest `cut` messages are withheld.
 ///
-/// `history[cut..]`, less the `tool_result` blocks the first message opens on: their calls
-/// sit in the withheld `history[cut - 1]`, so they go with it. That message is the prompt
-/// resuming a turn out of rounds, merged into the results it answers beside (#188, #208).
+/// `history[cut..]`, less the first message's `tool_result` blocks: their calls sit in the
+/// withheld `history[cut - 1]`, so they go with it. Such a message is the prompt resuming a
+/// turn out of rounds, merged into the results it answers beside (#188, #208).
 ///
 /// Every block is a `tool_result` or kept, so `cut` stays a whole-message count and needs
 /// no block offset beside it. Not checked against `opens_a_request`: that is
