@@ -111,7 +111,7 @@ pub struct AgentRun {
     /// request, leaving stdout with whatever arrived before the cap. `--session` stores
     /// the tool work and resumes either way. The exit code is 2 either way.
     #[arg(long = "no-wrap-up")]
-    no_wrap_up: bool,
+    pub(super) no_wrap_up: bool,
 
     /// Show the model's reasoning on stderr as it arrives.
     ///
