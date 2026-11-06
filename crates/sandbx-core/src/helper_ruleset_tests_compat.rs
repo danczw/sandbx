@@ -129,18 +129,15 @@ fn an_abi_verdict_steps_down_exactly_one_rung() {
 }
 
 /// The decision this seam exists for: stepping down on an error that is not an ABI verdict
-/// hands back a lower ABI than the kernel supports, every right above it goes unhandled, and
-/// Landlock leaves an unhandled access type unrestricted *everywhere*.
+/// hands back a lower ABI than the kernel supports, and every right above it goes unhandled.
 ///
-/// The probe accepting every rung below the failing one is load-bearing: a probe that failed
-/// everywhere would pass under the very mutation this catches, the correct code refusing with
-/// `Landlock` and the mutant walking off the ladder to refuse with `Unsupported` — both
-/// errors, indistinguishable to `is_err()`. With an accepting rung below, the mutant returns
-/// `Ok`.
+/// The probe accepting every rung below the failing one is load-bearing: against a probe
+/// that failed everywhere, the mutant (`continue`) walks off the ladder to `Unsupported` and
+/// the correct code refuses with `Landlock` — both errors. With an accepting rung below, the
+/// mutant returns `Ok`.
 ///
-/// The variant is asserted, not `is_err()`, because `continue` is not the only way to lose
-/// this: `break` falls through to the baseline refusal, reporting "ABI 5, Linux 6.10" for a
-/// cause unrelated to the floor. `SandboxError` has no `PartialEq`, so `matches!` is the tool.
+/// The variant is asserted, not `is_err()`, because a `break` mutant falls through to the
+/// baseline refusal, reporting "ABI 5, Linux 6.10" for a cause unrelated to the floor.
 #[test]
 fn a_non_verdict_error_refuses_without_stepping_down() {
     let top = NEGOTIABLE_ABI[0];
@@ -228,23 +225,21 @@ fn every_prose_copy_of_the_floor_is_current() {
             both,
         ),
         (
-            // In `sandbx-helper` since #347. A textual dependency on a sibling package,
-            // which `cargo deny` cannot see and which runs opposite to the edge it does
-            // enforce — harmless while `publish = false`, and the reason a packaged
-            // `sandbx-core` would not build.
+            // A textual dependency on a sibling package, which `cargo deny` cannot see and
+            // which runs opposite to the edge it does enforce — harmless while
+            // `publish = false`, and the reason a packaged `sandbx-core` would not build.
             "sandbx-helper/tests/enforcement.rs",
             include_str!("../../sandbx-helper/tests/enforcement.rs"),
             both,
         ),
-        // `sandbx-helper`'s manifest states the floor too, its `sandbox-integration`
-        // forwarding to the feature above (#347).
+        // Its `sandbox-integration` forwards to the feature above.
         (
             "sandbx-helper/Cargo.toml",
             include_str!("../../sandbx-helper/Cargo.toml"),
             both,
         ),
-        // The only two of 24 `context/` files stating the floor: a file that never names it
-        // cannot drift from it, and each one added is another way for a trim to break this build.
+        // The only `context/` files stating the floor: a file that never names it cannot
+        // drift from it, and each one added is another way for a trim to break this build.
         (
             "context/guide-sandboxing.md",
             include_str!("../../../context/guide-sandboxing.md"),

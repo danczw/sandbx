@@ -1,7 +1,7 @@
 //! Which syscalls the filter denies, and under which policy.
 //!
 //! The data half of `super`: a constant denylist every command gets, plus the conditional
-//! rules a grant widens or narrows. Nothing here touches the kernel — `super` compiles what
+//! rules a grant widens or narrows. Nothing here touches the kernel — `filter` compiles what
 //! this returns and installs it.
 
 use crate::SandboxError;
@@ -16,10 +16,9 @@ use super::filter::seccomp_failed;
 /// constantly. Landlock can express none of these; they are not filesystem access.
 ///
 /// The unconditional seed and not the whole filter: `blocked_syscalls` adds the `clone` flag
-/// rules, also unconditional, then the policy-gated ones, and `installed_filters` puts the
-/// `clone3` program beside the result — plus the x32 gate on x86_64. `tests/denylist.rs`
-/// compares this against `CLAIMED`, a hand mirror of what `SECURITY.md` says; the mirror
-/// itself nothing checks.
+/// rules and the policy-gated ones, and `installed_filters` stacks the `clone3` program and,
+/// on x86_64, the x32 gate beside it. `tests/denylist.rs` compares this against `CLAIMED`, a
+/// hand mirror of what `SECURITY.md` says; the mirror itself nothing checks.
 pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     // Inspect or modify other processes.
     libc::SYS_ptrace,

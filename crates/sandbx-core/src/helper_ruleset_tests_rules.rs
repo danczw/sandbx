@@ -192,7 +192,7 @@ fn no_combination_of_grants_confers_execute() {
 ///
 /// `handled` ⊆ `union` is not a general invariant: it holds here only because the policy
 /// saturates every *source* of an fs right — one directory on all three axes, and the
-/// unix-socket flag, which since #259 is the only thing conferring `ResolveUnix`. Drop the
+/// unix-socket flag, the only thing conferring `ResolveUnix` (#259). Drop the
 /// flag and this fails at `LATEST_ABI`, the three axes no longer partitioning `from_all`.
 /// Under default-deny, a handled right no grant reaches is the ordinary case.
 ///

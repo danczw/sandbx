@@ -94,20 +94,14 @@ fn a_line_that_stops_before_the_parent_yields_nothing() {
 }
 
 /// The one test that reads a line the kernel wrote, checked against the same number
-/// reported under a *name* rather than a position — so the synthetic expectations above
-/// are anchored outside this module.
+/// reported under a *name* rather than a position. An anchor and not a discriminator: a
+/// neighbouring field can equal the parent, and under a test harness `pgrp` usually does.
 ///
-/// An anchor and not a discriminator: a neighbouring field can happen to equal the
-/// parent, and under a test harness `pgrp` usually does. The cases above pin the index.
+/// Against `status` and not `getppid`, which reports 0 for PID 1 of a nested pid namespace —
+/// the skew [`confirm_supervisor`] works around — and so would break inside the sandbox.
 ///
-/// Against `status` and not `getppid`, which the kernel translates into the caller's pid
-/// namespace and reports as 0 for PID 1 of a nested one — the exact skew
-/// [`confirm_supervisor`] works around, so leaning on it would break this test inside the
-/// sandbox.
-///
-/// The two files are read in two syscalls, so a parent exiting between them would leave
-/// `PPid:` naming init while the stat line names the old pid — unguarded, cargo being the
-/// parent under `cargo test` and outliving the harness.
+/// A parent exiting between the two reads would split the answer; unguarded, cargo being
+/// the parent and outliving the harness.
 #[test]
 fn the_parse_agrees_with_procfs_under_another_name() {
     let stat = fs::read_to_string("/proc/self/stat").expect("procfs is mounted");

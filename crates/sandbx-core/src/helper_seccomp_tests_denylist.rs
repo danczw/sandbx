@@ -76,8 +76,8 @@ fn every_denylisted_syscall_is_refused_with_eperm() {
 
 /// `compiled_filter` with its two actions swapped, from the same `blocked_syscalls` data.
 ///
-/// A twin, not the real path: if `compiled_filter` does more than call `SeccompFilter::new`,
-/// this stops being a mutation of it. Change both.
+/// A twin, not the real path: if `deny_with` does more than call `SeccompFilter::new`, this
+/// stops being a mutation of it. Change both.
 fn inverted_filter(policy: &crate::SandboxPolicy) -> seccompiler::BpfProgram {
     use seccompiler::{SeccompAction, SeccompFilter};
 

@@ -183,7 +183,7 @@ impl HelperArgs {
                 }
                 FLAG_PIN => {
                     let hex = next_arg(&mut rest, "pin flag with no digest after it")?;
-                    // The CLI parsed this once already, so anything unparseable here means the
+                    // `encode` writes a parsed digest, so anything unparseable here means the
                     // argv speaks a different protocol — as does a second one, which last-wins
                     // would resolve to whichever came later.
                     let digest =

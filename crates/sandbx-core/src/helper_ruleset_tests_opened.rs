@@ -194,8 +194,8 @@ fn the_system_grants_every_run_gets_open_as_themselves() {
     }
 }
 
-/// A grant naming nothing fails where it failed before either check existed, so the reason an
-/// operator sees for a typo is unchanged.
+/// A grant naming nothing fails at the open, ahead of either check, so the reason an operator
+/// sees for a typo is the open's own.
 #[test]
 fn a_grant_naming_nothing_still_fails_at_the_open() {
     let granted = VettedPath::from_wire(

@@ -56,13 +56,10 @@ pub(super) fn prepare_supervisor(
     // capability set *within it*, so dropping earlier would be undone.
     degraded.extend(harden_process_state()?);
 
-    // Here as well as in the inner stage, so *every* `exec` this design performs is covered.
-    // Without it, a capability regained across the exec into the inner stage is stopped only
-    // by the binary being our own — unprivileged, no file capabilities — plus uid 0 unmapped
-    // in the fresh user namespace. Both hold, so this costs one syscall and rests on nothing
-    // about the binary. Irreversible and inherited, so the inner stage's call is a no-op —
-    // but that stage must not depend on a caller having set it, neither seccomp nor Landlock
-    // installing without it.
+    // Here as well as in the inner stage, so *every* `exec` this design performs is covered,
+    // not only by the binary being our own (no file capabilities) and uid 0 being unmapped.
+    // Inherited, so the inner stage's call is a no-op, but that stage must not depend on a
+    // caller having set it.
     set_no_new_privs()?;
 
     Ok(degraded)
@@ -76,9 +73,8 @@ pub(super) fn prepare_supervisor(
 /// it detached itself.
 ///
 /// Two independent paths reach us: the process group sandbx kills, which we never leave, and
-/// this signal, which fires regardless of group. Both hold because we never `exec` and stay
-/// single-threaded — the signal is per thread and an `exec` can clear it — which is why the
-/// command runs as our child rather than as us.
+/// this signal, which fires regardless of group. Both hold only while this process never
+/// `exec`s and stays single-threaded — see [`exec_inner`](super::exec_inner).
 ///
 /// Set before anything else in this stage, so the window in which the supervisor could die
 /// unnoticed is as short as the kernel allows. [`confirm_supervisor`] is what closes it.
@@ -144,8 +140,7 @@ pub(super) fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
 /// caller passed on the command line, and parsing both sides would have `0123` match `123`.
 ///
 /// `None` rather than a guess for an unrecognised line, which [`confirm_supervisor`] turns
-/// into a refusal to run. Split out so the parse can be checked against an adversarial name
-/// with no supervisor, namespace or second process.
+/// into a refusal to run.
 fn ppid_from_stat(stat: &str) -> Option<&str> {
     stat.rsplit_once(')')
         .and_then(|(_, rest)| rest.split_whitespace().nth(1))
@@ -159,18 +154,16 @@ fn ppid_from_stat(stat: &str) -> Option<&str> {
 ///
 /// Does NOT set `PR_SET_DUMPABLE`: the kernel resets that flag to dumpable on every `execve`
 /// of an ordinary (non-setuid, no file-capability) binary — `setup_new_exec` in `fs/exec.c` —
-/// so setting it here would cover only this process's pre-exec window, not the command. The
-/// namespace's init sets it on itself, never `exec`ing. `RLIMIT_CORE` does persist across exec.
+/// so it would cover only this process's pre-exec window. The namespace's init sets it on
+/// itself, never `exec`ing. `RLIMIT_CORE` does persist across exec.
 ///
 /// The capability *bounding* set is best-effort, as `SECURITY.md` claims it. Dropping it
-/// needs `CAP_SETPCAP`, which an unprivileged process holds only inside a user namespace it
-/// created itself — and not even there under an LSM that strips capabilities from such a
-/// namespace. AppArmor's `restrict_unprivileged_userns` (default on Ubuntu 24.04+ and on
-/// GitHub's runners) does exactly that: `isolate`'s `unshare` succeeds but `PR_CAPBSET_DROP`
-/// returns `EPERM`. The bit cannot be spent anyway — with the four sets below empty and
-/// `no_new_privs` set, the kernel caps an `execve`d binary's permitted set at the old one and
-/// refuses to raise inheritable or ambient — so refusing would take the sandbox away on whole
-/// classes of host for nothing. The failure is an
+/// needs `CAP_SETPCAP`, which AppArmor's `restrict_unprivileged_userns` (default on Ubuntu
+/// 24.04+ and on GitHub's runners) strips from a fresh user namespace: `isolate`'s `unshare`
+/// succeeds but `PR_CAPBSET_DROP` returns `EPERM`. The bit cannot be spent anyway — with the
+/// four sets below empty and `no_new_privs` set, the kernel caps an `execve`d binary's
+/// permitted set at the old one and refuses to raise inheritable or ambient — so refusing
+/// would take the sandbox away on whole classes of host for nothing. The failure is an
 /// [`AuditEvent::Degraded`](crate::AuditEvent::Degraded) at `INFO` and not debug for that
 /// same reason; the parent emits it — see [`prepare_supervisor`].
 ///
@@ -284,17 +277,14 @@ fn isolate(policy: &crate::SandboxPolicy) -> Result<Option<Degraded>, SandboxErr
 
 /// Map the real uid/gid to themselves inside the fresh user namespace.
 ///
-/// Without a map the process reads back as the overflow uid (`nobody`) even though its
-/// on-host identity is unchanged — a file it writes is still owned by the real user — so
-/// tools that branch on `getuid()` see a value that does not match reality. Mapping the
-/// identity to itself grants nothing, the process already acting as this uid on the host.
+/// Without a map the process reads back as the overflow uid (`nobody`) though its on-host
+/// identity is unchanged, so tools that branch on `getuid()` see a value that does not match
+/// reality. Mapping the identity to itself grants nothing.
 ///
-/// Best-effort, and not a security control: running as the overflow `nobody` is if anything
-/// *more* restrictive. Some environments create the namespace but deny the map — AppArmor's
-/// `restrict_unprivileged_userns` (default on Ubuntu 24.04+) leaves an unprivileged userns
-/// without `CAP_SETUID` — and aborting there would trade a truthful uid for no sandbox at
-/// all, so a failed write leaves the process as `nobody` with the command still fully
-/// confined.
+/// Best-effort, and not a security control: running as `nobody` is if anything *more*
+/// restrictive. AppArmor's `restrict_unprivileged_userns` (default on Ubuntu 24.04+) creates
+/// the namespace but denies the map, and aborting there would trade a truthful uid for no
+/// sandbox at all.
 ///
 /// Names the failure rather than recording it, for the reason [`prepare_supervisor`]
 /// gives.
