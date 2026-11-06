@@ -251,8 +251,8 @@ fn conversation() -> Vec<RequestMessage> {
         .collect()
 }
 
-/// Round two plans a deeper cut on round one's figure and is stopped before it reports.
-/// Handing back that cut beside round one's figure would deepen the next turn's again.
+/// Round two plans a deeper cut on round one's figure and is stopped before it reports, so
+/// the cut handed back is round one's, the request that figure measured.
 #[tokio::test(start_paused = true)]
 async fn a_stop_mid_stream_keeps_the_cut_it_measured() {
     let root = tempfile::tempdir().unwrap();
@@ -293,4 +293,44 @@ async fn a_stop_mid_stream_keeps_the_cut_it_measured() {
         "the cut round one's 500 was measured under"
     );
     assert_eq!(outcome.usage.and_then(|u| u.input_tokens), Some(500));
+}
+
+/// Stopped in its call, round two's request did finish streaming, so its cut is the one kept.
+#[tokio::test]
+async fn a_stop_mid_call_keeps_the_cut_it_streamed() {
+    let root = tempfile::tempdir().unwrap();
+    let history = conversation();
+    let flag = AtomicBool::new(false);
+    let mut first = listing(&root);
+    first.insert(1, measured(500));
+    let mut script = Script::new([first, listing(&root)]);
+    let mut compacting = turn(&history, &[BuiltinTool::Ls]);
+    compacting.limits.compaction = Some(Compaction {
+        budget_tokens: 100,
+        keep_recent: 2,
+    });
+    compacting.withheld = 2;
+
+    let outcome = run_turn_until(
+        async |r| script.open(r).await,
+        compacting,
+        &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
+        |_| {},
+        RaisingOn {
+            nth: 2,
+            asked: AtomicUsize::new(0),
+            stop: &flag,
+        },
+        raised(&flag),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        script.sent[1].messages.len(),
+        4,
+        "round two went out cut deeper"
+    );
+    assert_eq!(outcome.stop, TurnStop::Interrupted);
+    assert_eq!(outcome.withheld, 6);
 }
