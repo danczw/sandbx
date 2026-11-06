@@ -137,7 +137,8 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
         }
         // The rest `output` returns: `SpawnFailed`, or the policy shapes `command_line` will
         // not build (`UnboundedResolution`, `GrantBoundByResolver`). Either way the sandbox
-        // is what would not start.
+        // is what would not start. The two shapes are a backstop: `Grants::policy` refuses
+        // both before a run, so no CLI-derived policy reaches them here.
         error => ToolError::Failed {
             subject: applied(),
             detail: error.to_string(),

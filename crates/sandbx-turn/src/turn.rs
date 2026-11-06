@@ -48,8 +48,8 @@ pub struct Turn<'a> {
 
     /// Whether to ask for the model's reasoning text, which only a renderer sees.
     ///
-    /// Changes nothing about replay: on current models the model reasons either way,
-    /// and the blocks this loop carries between rounds are the same ones.
+    /// Changes nothing about replay: the blocks this loop carries between rounds are the
+    /// same ones.
     pub thinking: Option<Thinking>,
 
     /// The conversation so far, oldest first.
