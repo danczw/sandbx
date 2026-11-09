@@ -13,21 +13,14 @@
 use std::collections::HashSet;
 use std::fs::File;
 use std::os::unix::fs as unix_fs;
-use std::path::Path;
 use std::process::{Command, Output, Stdio};
-use std::sync::{Arc, Mutex};
-use std::{env, fmt, fs, io};
+use std::{env, fs, io};
 
-use sandbx_core::{
-    AUDIT_TARGET, HelperArgs, HelperRefusal, SandboxError, SandboxPolicy, SandboxedCommand,
-};
+use sandbx_core::{HelperArgs, HelperRefusal, SandboxError, SandboxPolicy, SandboxedCommand};
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
-/// `path`, pinned to the object it names — the shape every grant takes (#212).
-fn vetted(path: impl AsRef<Path>) -> sandbx_core::VettedPath {
-    sandbx_core::VettedPath::vet(path).expect("an existing path to pin the grant to")
-}
+use sandbx_helper_fixture::{Captured, bounding_set_is_droppable, vetted};
 
 /// A scratch directory whose own path is already resolved, so granting it grants a path that
 /// opens as itself — which the helper requires. `$TMPDIR` is a symlink on some hosts.
@@ -38,45 +31,6 @@ fn scratch() -> tempfile::TempDir {
     tempfile::Builder::new()
         .tempdir_in(root)
         .expect("a temporary directory")
-}
-
-/// Collects audit events; repeated from `sandbx-core`'s `tests/audit.rs` because cargo gives
-/// each `tests/*.rs` its own binary.
-#[derive(Clone, Default)]
-struct Captured(Arc<Mutex<Vec<String>>>);
-
-impl Captured {
-    fn lines(&self) -> Vec<String> {
-        self.0
-            .lock()
-            .expect("the sink is held only to copy or push")
-            .clone()
-    }
-}
-
-impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
-    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-        if event.metadata().target() != AUDIT_TARGET {
-            return;
-        }
-        let mut visitor = Collect(String::new());
-        event.record(&mut visitor);
-        self.0
-            .lock()
-            .expect("the sink is held only to copy or push")
-            .push(visitor.0);
-    }
-}
-
-struct Collect(String);
-
-impl tracing::field::Visit for Collect {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
-        self.0.push_str(&format!("{}={value:?} ", field.name()));
-    }
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        self.0.push_str(&format!("{}={value} ", field.name()));
-    }
 }
 
 /// What a run returned, and the trail it left.
@@ -109,22 +63,6 @@ fn sandboxed(script: &str, policy: SandboxPolicy) -> Traced<Output> {
         result: result.expect("the sandboxed command should have run"),
         lines,
     }
-}
-
-/// Can this machine drop the capability bounding set at all? Repeated from
-/// `enforcement.rs`, which documents the LSM behaviour; keep the two copies identical.
-fn bounding_set_is_droppable() -> bool {
-    use std::os::unix::fs::MetadataExt;
-
-    // The restriction covers *unprivileged* userns only, so root holds `CAP_SETPCAP` in the
-    // new namespace regardless. Off `/proc/self`'s owner since `libc::geteuid` is `unsafe`.
-    let root = fs::metadata("/proc/self")
-        .map(|proc_self| proc_self.uid() == 0)
-        .unwrap_or(false);
-
-    root || fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
-        .map(|value| value.trim() != "1")
-        .unwrap_or(true)
 }
 
 /// A host whose LSM strips `CAP_SETPCAP` from a fresh user namespace refuses

@@ -1764,6 +1764,8 @@ name = "sandbx-helper-fixture"
 version = "0.1.0-alpha.23"
 dependencies = [
  "sandbx-core",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

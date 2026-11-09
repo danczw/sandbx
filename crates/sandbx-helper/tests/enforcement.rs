@@ -19,7 +19,7 @@ use std::{env, fs, process};
 
 use sandbx_core::{HelperArgs, SandboxPolicy};
 
-use sandbx_helper_fixture::{allow_probe, runtime_paths, vetted};
+use sandbx_helper_fixture::{allow_probe, bounding_set_is_droppable, runtime_paths, vetted};
 
 fn helper() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_sandbx-helper"))
@@ -430,25 +430,6 @@ fn status_field<'a>(status: &'a str, name: &str) -> &'a str {
 /// hex bitmasks, each `0000000000000000` once dropped. `CapBnd` is absent; see
 /// [`the_bounding_set_is_cleared_or_left_inherited`].
 const ALWAYS_CLEARED: [&str; 4] = ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"];
-
-/// Can this machine drop the capability bounding set at all? Needs `CAP_SETPCAP`, held
-/// only in a self-created user namespace, and not there under AppArmor's
-/// `restrict_unprivileged_userns` (Ubuntu 24.04+, GitHub's runners), which lets `unshare`
-/// succeed but makes `PR_CAPBSET_DROP` return `EPERM`. Kept identical with its copy in
-/// `audit_channel.rs`.
-fn bounding_set_is_droppable() -> bool {
-    use std::os::unix::fs::MetadataExt;
-
-    // The restriction covers *unprivileged* userns only, so root holds `CAP_SETPCAP` in the
-    // new namespace regardless. Off `/proc/self`'s owner since `libc::geteuid` is `unsafe`.
-    let root = fs::metadata("/proc/self")
-        .map(|proc_self| proc_self.uid() == 0)
-        .unwrap_or(false);
-
-    root || fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
-        .map(|value| value.trim() != "1")
-        .unwrap_or(true)
-}
 
 /// `no_new_privs` is checked here too, off the same `/proc/self/status` read.
 #[test]

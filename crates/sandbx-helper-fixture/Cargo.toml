@@ -12,6 +12,9 @@ publish.workspace = true
 # bytes are named by. A real dependency, not a dev-dependency — this crate is the
 # fixture, so a dev-dependency of its own would not reach it.
 sandbx-core = { path = "../sandbx-core" }
+# `Captured`, the layer the audit roots read the trail through; real for the same reason.
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
 
 [lints]
 workspace = true
