@@ -189,7 +189,7 @@ name = "sandbx-helper-fixture"
 # A dev-dependency edge, so this crate is in nobody's build. The entry keeps a new parent
 # from appearing without a line here; `deny-wrappers.py`'s `DEV_ONLY` is what refuses a
 # normal or build edge, a listed parent's included (#465). One parent, whose six
-# enforcement roots drive the same fixture (#333).
+# test roots drive the same fixture (#333).
 wrappers = ["sandbx-helper"]
 
 [[bans.deny]]
@@ -207,7 +207,8 @@ wrappers = ["sandbx-turn"]
 name = "sandbx-pty-fixture"
 # A dev-dependency edge, so this crate is in nobody's build, and `DEV_ONLY` keeps it so for
 # all three parents, as for `sandbx-helper-fixture`. Three parents, each driving a pty:
-# the screen for a hangup, the keys for a reader, and the cli's prompt for its exact bytes.
+# the screen for a hangup, the keys for a reader, and the cli's prompt for its exact bytes
+# and `auth login` for its tty refusal.
 wrappers = ["sandbx-cli", "sandbx-screen", "sandbx-tui-input"]
 
 [[bans.deny]]
