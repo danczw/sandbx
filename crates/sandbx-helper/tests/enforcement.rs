@@ -129,10 +129,8 @@ fn write_grant_can_write() {
     assert_eq!(fs::read_to_string(&created).unwrap(), "written\n");
 }
 
-/// A grant crosses argv as the path's own bytes, so one that is not UTF-8 is installed on
-/// the directory it names rather than refused as a spelling that opens nothing (#495). The
-/// byte reaches the command through the shell's `printf`, not argv, whose command words are
-/// `String`.
+/// Installed on the directory it names, not refused as a spelling that opens nothing
+/// (#495). The byte reaches the command through `printf`, command words being `String`.
 #[test]
 fn a_non_utf8_grant_is_enforced_as_named() {
     let dir = scratch();
