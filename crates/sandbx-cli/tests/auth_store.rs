@@ -23,13 +23,20 @@ struct Run {
     stderr: String,
 }
 
-/// Run `auth <action>` against `config` as the config home, with no key in the environment.
-fn auth(config: &Path, action: &str, stdin: Option<&str>) -> Run {
+/// `auth <action>` against `config` as the config home, with no key in the environment.
+fn auth_command(config: &Path, action: &str) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_sandbx"));
     command
         .args(["auth", action])
         .env("XDG_CONFIG_HOME", config)
-        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("ANTHROPIC_API_KEY");
+    command
+}
+
+/// Run [`auth_command`], with `stdin` piped in when given and `/dev/null` otherwise.
+fn auth(config: &Path, action: &str, stdin: Option<&str>) -> Run {
+    let mut command = auth_command(config, action);
+    command
         .stdin(if stdin.is_some() {
             Stdio::piped()
         } else {
@@ -291,8 +298,8 @@ fn login_refuses_an_empty_stdin() {
     assert!(!credentials(config.path()).exists());
 }
 
-/// `key_tests.rs` hands `read_key` a `Device`; this is the `Device::of` beside it, on a
-/// real pty. The master stays open until the child exits, since its close hangs up the
+/// `sandbx-auth`'s `key_tests.rs` hands `read_key` a `Device`; this is the `Device::of`
+/// beside it, on a real pty. The master stays open until the child exits, since its close hangs up the
 /// slave and `isatty` then fails. The `^D` ends a regressed read, so the key is stored
 /// and this test fails rather than hangs.
 #[test]
@@ -301,10 +308,7 @@ fn login_refuses_a_real_terminal() {
     let Pty { mut master, slave } = pty();
     master.write_all(b"sk-ant-test\n\x04").unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_sandbx"))
-        .args(["auth", "login"])
-        .env("XDG_CONFIG_HOME", config.path())
-        .env_remove("ANTHROPIC_API_KEY")
+    let output = auth_command(config.path(), "login")
         .stdin(Stdio::from(slave))
         .output()
         .expect("sandbx should start");
