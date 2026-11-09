@@ -220,9 +220,8 @@ fn a_granted_path_crosses_beside_the_object_it_was_vetted_as() {
     );
 }
 
-/// A path is bytes, so a grant that is not UTF-8 must cross as those bytes: a lossy
-/// spelling names nothing, or something else, and the helper refuses a grant it was given
-/// (#495).
+/// A lossy spelling names nothing, or something else, so the helper would refuse a grant
+/// the harness made (#495).
 #[test]
 fn a_non_utf8_grant_crosses_byte_exact() {
     let dir = tempfile::tempdir().expect("a temporary directory");
@@ -245,9 +244,8 @@ fn a_non_utf8_grant_crosses_byte_exact() {
     );
 }
 
-/// Only a grant's path crosses as raw bytes; `encode` writes every other token from a
-/// `str`, so a non-UTF-8 one there means the argv speaks a different protocol. Each row is
-/// decoded once with a value it accepts, so a refusal cannot come from the rest of the row.
+/// `encode` writes every token but a grant's path from a `str`. Each row is decoded once
+/// with a value it accepts, so the refusal cannot come from the rest of the row.
 #[test]
 fn a_non_utf8_token_off_a_grant_is_refused() {
     let invalid = OsStr::from_bytes(b"\xff");
