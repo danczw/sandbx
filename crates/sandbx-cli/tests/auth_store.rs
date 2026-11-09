@@ -298,10 +298,9 @@ fn login_refuses_an_empty_stdin() {
     assert!(!credentials(config.path()).exists());
 }
 
-/// `sandbx-auth`'s `key_tests.rs` hands `read_key` a `Device`; this is the `Device::of`
-/// beside it, on a real pty. The master stays open until the child exits, since its close hangs up the
-/// slave and `isatty` then fails. The `^D` ends a regressed read, so the key is stored
-/// and this test fails rather than hangs.
+/// `sandbx-auth`'s `key_tests.rs` injects a `Device`; this drives `Device::of` on a real pty.
+/// The master outlives the child, since closing it hangs up the slave and `isatty` fails;
+/// the `^D` ends a regressed read, so a stored key fails the test rather than hanging it.
 #[test]
 fn login_refuses_a_real_terminal() {
     let config = tempfile::tempdir().unwrap();
