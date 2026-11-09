@@ -36,7 +36,7 @@ const USERNS_RESTRICTION: &str = "/proc/sys/kernel/apparmor_restrict_unprivilege
 /// would skip on a genuine regression too — the one that unbounds every name silently. Set,
 /// the kernel lets `unshare` succeed and then denies `CAP_SYS_ADMIN` inside the new
 /// namespace, so `helper::resolver` refuses the run. Same host property as
-/// `enforcement.rs`'s `bounding_set_is_droppable`, same root exemption.
+/// [`sandbx_helper_fixture::bounding_set_is_droppable`], same root exemption.
 fn host_forbids_the_mounts() -> bool {
     use std::os::unix::fs::MetadataExt as _;
 

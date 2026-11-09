@@ -7,53 +7,14 @@
 //! code.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
-use std::fmt;
 use std::process::Output;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use sandbx_core::{AUDIT_TARGET, HelperRefusal, SandboxError, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{HelperRefusal, SandboxError, SandboxPolicy, SandboxedCommand};
 use tracing::subscriber::with_default;
 use tracing_subscriber::layer::SubscriberExt;
 
-/// Collects audit events; repeated from `sandbx-core`'s `tests/audit.rs` because cargo gives
-/// each `tests/*.rs` its own binary.
-#[derive(Clone, Default)]
-struct Captured(Arc<Mutex<Vec<String>>>);
-
-impl Captured {
-    fn lines(&self) -> Vec<String> {
-        self.0
-            .lock()
-            .expect("the sink is held only to copy or push")
-            .clone()
-    }
-}
-
-impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Captured {
-    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-        if event.metadata().target() != AUDIT_TARGET {
-            return;
-        }
-        let mut visitor = Collect(String::new());
-        event.record(&mut visitor);
-        self.0
-            .lock()
-            .expect("the sink is held only to copy or push")
-            .push(visitor.0);
-    }
-}
-
-struct Collect(String);
-
-impl tracing::field::Visit for Collect {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
-        self.0.push_str(&format!("{}={value:?} ", field.name()));
-    }
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        self.0.push_str(&format!("{}={value} ", field.name()));
-    }
-}
+use sandbx_helper_fixture::Captured;
 
 /// The result *and* the trail, the record being a claim about the result.
 struct Run {

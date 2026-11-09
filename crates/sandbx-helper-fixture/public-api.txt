@@ -1,5 +1,22 @@
 pub mod sandbx_helper_fixture
+pub struct sandbx_helper_fixture::Captured(_)
+impl sandbx_helper_fixture::Captured
+pub fn sandbx_helper_fixture::Captured::lines(&self) -> alloc::vec::Vec<alloc::string::String>
+impl core::clone::Clone for sandbx_helper_fixture::Captured
+pub fn sandbx_helper_fixture::Captured::clone(&self) -> sandbx_helper_fixture::Captured
+impl core::default::Default for sandbx_helper_fixture::Captured
+pub fn sandbx_helper_fixture::Captured::default() -> sandbx_helper_fixture::Captured
+impl<S: tracing_core::subscriber::Subscriber> tracing_subscriber::layer::Layer<S> for sandbx_helper_fixture::Captured
+pub fn sandbx_helper_fixture::Captured::on_event(&self, &tracing_core::event::Event<'_>, tracing_subscriber::layer::context::Context<'_, S>)
+impl core::marker::Freeze for sandbx_helper_fixture::Captured
+impl core::marker::Send for sandbx_helper_fixture::Captured
+impl core::marker::Sync for sandbx_helper_fixture::Captured
+impl core::marker::Unpin for sandbx_helper_fixture::Captured
+impl core::marker::UnsafeUnpin for sandbx_helper_fixture::Captured
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_helper_fixture::Captured
+impl core::panic::unwind_safe::UnwindSafe for sandbx_helper_fixture::Captured
 pub fn sandbx_helper_fixture::allow_probe(sandbx_core::policy::sandbox_policy::SandboxPolicy, &str) -> sandbx_core::policy::sandbox_policy::SandboxPolicy
+pub fn sandbx_helper_fixture::bounding_set_is_droppable() -> bool
 pub fn sandbx_helper_fixture::run(&std::path::Path, &sandbx_core::policy::sandbox_policy::SandboxPolicy, &str, &[&str]) -> std::process::Output
 pub fn sandbx_helper_fixture::run_pinned(&std::path::Path, &sandbx_core::policy::sandbox_policy::SandboxPolicy, &str, &[&str], core::option::Option<sandbx_core::sha256_digest::Sha256Digest>) -> std::process::Output
 pub fn sandbx_helper_fixture::runtime_paths(sandbx_core::policy::sandbox_policy::SandboxPolicy) -> sandbx_core::policy::sandbox_policy::SandboxPolicy

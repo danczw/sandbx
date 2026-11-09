@@ -188,7 +188,7 @@ wrappers = ["sandbx-screen"]
 name = "sandbx-helper-fixture"
 # A dev-dependency edge, so this crate is in nobody's build. The entry keeps a new parent
 # from appearing without a line here; `deny-wrappers.py`'s `DEV_ONLY` is what refuses a
-# normal or build edge, a listed parent's included (#465). One parent, whose four
+# normal or build edge, a listed parent's included (#465). One parent, whose six
 # enforcement roots drive the same fixture (#333).
 wrappers = ["sandbx-helper"]
 
