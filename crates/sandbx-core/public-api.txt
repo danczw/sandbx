@@ -289,7 +289,7 @@ impl core::marker::UnsafeUnpin for sandbx_core::SandboxError
 impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_core::SandboxError
 impl !core::panic::unwind_safe::UnwindSafe for sandbx_core::SandboxError
 pub struct sandbx_core::CommandLine
-pub sandbx_core::CommandLine::argv: alloc::vec::Vec<alloc::string::String>
+pub sandbx_core::CommandLine::argv: alloc::vec::Vec<std::ffi::os_str::OsString>
 pub sandbx_core::CommandLine::helper: std::path::PathBuf
 impl core::clone::Clone for sandbx_core::CommandLine
 pub fn sandbx_core::CommandLine::clone(&self) -> sandbx_core::CommandLine
@@ -372,8 +372,8 @@ pub sandbx_core::HelperArgs::pin: core::option::Option<sandbx_core::Sha256Digest
 pub sandbx_core::HelperArgs::policy: sandbx_core::SandboxPolicy
 pub sandbx_core::HelperArgs::program: alloc::string::String
 impl sandbx_core::HelperArgs
-pub fn sandbx_core::HelperArgs::decode(&[alloc::string::String]) -> core::result::Result<Self, sandbx_core::SandboxError>
-pub fn sandbx_core::HelperArgs::encode(&sandbx_core::SandboxPolicy, &str, &[alloc::string::String], core::option::Option<sandbx_core::Sha256Digest>) -> alloc::vec::Vec<alloc::string::String>
+pub fn sandbx_core::HelperArgs::decode(&[std::ffi::os_str::OsString]) -> core::result::Result<Self, sandbx_core::SandboxError>
+pub fn sandbx_core::HelperArgs::encode(&sandbx_core::SandboxPolicy, &str, &[alloc::string::String], core::option::Option<sandbx_core::Sha256Digest>) -> alloc::vec::Vec<std::ffi::os_str::OsString>
 impl core::clone::Clone for sandbx_core::HelperArgs
 pub fn sandbx_core::HelperArgs::clone(&self) -> sandbx_core::HelperArgs
 impl core::cmp::Eq for sandbx_core::HelperArgs

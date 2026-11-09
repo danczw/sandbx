@@ -33,7 +33,7 @@ fn defaults_to_re_executing_this_image_by_inode() {
         .unwrap();
 
     assert_eq!(helper, Path::new("/proc/self/exe"));
-    assert_eq!(argv.first().map(String::as_str), Some(HELPER_FLAG));
+    assert_eq!(argv.first().and_then(|arg| arg.to_str()), Some(HELPER_FLAG));
 
     let image = fs::metadata(&helper).expect("/proc must be mounted for the re-exec");
 
@@ -53,7 +53,7 @@ fn asks_the_helper_to_report_on_the_channel() {
         .unwrap();
 
     assert_eq!(
-        argv.get(1).map(String::as_str),
+        argv.get(1).and_then(|arg| arg.to_str()),
         Some("--sandbx-audit-stdin"),
         "the audit flag must directly follow the dispatch flag: {argv:?}"
     );
@@ -102,7 +102,7 @@ fn explicit_helper_still_takes_the_dispatch_flag() {
         .unwrap();
 
     assert_eq!(helper, Path::new("/some/helper"));
-    assert_eq!(argv.first().map(String::as_str), Some(HELPER_FLAG));
+    assert_eq!(argv.first().and_then(|arg| arg.to_str()), Some(HELPER_FLAG));
 }
 
 /// The obligation `command_line` documents: the start directory is not in the argv, so a
@@ -124,7 +124,7 @@ fn the_start_directory_is_not_in_the_command_line() {
         "the policy this asserts about does not name a start directory"
     );
     assert_eq!(
-        argv.iter().filter(|arg| **arg == root).count(),
+        argv.iter().filter(|arg| **arg == *root).count(),
         1,
         "the start directory crossed in the argv as well: {argv:?}"
     );

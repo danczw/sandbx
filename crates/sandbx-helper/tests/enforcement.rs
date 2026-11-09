@@ -9,7 +9,9 @@
 // to stop code executing *around* the sandbox.
 #![allow(clippy::disallowed_methods)]
 
+use std::ffi::OsStr;
 use std::fs::{File, Permissions};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs as unix_fs;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -125,6 +127,40 @@ fn write_grant_can_write() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(fs::read_to_string(&created).unwrap(), "written\n");
+}
+
+/// A grant crosses argv as the path's own bytes, so one that is not UTF-8 is installed on
+/// the directory it names rather than refused as a spelling that opens nothing (#495). The
+/// byte reaches the command through the shell's `printf`, not argv, whose command words are
+/// `String`.
+#[test]
+fn a_non_utf8_grant_is_enforced_as_named() {
+    let dir = scratch();
+    let granted = dir.path().join(OsStr::from_bytes(b"grant-\xff"));
+    fs::create_dir(&granted).unwrap();
+
+    let policy = runtime_paths(SandboxPolicy::default()).allow_write(vetted(&granted));
+    let output = run(
+        &policy,
+        "/bin/sh",
+        &[
+            "-c",
+            r#"echo written > "$1/$(printf 'grant-\377')/created.txt""#,
+            "sh",
+            dir.path().to_str().unwrap(),
+        ],
+    );
+
+    assert!(
+        output.status.success(),
+        "a non-UTF-8 grant was not installed as named: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(granted.join("created.txt")).unwrap(),
+        "written\n",
+        "the command exited 0 without writing into the granted directory"
+    );
 }
 
 #[test]
@@ -615,9 +651,9 @@ fn a_symlinked_policy_root_is_refused_and_its_target_is_not() {
     let mut forged = HelperArgs::encode(&policy, "/bin/cat", &[readable], None);
     let spelling = forged
         .iter_mut()
-        .find(|arg| arg.as_str() == target.to_str().unwrap())
+        .find(|arg| *arg == target.as_os_str())
         .expect("the granted path on the wire");
-    *spelling = link.to_str().unwrap().to_string();
+    *spelling = link.clone().into_os_string();
 
     let via_link = Command::new(env!("CARGO_BIN_EXE_sandbx-helper"))
         .arg(sandbx_core::HELPER_FLAG)

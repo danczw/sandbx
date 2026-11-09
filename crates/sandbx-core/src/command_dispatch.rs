@@ -33,21 +33,18 @@ where
     I: IntoIterator<Item = OsString>,
     F: FnOnce() -> ExitCode,
 {
-    let argv: Vec<String> = argv
-        .into_iter()
-        .map(|a| a.to_string_lossy().into_owned())
-        .collect();
+    let argv: Vec<OsString> = argv.into_iter().collect();
 
     // argv[0] is this program's own name.
-    let Some((flag, helper_args)) = argv.get(1..).and_then(<[String]>::split_first) else {
+    let Some((flag, helper_args)) = argv.get(1..).and_then(<[OsString]>::split_first) else {
         return ordinary_main();
     };
 
-    let error = match flag.as_str() {
-        HELPER_FLAG => match crate::helper::exec_sandboxed(helper_args) {
+    let error = match flag.to_str() {
+        Some(HELPER_FLAG) => match crate::helper::exec_sandboxed(helper_args) {
             Err(error) => error,
         },
-        HELPER_INNER_FLAG => match crate::helper::exec_inner(helper_args) {
+        Some(HELPER_INNER_FLAG) => match crate::helper::exec_inner(helper_args) {
             Err(error) => error,
         },
         _ => return ordinary_main(),

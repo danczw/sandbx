@@ -7,6 +7,7 @@
 
 use crate::SandboxError;
 use crate::degradation::{Degradation, Degraded};
+use std::ffi::OsStr;
 use std::{fmt, fs, io};
 
 /// Build the namespaces and drop what must be dropped before the `exec`.
@@ -109,7 +110,7 @@ pub(super) fn bind_lifetime_to_supervisor() -> Result<(), SandboxError> {
 /// of a supervisor that just spawned us.
 ///
 /// Runs before Landlock and seccomp, so it needs no grant for `/proc` and no privilege.
-pub(super) fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
+pub(super) fn confirm_supervisor(expected: &OsStr) -> Result<(), SandboxError> {
     let gone = SandboxError::NamespaceSetupFailed {
         detail: "the supervisor process is gone; refusing to run the command \
                  where nothing can reap it",
@@ -123,7 +124,7 @@ pub(super) fn confirm_supervisor(expected: &str) -> Result<(), SandboxError> {
     let stat = fs::read_to_string("/proc/self/stat").map_err(|_| unreadable)?;
 
     match ppid_from_stat(&stat) {
-        Some(parent) if parent == expected => Ok(()),
+        Some(parent) if expected == parent => Ok(()),
         _ => Err(gone),
     }
 }

@@ -15,6 +15,7 @@ use super::ruleset::{
 };
 use super::seccomp::deny_dangerous_syscalls;
 use std::convert::Infallible;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::path::PathBuf;
 use std::process::{Child, ExitStatus};
@@ -68,7 +69,7 @@ fn report(records: &str) {
 /// [`HelperRefusal`](crate::HelperRefusal), so nothing it returns is dropped unreported.
 fn start_inner_stage(
     exe: PathBuf,
-    argv: &[String],
+    argv: &[OsString],
     audit_on_stdin: bool,
 ) -> Result<Child, SandboxError> {
     // Decoded for this stage's own use: the unshare flags depend on whether the policy
@@ -130,7 +131,7 @@ fn start_inner_stage(
 /// On success this never returns: it exits with whatever the command exited with. Any
 /// return is an error, and the caller must exit non-zero rather than fall through to
 /// running the command unrestricted.
-pub(crate) fn exec_sandboxed(argv: &[String]) -> Result<Infallible, SandboxError> {
+pub(crate) fn exec_sandboxed(argv: &[OsString]) -> Result<Infallible, SandboxError> {
     // Split off before `decode`, which refuses a flag it does not recognise. Not part of
     // the policy grammar, for the reason the supervisor pid is not (see `exec_inner`): it
     // describes how to report, not what the command may do.
@@ -217,7 +218,7 @@ pub fn exit_code(status: &ExitStatus) -> i32 {
 /// On success this never returns: it exits as the command did. Any return is an error, and
 /// the caller must exit non-zero rather than fall through to running the command
 /// unrestricted.
-pub(crate) fn exec_inner(argv: &[String]) -> Result<Infallible, SandboxError> {
+pub(crate) fn exec_inner(argv: &[OsString]) -> Result<Infallible, SandboxError> {
     // A positional token ahead of the policy, not part of it: `HelperArgs` describes what
     // the command may do, this who is watching. Apart, the policy grammar and its
     // round-trip stay untouched and a caller reaching `exec_inner` directly cannot pass a
@@ -262,7 +263,10 @@ pub(crate) fn exec_inner(argv: &[String]) -> Result<Infallible, SandboxError> {
 /// Restrict this process and start the command below it, or say why it could not.
 ///
 /// The channel is claimed before this is called; nothing here may claim it again.
-fn restrict_and_spawn(supervisor: &str, argv: &[String]) -> Result<nix::unistd::Pid, SandboxError> {
+fn restrict_and_spawn(
+    supervisor: &OsStr,
+    argv: &[OsString],
+) -> Result<nix::unistd::Pid, SandboxError> {
     let request = HelperArgs::decode(argv)?;
 
     bind_lifetime_to_supervisor()?;
