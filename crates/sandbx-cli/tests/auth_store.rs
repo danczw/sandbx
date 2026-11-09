@@ -14,6 +14,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use sandbx_pty_fixture::{Pty, pty};
+
 /// What a spawned `auth` reported.
 struct Run {
     code: Option<i32>,
@@ -287,6 +289,36 @@ fn login_refuses_an_empty_stdin() {
 
     assert_eq!(run.code, Some(2));
     assert!(!credentials(config.path()).exists());
+}
+
+/// `key_tests.rs` hands `read_key` a `Device`; this is the `Device::of` beside it, on a
+/// real pty. The master stays open until the child exits, since its close hangs up the
+/// slave and `isatty` then fails. The `^D` ends a regressed read, so the key is stored
+/// and this test fails rather than hangs.
+#[test]
+fn login_refuses_a_real_terminal() {
+    let config = tempfile::tempdir().unwrap();
+    let Pty { mut master, slave } = pty();
+    master.write_all(b"sk-ant-test\n\x04").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_sandbx"))
+        .args(["auth", "login"])
+        .env("XDG_CONFIG_HOME", config.path())
+        .env_remove("ANTHROPIC_API_KEY")
+        .stdin(Stdio::from(slave))
+        .output()
+        .expect("sandbx should start");
+    drop(master);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "{stderr}");
+    assert!(
+        stderr.contains("refusing to read a key from the terminal"),
+        "{stderr} does not name the tty as the refusal"
+    );
+    assert!(!credentials(config.path()).exists());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("sk-ant-test"));
+    assert!(!stderr.contains("sk-ant-test"));
 }
 
 #[test]
