@@ -796,8 +796,10 @@ accepts by construction. A third mandatory token keeps that property; an optiona
 one would not, because "is this token a pin or the next flag?" is a lookahead in
 the decoder, which is the thing that seam rejects.
 
-The path token crosses through `Path::display()` and is lossy for a non-UTF-8
-path. The pin neither fixes nor worsens that.
+The path token crosses as the path's own bytes, in an `OsString` argv; a lossy
+spelling would open nothing, or something else, and refuse a grant the harness
+made (#495). Every other token, the command's words included, is written from a
+`str`, so `decode` refuses one that is not UTF-8.
 
 ### The readback stays
 

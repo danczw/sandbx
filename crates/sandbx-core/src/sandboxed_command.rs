@@ -5,6 +5,7 @@
 //! One module on purpose: the deadline drives the drain and the drain is
 //! what reads the audit channel, so the three are one supervision sequence.
 
+use std::ffi::OsString;
 use std::io::{PipeReader, PipeWriter, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -40,7 +41,7 @@ pub struct CommandLine {
     /// The executable to spawn.
     pub helper: PathBuf,
     /// Its arguments, the dispatch flag first.
-    pub argv: Vec<String>,
+    pub argv: Vec<OsString>,
 }
 
 /// How often the timed path polls for the child's exit, `std::process` having no timed wait.
@@ -142,10 +143,8 @@ impl SandboxedCommand {
         let helper = self.helper.clone().map_or_else(self_exe, Ok)?;
         // Ahead of the policy, where `exec_sandboxed` splits it off before decoding, and
         // unconditional because both spawn paths below set the pipe up.
-        let mut argv = vec![
-            HELPER_FLAG.to_string(),
-            crate::helper::AUDIT_STDIN_FLAG.to_string(),
-        ];
+        let mut argv: Vec<OsString> =
+            vec![HELPER_FLAG.into(), crate::helper::AUDIT_STDIN_FLAG.into()];
 
         argv.extend(HelperArgs::encode(
             &self.policy,
@@ -230,7 +229,7 @@ impl SandboxedCommand {
 /// `/proc/<pid>/environ` is readable. Not set in `spawn::command` itself, which the inner
 /// stage also calls to *start* the command: that would `chdir` with the ruleset already
 /// installed, though both stages and the command inherit the directory regardless.
-fn helper_command(helper: &Path, argv: &[String], policy: &SandboxPolicy) -> Command {
+fn helper_command(helper: &Path, argv: &[OsString], policy: &SandboxPolicy) -> Command {
     let mut command = crate::spawn::command(helper, policy);
     command.args(argv);
 
@@ -246,7 +245,7 @@ fn helper_command(helper: &Path, argv: &[String], policy: &SandboxPolicy) -> Com
 /// [`run_with_deadline`] is the path that cannot.
 fn run_to_completion(
     helper: &Path,
-    argv: &[String],
+    argv: &[OsString],
     policy: &SandboxPolicy,
     write_end: PipeWriter,
 ) -> Result<Output, SandboxError> {
@@ -316,7 +315,7 @@ fn record_reports(
 /// polls for exit until the deadline.
 fn run_with_deadline(
     helper: &Path,
-    argv: &[String],
+    argv: &[OsString],
     policy: &SandboxPolicy,
     limit: Duration,
     write_end: PipeWriter,

@@ -4,8 +4,15 @@
 //! the helper never grants, and one wrongly added becomes one it grants by mistake.
 
 use sandbx_core::{HelperArgs, SandboxPolicy, VettedPath};
+use std::ffi::{OsStr, OsString};
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
-use std::{env, slice};
+use std::{env, fs, slice};
+
+/// `tokens` as the argv the helper receives.
+fn wire(tokens: &[&str]) -> Vec<OsString> {
+    tokens.iter().map(OsString::from).collect()
+}
 
 /// `path`, pinned to the object it names — the grant crosses as a path *and* an object, so a
 /// round trip is over something the encoding side could measure (#212).
@@ -121,12 +128,7 @@ fn an_unrestricted_grant_round_trips_as_the_bare_flag() {
 #[test]
 fn a_malformed_port_on_the_wire_is_refused() {
     for port in ["", "https", "-1", "65536", "443.0", " 443", "0x1bb"] {
-        let args = vec![
-            "--allow-network-port".to_string(),
-            port.to_string(),
-            "--".to_string(),
-            "/bin/true".to_string(),
-        ];
+        let args = wire(&["--allow-network-port", port, "--", "/bin/true"]);
 
         let Err(refusal) = HelperArgs::decode(&args) else {
             panic!("{port:?} was accepted as a port");
@@ -147,12 +149,7 @@ fn a_malformed_port_on_the_wire_is_refused() {
 /// one — so a 0 here means the argv was built by something speaking another protocol.
 #[test]
 fn port_zero_on_the_wire_is_refused() {
-    let args = vec![
-        "--allow-network-port".to_string(),
-        "0".to_string(),
-        "--".to_string(),
-        "/bin/true".to_string(),
-    ];
+    let args = wire(&["--allow-network-port", "0", "--", "/bin/true"]);
 
     let refusal = HelperArgs::decode(&args).expect_err("port 0 was accepted");
 
@@ -186,7 +183,7 @@ fn a_port_flag_without_a_port_is_refused() {
             sandbx_core::SandboxError::BadHelperArgs { detail }
                 if detail.contains("network port flag with no port")
         ),
-        "{flag} was refused for the wrong reason: {refusal:?}"
+        "{flag:?} was refused for the wrong reason: {refusal:?}"
     );
 }
 
@@ -207,9 +204,9 @@ fn a_granted_path_crosses_beside_the_object_it_was_vetted_as() {
     assert_eq!(
         grant,
         [
-            "--ro".to_string(),
-            granted.path().display().to_string(),
-            granted.object().to_string(),
+            OsString::from("--ro"),
+            granted.path().into(),
+            granted.object().to_string().into(),
         ],
         "a grant no longer crosses as its flag, its path and its object"
     );
@@ -223,13 +220,94 @@ fn a_granted_path_crosses_beside_the_object_it_was_vetted_as() {
     );
 }
 
+/// A path is bytes, so a grant that is not UTF-8 must cross as those bytes: a lossy
+/// spelling names nothing, or something else, and the helper refuses a grant it was given
+/// (#495).
+#[test]
+fn a_non_utf8_grant_crosses_byte_exact() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let path = dir.path().join(OsStr::from_bytes(b"grant-\xff"));
+    fs::create_dir(&path).expect("a directory with a non-UTF-8 name");
+    let policy = SandboxPolicy::default().allow_read(vetted(&path));
+
+    let args = HelperArgs::encode(&policy, "/bin/true", &[], None);
+
+    assert!(
+        args[1].as_bytes().ends_with(b"/grant-\xff"),
+        "the path slot after `--ro` does not hold the path's own bytes: {args:?}"
+    );
+    assert_eq!(
+        HelperArgs::decode(&args)
+            .expect("a non-UTF-8 grant to decode")
+            .policy,
+        policy,
+        "the grant decoded as a different path than the one vetted"
+    );
+}
+
+/// Only a grant's path crosses as raw bytes; `encode` writes every other token from a
+/// `str`, so a non-UTF-8 one there means the argv speaks a different protocol. Each row is
+/// decoded once with a value it accepts, so a refusal cannot come from the rest of the row.
+#[test]
+fn a_non_utf8_token_off_a_grant_is_refused() {
+    let invalid = OsStr::from_bytes(b"\xff");
+
+    for (position, before, valid, after) in [
+        (
+            "a flag",
+            &[][..],
+            "--allow-unix-sockets",
+            &["--", "/bin/true"][..],
+        ),
+        (
+            "a port",
+            &["--allow-network-port"],
+            "443",
+            &["--", "/bin/true"],
+        ),
+        ("an env name", &["--env"], "FOO", &["--", "/bin/true"]),
+        (
+            "a dns name",
+            &["--allow-dns-name"],
+            "example.com",
+            &["--", "/bin/true"],
+        ),
+        ("a pin", &["--pin-sha256"], DIGEST, &["--", "/bin/true"]),
+        ("an object", &["--ro", "/usr"], "1:2", &["--", "/bin/true"]),
+        ("the program", &["--"], "/bin/true", &[]),
+        ("a command arg", &["--", "/bin/true"], "x", &[]),
+    ] {
+        let row = |token: &OsStr| -> Vec<OsString> {
+            let mut args = wire(before);
+            args.push(token.to_owned());
+            args.extend(wire(after));
+            args
+        };
+
+        assert!(
+            HelperArgs::decode(&row(OsStr::new(valid))).is_ok(),
+            "{position}: the row is refused even when valid, so it proves nothing"
+        );
+        let refusal = HelperArgs::decode(&row(invalid))
+            .expect_err(&format!("{position}: a non-UTF-8 token was accepted"));
+        assert!(
+            matches!(
+                refusal,
+                sandbx_core::SandboxError::BadHelperArgs { detail }
+                    if detail.contains("not UTF-8")
+            ),
+            "{position}: refused for the wrong reason: {refusal:?}"
+        );
+    }
+}
+
 /// Carrying on would mean installing a rule over whatever the name reaches now, which is
 /// the substitution the pin exists to refuse. Matched on the reason: this argv also lacks
 /// the `--` separator, which it has to — the object is read as the token after the path,
 /// so `--` in that position is a malformed object and not a missing one.
 #[test]
 fn a_granted_path_without_its_object_is_refused() {
-    let args = vec!["--ro".to_string(), "/usr".to_string()];
+    let args = wire(&["--ro", "/usr"]);
 
     let refusal = HelperArgs::decode(&args).expect_err("a grant with no object after it");
 
@@ -250,13 +328,7 @@ fn a_malformed_object_on_the_wire_is_refused() {
     for object in [
         "", ":", "259", "259:", ":17", "259:17:4", "a:b", "-1:17", " 259:17",
     ] {
-        let args = vec![
-            "--ro".to_string(),
-            "/usr".to_string(),
-            object.to_string(),
-            "--".to_string(),
-            "/bin/true".to_string(),
-        ];
+        let args = wire(&["--ro", "/usr", object, "--", "/bin/true"]);
 
         let Err(refusal) = HelperArgs::decode(&args) else {
             panic!("{object:?} was accepted as an object");
@@ -277,7 +349,7 @@ fn a_malformed_object_on_the_wire_is_refused() {
 /// which would leave the separator uncovered here.
 #[test]
 fn missing_separator_is_rejected() {
-    let args = vec!["--ro".to_string(), "/usr".to_string(), "259:17".to_string()];
+    let args = wire(&["--ro", "/usr", "259:17"]);
 
     let Err(refusal) = HelperArgs::decode(&args) else {
         panic!("an argv naming no program was accepted");
@@ -295,11 +367,7 @@ fn missing_separator_is_rejected() {
 
 #[test]
 fn unknown_flag_is_rejected() {
-    let args = vec![
-        "--wat".to_string(),
-        "--".to_string(),
-        "/bin/true".to_string(),
-    ];
+    let args = wire(&["--wat", "--", "/bin/true"]);
     assert!(
         HelperArgs::decode(&args).is_err(),
         "an unrecognised flag must fail rather than be ignored"
@@ -357,7 +425,7 @@ fn every_axis_rejects_a_path_flag_without_its_path() {
                 sandbx_core::SandboxError::BadHelperArgs { detail }
                     if detail.contains("path flag with no path")
             ),
-            "{flag} was refused for the wrong reason: {refusal:?}"
+            "{flag:?} was refused for the wrong reason: {refusal:?}"
         );
     }
 }
@@ -392,7 +460,9 @@ fn the_wire_carries_the_name_and_not_the_value() {
     );
     let value = env::var("CARGO_MANIFEST_DIR").unwrap();
     assert!(
-        !args.iter().any(|arg| arg.contains(&value)),
+        !args
+            .iter()
+            .any(|arg| arg.to_string_lossy().contains(&value)),
         "the variable's value reached argv: {args:?}"
     );
 }
@@ -419,7 +489,7 @@ fn an_env_flag_without_a_name_is_rejected() {
             sandbx_core::SandboxError::BadHelperArgs { detail }
                 if detail.contains("env flag with no variable name")
         ),
-        "{flag} was refused for the wrong reason: {refusal:?}"
+        "{flag:?} was refused for the wrong reason: {refusal:?}"
     );
 }
 
@@ -427,12 +497,7 @@ fn an_env_flag_without_a_name_is_rejected() {
 /// cannot emit means the argv was built by something speaking another protocol.
 #[test]
 fn an_env_name_with_an_equals_sign_is_rejected() {
-    let args = vec![
-        "--env".to_string(),
-        "FOO=bar".to_string(),
-        "--".to_string(),
-        "/bin/true".to_string(),
-    ];
+    let args = wire(&["--env", "FOO=bar", "--", "/bin/true"]);
 
     let refusal = HelperArgs::decode(&args).expect_err("`FOO=bar` was accepted as a name");
 
@@ -479,7 +544,12 @@ fn the_wire_names_no_resolver_value() {
         None,
     );
 
-    assert!(!args.iter().any(|arg| arg.contains("use-vc")), "{args:?}");
+    assert!(
+        !args
+            .iter()
+            .any(|arg| arg.to_string_lossy().contains("use-vc")),
+        "{args:?}"
+    );
 }
 
 /// Order and count both, as for a port list: stage 1 renders one hosts line per name, so a
@@ -541,7 +611,7 @@ fn a_name_flag_without_a_name_is_refused() {
             sandbx_core::SandboxError::BadHelperArgs { detail }
                 if detail.contains("dns name flag with no name after it")
         ),
-        "{flag} was refused for the wrong reason: {refusal:?}"
+        "{flag:?} was refused for the wrong reason: {refusal:?}"
     );
 }
 
@@ -555,12 +625,7 @@ fn a_name_encode_could_not_emit_is_refused() {
         "evil.test #",
         &"a".repeat(sandbx_core::DNS_NAME_LIMIT + 1),
     ] {
-        let args = vec![
-            "--allow-dns-name".to_string(),
-            name.to_string(),
-            "--".to_string(),
-            "/bin/true".to_string(),
-        ];
+        let args = wire(&["--allow-dns-name", name, "--", "/bin/true"]);
 
         let refusal =
             HelperArgs::decode(&args).expect_err(&format!("{name:?} was accepted as a name"));
@@ -629,12 +694,7 @@ fn a_pin_digest_encode_could_not_emit_is_refused() {
         &DIGEST.to_uppercase(),
         "not hex at all, though still sixty-four characters long for the parser",
     ] {
-        let args = vec![
-            "--pin-sha256".to_string(),
-            hex.to_string(),
-            "--".to_string(),
-            "/bin/true".to_string(),
-        ];
+        let args = wire(&["--pin-sha256", hex, "--", "/bin/true"]);
 
         let refusal = HelperArgs::decode(&args).expect_err("accepted as a pinned digest");
 
@@ -654,12 +714,7 @@ fn a_pin_digest_encode_could_not_emit_is_refused() {
 #[test]
 fn a_pinned_program_that_is_not_an_absolute_path_is_refused() {
     for program in ["mytool", "target/debug/mytool", "./mytool"] {
-        let args = vec![
-            "--pin-sha256".to_string(),
-            DIGEST.to_string(),
-            "--".to_string(),
-            program.to_string(),
-        ];
+        let args = wire(&["--pin-sha256", DIGEST, "--", program]);
 
         let refusal = HelperArgs::decode(&args).expect_err("accepted a pinned bare name");
 
@@ -686,14 +741,14 @@ fn an_unpinned_program_may_be_a_bare_name() {
 /// Last-wins would quietly choose one of two images named for one program.
 #[test]
 fn a_second_pin_flag_is_refused() {
-    let args = vec![
-        "--pin-sha256".to_string(),
-        DIGEST.to_string(),
-        "--pin-sha256".to_string(),
-        DIGEST.to_string(),
-        "--".to_string(),
-        "/bin/true".to_string(),
-    ];
+    let args = wire(&[
+        "--pin-sha256",
+        DIGEST,
+        "--pin-sha256",
+        DIGEST,
+        "--",
+        "/bin/true",
+    ]);
 
     let refusal = HelperArgs::decode(&args).expect_err("two pin flags were accepted");
 
@@ -716,10 +771,10 @@ fn an_argv_pairing_a_name_with_a_nameserver_is_refused() {
         ("--allow-network-port", Some("53"), "port 53"),
         ("--dns-over-tcp", None, "--dns-over-tcp"),
     ] {
-        let mut args = vec!["--allow-dns-name".to_string(), "example.com".to_string()];
-        args.push(flag.to_string());
-        args.extend(value.map(str::to_string));
-        args.extend(["--".to_string(), "/bin/true".to_string()]);
+        let mut args = wire(&["--allow-dns-name", "example.com"]);
+        args.push(flag.into());
+        args.extend(value.map(OsString::from));
+        args.extend(wire(&["--", "/bin/true"]));
 
         let refusal = HelperArgs::decode(&args)
             .expect_err(&format!("{flag} was accepted beside a name allowlist"));
@@ -729,7 +784,7 @@ fn an_argv_pairing_a_name_with_a_nameserver_is_refused() {
                 refusal,
                 sandbx_core::SandboxError::BadHelperArgs { detail } if detail.contains(expected)
             ),
-            "{flag} was refused for the wrong reason: {refusal:?}"
+            "{flag:?} was refused for the wrong reason: {refusal:?}"
         );
     }
 }

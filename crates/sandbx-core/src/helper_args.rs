@@ -7,6 +7,7 @@
 //! the policy.
 
 use crate::{Axis, NetworkPolicy, ObjectId, SandboxError, SandboxPolicy, Sha256Digest, VettedPath};
+use std::ffi::OsString;
 use std::path::Path;
 use std::slice;
 
@@ -53,10 +54,25 @@ fn axis_for(flag: &str) -> Option<Axis> {
 }
 
 fn next_arg<'a>(
-    rest: &mut slice::Iter<'a, String>,
+    rest: &mut slice::Iter<'a, OsString>,
     detail: &'static str,
-) -> Result<&'a String, SandboxError> {
+) -> Result<&'a OsString, SandboxError> {
     rest.next().ok_or(SandboxError::BadHelperArgs { detail })
+}
+
+/// [`next_arg`], for every token but a grant's path: `encode` writes only those from a
+/// `str`, so one that is not UTF-8 means the argv speaks a different protocol.
+fn next_str<'a>(
+    rest: &mut slice::Iter<'a, OsString>,
+    detail: &'static str,
+) -> Result<&'a str, SandboxError> {
+    utf8(next_arg(rest, detail)?)
+}
+
+fn utf8(arg: &OsString) -> Result<&str, SandboxError> {
+    arg.to_str().ok_or(SandboxError::BadHelperArgs {
+        detail: "a token that is not UTF-8 outside a granted path",
+    })
 }
 
 /// A policy plus a command, as carried between sandbx and the helper process. Argv is not
@@ -86,64 +102,69 @@ impl HelperArgs {
         program: &str,
         args: &[String],
         pin: Option<Sha256Digest>,
-    ) -> Vec<String> {
-        let mut out = Vec::new();
+    ) -> Vec<OsString> {
+        let mut out: Vec<OsString> = Vec::new();
 
         for crate::GrantedPath { axis, vetted } in policy.granted_paths() {
-            out.push(path_flag(axis).to_string());
-            out.push(vetted.path().display().to_string());
-            out.push(vetted.object().to_string());
+            out.push(path_flag(axis).into());
+            // The path's own bytes: a path need not be UTF-8, and a lossy spelling names
+            // nothing, or something else, at the other end (#495).
+            out.push(vetted.path().as_os_str().to_owned());
+            out.push(vetted.object().to_string().into());
         }
         // Exhaustive, so a network state added to the policy is a compile error here rather
         // than a grant that fails to cross into the stage that enforces it.
         match policy.network() {
             NetworkPolicy::Denied => {}
-            NetworkPolicy::AnyPort => out.push(FLAG_NET.to_string()),
+            NetworkPolicy::AnyPort => out.push(FLAG_NET.into()),
             NetworkPolicy::Ports(ports) => {
                 for port in ports {
-                    out.extend([FLAG_NET_PORT.to_string(), port.to_string()]);
+                    out.extend([FLAG_NET_PORT.into(), port.to_string().into()]);
                 }
             }
         }
         if policy.allows_unix_sockets() {
-            out.push(FLAG_UNIX.to_string());
+            out.push(FLAG_UNIX.into());
         }
         if policy.hints_dns_over_tcp() {
-            out.push(FLAG_DNS_OVER_TCP.to_string());
+            out.push(FLAG_DNS_OVER_TCP.into());
         }
         for name in policy.allowed_env() {
-            out.extend([FLAG_ENV.to_string(), name.clone()]);
+            out.extend([FLAG_ENV.into(), name.into()]);
         }
         for name in policy.allowed_dns_names() {
-            out.extend([FLAG_DNS_NAME.to_string(), name.clone()]);
+            out.extend([FLAG_DNS_NAME.into(), name.into()]);
         }
         if let Some(digest) = pin {
-            out.extend([FLAG_PIN.to_string(), digest.to_string()]);
+            out.extend([FLAG_PIN.into(), digest.to_string().into()]);
         }
 
-        out.extend([SEPARATOR.to_string(), program.to_string()]);
-        out.extend(args.iter().cloned());
+        out.extend([SEPARATOR.into(), program.into()]);
+        out.extend(args.iter().map(OsString::from));
         out
     }
 
     /// Parse helper argv back into a policy and command. Every failure is a refusal:
     /// skipping an unrecognised flag would mean running with a policy sandbx did not intend.
-    pub fn decode(argv: &[String]) -> Result<Self, SandboxError> {
+    pub fn decode(argv: &[OsString]) -> Result<Self, SandboxError> {
         let mut policy = SandboxPolicy::default();
         let mut pin = None;
         let mut rest = argv.iter();
 
         let (program, args) = loop {
-            let arg = next_arg(&mut rest, "missing `--` separator before the command")?;
+            let arg = next_str(&mut rest, "missing `--` separator before the command")?;
 
-            match arg.as_str() {
+            match arg {
                 SEPARATOR => {
-                    let program = next_arg(&mut rest, "no command after `--`")?;
-                    break (program.clone(), rest.cloned().collect());
+                    let program = next_str(&mut rest, "no command after `--`")?;
+                    let args = rest
+                        .map(|arg| utf8(arg).map(str::to_owned))
+                        .collect::<Result<_, _>>()?;
+                    break (program.to_owned(), args);
                 }
                 FLAG_NET => policy = policy.allow_network(),
                 FLAG_NET_PORT => {
-                    let port = next_arg(&mut rest, "network port flag with no port after it")?;
+                    let port = next_str(&mut rest, "network port flag with no port after it")?;
                     // `parse::<u16>` is the range check, so out-of-range and not-a-number are
                     // one refusal with no `as` cast between them to truncate one into the other.
                     let port: u16 = port.parse().map_err(|_| SandboxError::BadHelperArgs {
@@ -161,7 +182,7 @@ impl HelperArgs {
                 FLAG_UNIX => policy = policy.allow_unix_sockets(),
                 FLAG_DNS_OVER_TCP => policy = policy.hint_dns_over_tcp(),
                 FLAG_ENV => {
-                    let name = next_arg(&mut rest, "env flag with no variable name after it")?;
+                    let name = next_str(&mut rest, "env flag with no variable name after it")?;
                     // Refused where `allow_env` would skip it: a name `encode` could not
                     // have emitted means the argv speaks a different protocol.
                     if name.contains('=') {
@@ -172,7 +193,7 @@ impl HelperArgs {
                     policy = policy.allow_env(name);
                 }
                 FLAG_DNS_NAME => {
-                    let name = next_arg(&mut rest, "dns name flag with no name after it")?;
+                    let name = next_str(&mut rest, "dns name flag with no name after it")?;
                     // Refused where `allow_dns` would skip it: such a name would forge a
                     // field or a comment in the hosts file the helper renders from these.
                     if !crate::policy::is_resolvable_name(name) {
@@ -184,7 +205,7 @@ impl HelperArgs {
                     policy = policy.allow_dns(name);
                 }
                 FLAG_PIN => {
-                    let hex = next_arg(&mut rest, "pin flag with no digest after it")?;
+                    let hex = next_str(&mut rest, "pin flag with no digest after it")?;
                     // `encode` writes a parsed digest, so anything unparseable here means the
                     // argv speaks a different protocol — as does a second one, which last-wins
                     // would resolve to whichever came later.
@@ -207,11 +228,11 @@ impl HelperArgs {
                     // Refused and not inferred: a grant the helper cannot confirm against the
                     // object the harness vetted is one this decoder has no answer for
                     // (`context/decision-policy.md`).
-                    let pin = next_arg(&mut rest, "granted path with no object pin after it")?;
+                    let pin = next_str(&mut rest, "granted path with no object pin after it")?;
                     let object = ObjectId::parse(pin).ok_or(SandboxError::BadHelperArgs {
                         detail: "object pin that is not a device and an inode parted by `:`",
                     })?;
-                    policy = policy.grant(axis, VettedPath::from_wire(path.as_str(), object));
+                    policy = policy.grant(axis, VettedPath::from_wire(path, object));
                 }
             }
         };
