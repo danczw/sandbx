@@ -211,3 +211,50 @@ fn read_truncates_on_a_character_boundary() {
     assert!(out.content().contains('日'));
     assert!(out.content().contains("truncated"));
 }
+
+/// `/dev/zero` never ends and its handle reports a length of 0, so only a bound on the
+/// read itself stops it. Unbounded, this never returns.
+#[test]
+fn read_stops_on_an_endless_file() {
+    let ctx = context(
+        SandboxPolicy::default().allow_read(vetted("/dev/zero")),
+        ToolLimits::default().with_max_bytes(100),
+    );
+
+    let out = BuiltinTool::Read
+        .execute(json!({ "path": "/dev/zero" }), &ctx)
+        .unwrap();
+
+    assert!(
+        out.content().contains("truncated"),
+        "got:\n{}",
+        out.content()
+    );
+    assert!(out.content().len() < 500, "{} bytes", out.content().len());
+    // The handle's 0 is not the file's size, so no total is claimed.
+    assert!(!out.content().contains(" of 0 "), "got:\n{}", out.content());
+}
+
+/// The model narrows a read by knowing how much it did not see.
+#[test]
+fn read_names_the_size_of_a_cut_file() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("big.txt");
+    fs::write(&file, "x".repeat(3 * 1024 * 1024)).unwrap();
+
+    let ctx = context(
+        SandboxPolicy::default().allow_read(vetted(root.path())),
+        ToolLimits::default().with_max_bytes(100),
+    );
+
+    let out = BuiltinTool::Read
+        .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
+        .unwrap();
+
+    assert!(
+        out.content()
+            .ends_with("... truncated: showing 100 of 3145728 bytes"),
+        "got:\n{}",
+        out.content()
+    );
+}

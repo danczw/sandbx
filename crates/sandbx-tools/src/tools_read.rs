@@ -22,9 +22,18 @@ pub(crate) struct ReadInput {
 /// Read a file's contents.
 ///
 /// Never spawns, so the kernel enforcement never sees it: the `FsGuard` check
-/// inside [`crate::read_file`] is the only thing holding it inside the policy.
+/// inside [`crate::read_head`] is the only thing holding it inside the policy.
 pub(crate) fn execute(input: ReadInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    let content = crate::read_file(&input.path, ctx)?;
+    let (mut head, cut) = crate::read_head(&input.path, ctx, ctx.limits().max_bytes() as u64)?;
 
-    Ok(ToolOutput::new(ctx.limits().cap_bytes(content)))
+    // `ToolLimits::cap_bytes`'s marker, for a head the read already cut.
+    let shown = head.len();
+    let showing = match cut {
+        crate::Cut::Whole => return Ok(ToolOutput::new(head)),
+        crate::Cut::Short { total: Some(total) } => format!("{shown} of {total} bytes"),
+        crate::Cut::Short { total: None } => format!("the first {shown} bytes"),
+    };
+    head.push_str(&format!("\n... truncated: showing {showing}"));
+
+    Ok(ToolOutput::new(head))
 }

@@ -44,23 +44,47 @@ pub(crate) fn failed(verb: &str, path: &Path, error: impl fmt::Display) -> ToolE
     }
 }
 
-/// Read a file's contents through the guard.
+/// The most a tool holds of one file whole: `edit` refuses past it, `grep` skips past it.
+///
+/// No source file is this large; a checkout's pack files and binaries are, and they
+/// fail UTF-8 validation anyway — which is discovered only after reading them.
+pub(crate) const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Read a whole file's contents through the guard, refusing one past [`MAX_FILE_BYTES`].
 ///
 /// The guard check lives here, not at the call sites, so no in-process tool can read
 /// a file by forgetting it. Reads the handle the guard returns, not the path again:
 /// re-resolving on open leaves a window to swap the leaf for a symlink — which is why no
 /// tool calls the bare `check_read` or `check_write`.
-///
-/// Uncapped, a known gap: `max_bytes` trims what is returned once the whole file is
-/// allocated, so a 10 GiB file in a readable root is one allocation, and `edit` then holds
-/// it twice. `grep` guards exactly this with `MAX_FILE_BYTES`; `read` and `edit` do not.
 pub(crate) fn read_file(path: &Path, ctx: &ExecutionContext) -> Result<String, ToolError> {
-    let file = ctx
-        .guard()
-        .open_read(path)
-        .map_err(|error| guard_error(path, error))?;
+    let file = open(path, ctx)?;
 
-    slurp(file, path)
+    let (bytes, Cut::Whole) = read_bounded(file, path, MAX_FILE_BYTES)? else {
+        let detail = format!("larger than the {MAX_FILE_BYTES} bytes a tool reads whole");
+        return Err(failed("read", path, detail));
+    };
+    String::from_utf8(bytes).map_err(|error| failed("read", path, error))
+}
+
+/// The first `max` bytes of a file, read through the guard, and how it was cut.
+///
+/// A head cut short may end partway through a character, which is dropped; any other
+/// invalid byte is a file that is not text, and fails as `read_file` would.
+pub(crate) fn read_head(
+    path: &Path,
+    ctx: &ExecutionContext,
+    max: u64,
+) -> Result<(String, Cut), ToolError> {
+    let file = open(path, ctx)?;
+
+    let (mut bytes, cut) = read_bounded(file, path, max)?;
+    if let (Cut::Short { .. }, Err(error)) = (cut, std::str::from_utf8(&bytes))
+        && error.error_len().is_none()
+    {
+        bytes.truncate(error.valid_up_to());
+    }
+    let text = String::from_utf8(bytes).map_err(|error| failed("read", path, error))?;
+    Ok((text, cut))
 }
 
 /// Read a file through the guard, or `None` when it answers nothing: refused, past
@@ -75,17 +99,50 @@ pub(crate) fn read_capped(path: &Path, ctx: &ExecutionContext, max: u64) -> Opti
 
     // A binary under the cap fails UTF-8 validation here, and so does a read that died
     // mid-file; neither is a file with no match in it.
-    slurp(file, path).ok()
+    let (bytes, Cut::Whole) = read_bounded(file, path, max).ok()? else {
+        return None;
+    };
+    String::from_utf8(bytes).ok()
 }
 
-/// Read an open handle to a `String`, the path being for the error only.
-fn slurp(mut file: File, path: &Path) -> Result<String, ToolError> {
+/// Whether a bounded read reached the end of the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Cut {
+    Whole,
+    /// More was left. `total` is the size the handle reports, only where it exceeds
+    /// what was read: a device or a procfs file reports 0, which is no size at all.
+    Short {
+        total: Option<u64>,
+    },
+}
+
+fn open(path: &Path, ctx: &ExecutionContext) -> Result<File, ToolError> {
+    ctx.guard()
+        .open_read(path)
+        .map_err(|error| guard_error(path, error))
+}
+
+/// Read at most `max` bytes off an open handle, the path being for the error only.
+///
+/// The bound is on the read, not on the handle's size: `/dev/zero` reports 0 and never
+/// ends, and a file can grow between the `fstat` and the read. Reading one byte past
+/// `max` is how a file of exactly `max` bytes tells itself apart from a longer one.
+fn read_bounded(file: File, path: &Path, max: u64) -> Result<(Vec<u8>, Cut), ToolError> {
     use std::io::Read;
 
-    let mut content = String::new();
-    file.read_to_string(&mut content)
+    let size = file.metadata().map(|metadata| metadata.len()).ok();
+    let mut bytes = Vec::new();
+    file.take(max.saturating_add(1))
+        .read_to_end(&mut bytes)
         .map_err(|error| failed("read", path, error))?;
-    Ok(content)
+
+    if bytes.len() as u64 <= max {
+        return Ok((bytes, Cut::Whole));
+    }
+    // More than `max` bytes are held, so `max` fits in a `usize`.
+    bytes.truncate(max as usize);
+    let total = size.filter(|&size| size > max);
+    Ok((bytes, Cut::Short { total }))
 }
 
 /// Whether a search covered everything it was asked to, or left some of it unsearched: a
