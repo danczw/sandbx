@@ -35,7 +35,7 @@ use super::prompt::{Notes, Stderr, account};
 use super::render::{Answer, Unfinished};
 use super::{
     AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation, stored_stop,
-    withheld_line, wrapup,
+    wrapup,
 };
 use crate::AgentError;
 
@@ -277,14 +277,6 @@ impl Tui {
 
         for line in &closing {
             pane.note(line);
-        }
-        // The screen shows this turn alone, so nothing on it says how much of the resumed
-        // session the model was sent.
-        if let Some(line) = outcome
-            .as_ref()
-            .and_then(|(outcome, _)| withheld_line(&merged, outcome))
-        {
-            pane.note(&line);
         }
 
         // Not `?`: a store that refused the turn must still leave the transcript and the

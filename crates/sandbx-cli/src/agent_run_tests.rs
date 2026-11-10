@@ -1,4 +1,4 @@
-use super::super::prompt::{APPROVE_CALL, Approve, Terminal};
+use super::super::prompt::{APPROVE_CALL, Approve, Notes, Terminal};
 use super::super::render::tests::{stop, text};
 use super::super::{Device, orientation};
 use super::{AgentRun, Channels, INCOMPLETE, round_cap, session_id};
@@ -1049,6 +1049,73 @@ fn a_resumed_session_keeps_its_cut() {
     assert_eq!(sent[0].messages.len(), 11, "got {:?}", sent[0].messages);
     assert_eq!(said_in(&sent[0].messages[0]), "turn 2");
     assert!(said.contains("oldest 4 messages"), "got {said}");
+
+    // Off again, as its help says: the whole history goes out, and nothing claims a cut.
+    let args = agent_run(&["sandbx", "agent-run", "--session", "--", "off"]);
+    let Driven {
+        sent, code, said, ..
+    } = one_round(
+        &args,
+        &args.to_prompt(),
+        answered_at(10),
+        Some(store.resume(&only_session(&store)).expect("it resumes")),
+    );
+    code.expect("clean turn");
+    assert_eq!(sent[0].messages.len(), 17, "got {:?}", sent[0].messages);
+    assert!(!said.contains("--compact-at"), "got {said}");
+}
+
+/// Every line a `save` noted.
+struct Said(Vec<String>);
+
+impl Notes for Said {
+    fn note(&mut self, line: &str) {
+        self.0.push(line.to_owned());
+    }
+}
+
+/// With compaction off a figure can still arrive, a turn interrupted before its first
+/// request streamed handing back the stored floor; the request it sent withheld nothing.
+#[test]
+fn only_compaction_claims_a_cut() {
+    let merged = sandbx_session_bridge::merge_user_runs(
+        vec![asked("one"), answered("two"), asked("three")],
+        2,
+    );
+    let carrying_the_floor = || sandbx_turn::TurnOutcome {
+        messages: vec![answered("four")],
+        usage: None,
+        withheld: 2,
+        stop: sandbx_turn::TurnStop::Answered,
+        round_stop: Some(StopReason::EndTurn),
+    };
+
+    let lines = |argv: &[&str]| {
+        let mut said = Said(Vec::new());
+        // Bound, so the directory outlives the append.
+        let fixture = new_session();
+        agent_run(argv)
+            .save(
+                fixture.session,
+                &asked("three"),
+                carrying_the_floor(),
+                StoredStop::Answered,
+                &merged,
+                &mut said,
+            )
+            .expect("it stores");
+        said.0
+    };
+
+    assert_eq!(
+        lines(&["sandbx", "agent-run", "--", "three"]),
+        Vec::<String>::new()
+    );
+    let on = lines(&["sandbx", "agent-run", "--compact-at", "1", "--", "three"]);
+    assert!(
+        on.iter().any(|line| line.contains("oldest 2 messages")),
+        "got {on:?}"
+    );
 }
 
 /// The id of the one session in `store`.

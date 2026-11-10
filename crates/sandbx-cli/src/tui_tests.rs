@@ -432,7 +432,7 @@ fn the_approved_tools_are_what_the_same_flags_approve_under_agent_run() {
 
 /// One `--compact-at`, one budget, whichever subcommand read it.
 #[test]
-fn the_compaction_is_what_the_same_flag_sets_under_agent_run() {
+fn compact_at_is_one_flag_under_both() {
     let flags = ["--compact-at", "5000"];
     let prompt = ["--", "what is here?"];
 

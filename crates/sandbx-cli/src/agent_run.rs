@@ -42,8 +42,9 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 
 /// How many of the newest messages a `--compact-at` cut aims to keep.
 ///
-/// Fixed, with no flag, until a use needs one (#302): about the last exchange or two, tool
-/// rounds included. Not a `Compaction` default, which has no model to size it for either.
+/// Counted over the whole request, the turn's own messages included, so a turn long in tool
+/// rounds can leave out every earlier one. No flag: #302 found no use for one. Not a
+/// `Compaction` default, which has no model to size it for either.
 const COMPACT_KEEP_RECENT: usize = 10;
 
 /// The exit code for an answer a bound cut short.
@@ -121,9 +122,10 @@ pub struct AgentRun {
     /// Stop sending the oldest history once a request grows past this many tokens.
     ///
     /// Off unless given, and lossy: the oldest turns of a `--session` conversation are left
-    /// out of the request, nothing summarises them, and the model cannot see them. A turn
-    /// that left any out says how many. Its own messages never are, so without `--session`
-    /// there is nothing to leave.
+    /// out of the request, nothing summarises them, and the model cannot see them. A cut
+    /// aims to keep the newest ten messages, this turn's own included, and a turn that left
+    /// any out says how many. Its own messages never are, so without `--session` there is
+    /// nothing to leave. Resuming without the flag sends the whole history again.
     ///
     /// The figure is what the provider counted for the last request, which a turn's
     /// growth can carry past before the next cut. Set it below the model's context window
@@ -482,10 +484,6 @@ impl AgentRun {
         // persisted without its answer makes the next resume send two user turns in a row.
         let outcome = outcome?;
 
-        if let Some(line) = withheld_line(&merged, &outcome) {
-            Notes::note(&mut render, &line);
-        }
-
         if let Some(session) = session {
             let stop = stored_stop(outcome.stop, ending);
             self.save(session, &asked, outcome, stop, &merged, &mut render)?;
@@ -501,9 +499,9 @@ impl AgentRun {
     /// `asked` has to be passed back in: `TurnOutcome::messages` is what the turn
     /// produced, so a transcript built from the outcome alone would hold the model's
     /// replies with nothing it replied to. `stop` is the caller's, `outcome.stop` alone being
-    /// unable to say a cap was summarised or who interrupted a turn. `notes` takes the one line
-    /// a turn with nothing to store is owed, which under `tui` must not reach the stderr the
-    /// screen covers.
+    /// unable to say a cap was summarised or who interrupted a turn. `notes` takes the lines
+    /// owed to a turn with nothing to store or history left out, which under `tui` must not
+    /// reach the stderr the screen covers.
     pub(super) fn save(
         &self,
         mut session: Session,
@@ -513,13 +511,24 @@ impl AgentRun {
         merged: &Merged,
         notes: &mut impl Notes,
     ) -> Result<(), AgentError> {
+        // Back out of the request's index space, which the merge moved.
+        let withheld = merged.unmerged(outcome.withheld);
+        // Not off the figure alone: with compaction off, a turn interrupted before its first
+        // request streamed hands back the stored floor, while what it sent withheld nothing.
+        if self.compact_at.is_some() && withheld > 0 {
+            let noun = if withheld == 1 { "message" } else { "messages" };
+            notes.note(&format!(
+                "sandbx: the model was not sent this session's oldest {withheld} {noun}, \
+                 `--compact-at` having left them out"
+            ));
+        }
+
         let mut messages = session::stored_messages(slice::from_ref(asked));
         messages.extend(session::stored_messages(&outcome.messages));
         let turn = CompletedTurn {
             messages: &messages,
             observed: outcome.usage.map(session::stored_usage),
-            // Back out of the request's index space, which the merge moved.
-            withheld: merged.unmerged(outcome.withheld),
+            withheld,
             stop,
         };
 
@@ -556,22 +565,6 @@ pub(super) fn stored_stop(stop: TurnStop, ending: Option<Unfinished>) -> StoredS
         (TurnStop::GateAborted, _) => StoredStop::GateAborted,
         (TurnStop::Interrupted, _) => StoredStop::Interrupted,
     }
-}
-
-/// The line owed to a turn whose last request left history out, or `None` where it left
-/// none.
-///
-/// Counted in the transcript's index space, so the figure is messages of the session as
-/// stored.
-pub(super) fn withheld_line(merged: &Merged, outcome: &TurnOutcome) -> Option<String> {
-    let withheld = merged.unmerged(outcome.withheld);
-    (withheld > 0).then(|| {
-        let noun = if withheld == 1 { "message" } else { "messages" };
-        format!(
-            "sandbx: the model was not sent this session's oldest {withheld} {noun}, \
-             `--compact-at` having left them out"
-        )
-    })
 }
 
 /// Accept a cap that still allows one request, and refuse anything else.
