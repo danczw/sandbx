@@ -374,6 +374,8 @@ cargo test --workspace                                 # default suite
 cargo test --workspace --features sandbox-integration  # needs Linux kernel ≥ 6.10
 cargo test -p sandbx-anthropic \
   --features live-anthropic-tests                      # needs a paid ANTHROPIC_API_KEY
+cargo test -p sandbx-turn \
+  --features live-anthropic-tests                      # compacted requests, same key
 cargo clippy --workspace --all-targets -- -D warnings
 git config core.hooksPath .githooks                    # fmt + clippy on commit
 ```

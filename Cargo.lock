@@ -1930,6 +1930,7 @@ dependencies = [
  "sandbx-provider",
  "sandbx-tools",
  "sandbx-turn-fixture",
+ "secrecy",
  "serde_json",
  "tempfile",
  "tokio",
