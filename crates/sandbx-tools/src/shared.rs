@@ -51,8 +51,8 @@ pub(crate) fn failed(verb: &str, path: &Path, error: impl fmt::Display) -> ToolE
 /// fail UTF-8 validation anyway — which is discovered only after reading them.
 pub(crate) const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
-/// Read a whole file for `edit`, refusing one past [`MAX_FILE_BYTES`]: it holds the
-/// file twice, and has no part of one to work on.
+/// Read a whole file for `edit`, refusing one past [`MAX_FILE_BYTES`]: `edit` holds it
+/// twice, and cannot work on part of one.
 pub(crate) fn read_file(path: &Path, ctx: &ExecutionContext) -> Result<String, ToolError> {
     let file = open(path, ctx)?;
 
@@ -66,9 +66,9 @@ pub(crate) fn read_file(path: &Path, ctx: &ExecutionContext) -> Result<String, T
 /// The first `max` bytes of a file, read through the guard, and how it was cut.
 ///
 /// Only the head is judged, so a file whose head is text reads as text whatever follows.
-/// An invalid byte inside the head fails as `read_file` would; at a cut, the last few
-/// bytes that start a character but do not finish it are dropped, as they could be
-/// either a split character or a stray lead byte.
+/// An invalid byte inside the head fails as `read_file` would; at a cut, up to three
+/// trailing bytes that start a character without finishing it are dropped, being either a
+/// split character or a stray lead byte.
 pub(crate) fn read_head(
     path: &Path,
     ctx: &ExecutionContext,

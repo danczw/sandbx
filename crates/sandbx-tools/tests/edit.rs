@@ -175,7 +175,7 @@ fn refuses_a_file_past_the_cap() {
     let ToolError::Failed { subject, .. } = &err else {
         panic!("got {err:?}");
     };
-    // `edit`'s, not `read`'s: the model is not to take a size limit for a read refusal.
+    // Named as `edit`'s, so the model does not take a size limit for a read refusal.
     assert!(subject.starts_with("edit "), "subject: {subject}");
     assert!(
         fs::read_to_string(&file).unwrap() == original,
