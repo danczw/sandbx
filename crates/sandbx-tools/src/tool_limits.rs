@@ -17,9 +17,9 @@ pub struct ToolLimits {
     pub max_files_scanned: usize,
     /// Cap on the bytes a searching tool may read across a whole search.
     ///
-    /// Checked before each read, not clamped, so one file can overshoot it;
-    /// `MAX_FILE_BYTES` is what bounds that overshoot. The worst case is this plus 2 MiB, and
-    /// setting this field cannot move the second half.
+    /// Checked before each read, not clamped, so one file can overshoot it; `MAX_FILE_BYTES`
+    /// is what bounds that overshoot. The worst case is this plus 2 MiB, and setting this
+    /// field cannot move the second half.
     pub max_bytes_scanned: usize,
 }
 

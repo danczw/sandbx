@@ -259,8 +259,7 @@ fn read_names_the_size_of_a_cut_file() {
     );
 }
 
-/// A cut head is judged up to the cut: an invalid byte well inside it is not text, however
-/// much of what follows the read never saw.
+/// An invalid byte inside a cut head fails, though the read never saw the rest.
 #[test]
 fn read_refuses_an_invalid_byte_in_the_head() {
     let root = tempfile::tempdir().unwrap();
