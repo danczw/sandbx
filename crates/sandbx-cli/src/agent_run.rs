@@ -43,8 +43,7 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 /// How many of the newest messages a `--compact-at` cut aims to keep.
 ///
 /// Counted over the whole request, the turn's own messages included, so a turn long in tool
-/// rounds can leave out every earlier one. No flag: #302 found no use for one. Not a
-/// `Compaction` default, which has no model to size it for either.
+/// rounds can leave out every earlier one. No flag: #302 found no use for one.
 const COMPACT_KEEP_RECENT: usize = 10;
 
 /// The exit code for an answer a bound cut short.
