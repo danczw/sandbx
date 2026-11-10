@@ -19,6 +19,11 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # optional — `run_turn` panics on the first round without a timer.
 tokio = { version = "1.53.1", default-features = false, features = ["rt", "time"] }
 
+[features]
+# Spends money per run against a paid `ANTHROPIC_API_KEY`, as `sandbx-anthropic`'s feature
+# of the same name does. Its own and not forwarded: a feature cannot name a dev-dependency.
+live-anthropic-tests = []
+
 [lints]
 workspace = true
 
@@ -35,6 +40,8 @@ sandbx-turn-fixture = { path = "../sandbx-turn-fixture" }
 # Dev-only: nothing under `src/` names this crate; the one reference is `turn_loop.rs`'s
 # spawnability pin, which types a field as an `AnthropicClient`.
 sandbx-anthropic = { path = "../sandbx-anthropic" }
+# For the key `live_compaction.rs` hands the client.
+secrecy = "0.10.3"
 tempfile = "3.27.0"
 # To read the trail a scripted turn leaves, never to write one: `tracing` is a
 # dependency of `sandbx-core` alone, and this crate holds no emission site.
