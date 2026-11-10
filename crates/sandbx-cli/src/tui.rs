@@ -29,13 +29,13 @@ use sandbx_session_message::TurnStop as StoredStop;
 use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Keys, Stopped};
-use sandbx_turn::{Turn, TurnError, TurnLimits, TurnOutcome, TurnStop, run_turn_until};
+use sandbx_turn::{Turn, TurnError, TurnOutcome, TurnStop, run_turn_until};
 
 use super::prompt::{Notes, Stderr, account};
 use super::render::{Answer, Unfinished};
 use super::{
     AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation, stored_stop,
-    wrapup,
+    withheld_line, wrapup,
 };
 use crate::AgentError;
 
@@ -161,10 +161,7 @@ impl Tui {
             tool_choice: None,
             thinking: self.run.show_thinking.then_some(Thinking::Visible),
             history: &merged.history,
-            limits: TurnLimits {
-                max_rounds: self.run.max_rounds(),
-                ..TurnLimits::default()
-            },
+            limits: self.run.limits(),
             observed: session
                 .as_ref()
                 .and_then(Session::observed)
@@ -280,6 +277,14 @@ impl Tui {
 
         for line in &closing {
             pane.note(line);
+        }
+        // The screen shows this turn alone, so nothing on it says how much of the resumed
+        // session the model was sent.
+        if let Some(line) = outcome
+            .as_ref()
+            .and_then(|(outcome, _)| withheld_line(&merged, outcome))
+        {
+            pane.note(&line);
         }
 
         // Not `?`: a store that refused the turn must still leave the transcript and the

@@ -22,7 +22,7 @@ use sandbx_session_id::SessionId;
 use sandbx_session_message::{CompletedTurn, TurnStop as StoredStop};
 use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
-use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
+use sandbx_turn::{Compaction, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
 use crate::{AgentError, Grants, PolicyError};
 
@@ -39,6 +39,12 @@ const DEFAULT_MODEL: &str = "claude-sonnet-5";
 
 /// The output ceiling for one round when `--max-tokens` is not given.
 const DEFAULT_MAX_TOKENS: u32 = 4096;
+
+/// How many of the newest messages a `--compact-at` cut aims to keep.
+///
+/// Fixed, with no flag, until a use needs one (#302): about the last exchange or two, tool
+/// rounds included. Not a `Compaction` default, which has no model to size it for either.
+const COMPACT_KEEP_RECENT: usize = 10;
 
 /// The exit code for an answer a bound cut short.
 ///
@@ -111,6 +117,23 @@ pub struct AgentRun {
     /// the tool work and resumes either way. The exit code is 2 either way.
     #[arg(long = "no-wrap-up")]
     pub(super) no_wrap_up: bool,
+
+    /// Stop sending the oldest history once a request grows past this many tokens.
+    ///
+    /// Off unless given, and lossy: the oldest turns of a `--session` conversation are left
+    /// out of the request, nothing summarises them, and the model cannot see them. A turn
+    /// that left any out says how many. Its own messages never are, so without `--session`
+    /// there is nothing to leave.
+    ///
+    /// The figure is what the provider counted for the last request, which a turn's
+    /// growth can carry past before the next cut. Set it below the model's context window
+    /// with room to spare.
+    #[arg(
+        long = "compact-at",
+        value_name = "TOKENS",
+        value_parser = clap::value_parser!(u32).range(1..),
+    )]
+    compact_at: Option<u32>,
 
     /// Show the model's reasoning on stderr as it arrives.
     ///
@@ -223,6 +246,18 @@ impl AgentRun {
     /// How many times the model may be asked within one turn.
     pub fn max_rounds(&self) -> usize {
         self.max_rounds
+    }
+
+    /// The bounds `--max-rounds` and `--compact-at` describe, as both subcommands take them.
+    pub(super) fn limits(&self) -> TurnLimits {
+        TurnLimits {
+            max_rounds: self.max_rounds,
+            compaction: self.compact_at.map(|budget_tokens| Compaction {
+                budget_tokens,
+                keep_recent: COMPACT_KEEP_RECENT,
+            }),
+            ..TurnLimits::default()
+        }
     }
 
     /// The system prompt `--system` gave, before the approved tools and the roots are
@@ -384,10 +419,7 @@ impl AgentRun {
             tool_choice: None, // The model's to make.
             thinking: self.show_thinking.then_some(Thinking::Visible),
             history: &merged.history,
-            limits: TurnLimits {
-                max_rounds: self.max_rounds,
-                ..TurnLimits::default()
-            },
+            limits: self.limits(),
             // Last measured by the resumed conversation; `None`/`0` without one.
             observed: session
                 .as_ref()
@@ -449,6 +481,10 @@ impl AgentRun {
         // Before the append: a `TurnError` discards the turn's own messages, and a prompt
         // persisted without its answer makes the next resume send two user turns in a row.
         let outcome = outcome?;
+
+        if let Some(line) = withheld_line(&merged, &outcome) {
+            Notes::note(&mut render, &line);
+        }
 
         if let Some(session) = session {
             let stop = stored_stop(outcome.stop, ending);
@@ -520,6 +556,22 @@ pub(super) fn stored_stop(stop: TurnStop, ending: Option<Unfinished>) -> StoredS
         (TurnStop::GateAborted, _) => StoredStop::GateAborted,
         (TurnStop::Interrupted, _) => StoredStop::Interrupted,
     }
+}
+
+/// The line owed to a turn whose last request left history out, or `None` where it left
+/// none.
+///
+/// Counted in the transcript's index space, so the figure is messages of the session as
+/// stored.
+pub(super) fn withheld_line(merged: &Merged, outcome: &TurnOutcome) -> Option<String> {
+    let withheld = merged.unmerged(outcome.withheld);
+    (withheld > 0).then(|| {
+        let noun = if withheld == 1 { "message" } else { "messages" };
+        format!(
+            "sandbx: the model was not sent this session's oldest {withheld} {noun}, \
+             `--compact-at` having left them out"
+        )
+    })
 }
 
 /// Accept a cap that still allows one request, and refuse anything else.

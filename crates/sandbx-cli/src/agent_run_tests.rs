@@ -937,6 +937,120 @@ fn a_prompt_resuming_an_unanswered_call_joins_it() {
     );
 }
 
+/// An answer whose request the provider counted at `input` tokens.
+fn answered_at(input: u32) -> Vec<AgentEvent> {
+    vec![
+        text("ok"),
+        AgentEvent::Usage {
+            input_tokens: Some(input),
+            output_tokens: Some(1),
+            cache_write_tokens: None,
+            cache_read_tokens: None,
+        },
+        stop(StopReason::EndTurn),
+    ]
+}
+
+/// The text of a request message made of one text block.
+fn said_in(message: &RequestMessage) -> &str {
+    match &message.content[..] {
+        [ContentBlock::Text { text }] => text,
+        other => panic!("not one text block: {other:?}"),
+    }
+}
+
+#[test]
+fn compaction_is_off_without_the_flag() {
+    let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
+
+    assert!(args.limits().compaction.is_none());
+}
+
+#[test]
+fn compact_at_sets_the_budget() {
+    let args = agent_run(&["sandbx", "agent-run", "--compact-at", "5000", "--", "hi"]);
+
+    let compaction = args.limits().compaction.expect("compaction on");
+    assert_eq!(compaction.budget_tokens, 5000);
+    assert_eq!(compaction.keep_recent, super::COMPACT_KEEP_RECENT);
+}
+
+#[test]
+fn a_budget_of_zero_is_refused() {
+    let refused =
+        crate::Cli::try_parse_from(["sandbx", "agent-run", "--compact-at", "0", "--", "hi"]);
+
+    assert!(refused.is_err());
+}
+
+/// A compacted session, resumed under budget, keeps its cut: the floor crosses the
+/// transcript's `turn` line, or the turn after a cut sends the whole history again.
+#[test]
+fn a_resumed_session_keeps_its_cut() {
+    let fixture = new_session();
+    let store = fixture.store;
+    let mut session = Some(fixture.session);
+    let run = |prompt: &str| {
+        agent_run(&[
+            "sandbx",
+            "agent-run",
+            "--compact-at",
+            "1000",
+            "--session",
+            "--",
+            prompt,
+        ])
+    };
+
+    // Six turns, twelve messages; the last request measured over budget.
+    for (index, input) in [10, 10, 10, 10, 10, 5000].into_iter().enumerate() {
+        let args = run(&format!("turn {index}"));
+        let session = session
+            .take()
+            .unwrap_or_else(|| store.resume(&only_session(&store)).expect("it resumes"));
+        let Driven {
+            sent, code, said, ..
+        } = one_round(&args, &args.to_prompt(), answered_at(input), Some(session));
+        code.expect("clean turn");
+        assert_eq!(
+            sent[0].messages.len(),
+            2 * index + 1,
+            "turn {index} cut early"
+        );
+        assert!(!said.contains("--compact-at"), "got {said}");
+    }
+
+    // Thirteen messages, keep ten: the target is 3 and the first legal cut after it 4.
+    let args = run("cut");
+    let Driven {
+        sent, code, said, ..
+    } = one_round(
+        &args,
+        &args.to_prompt(),
+        answered_at(10),
+        Some(store.resume(&only_session(&store)).expect("it resumes")),
+    );
+    code.expect("clean turn");
+    assert_eq!(sent[0].messages.len(), 9, "got {:?}", sent[0].messages);
+    assert_eq!(said_in(&sent[0].messages[0]), "turn 2");
+    assert!(said.contains("oldest 4 messages"), "got {said}");
+
+    // Under budget now, but the floor holds: fifteen messages, the same four left out.
+    let args = run("held");
+    let Driven {
+        sent, code, said, ..
+    } = one_round(
+        &args,
+        &args.to_prompt(),
+        answered_at(10),
+        Some(store.resume(&only_session(&store)).expect("it resumes")),
+    );
+    code.expect("clean turn");
+    assert_eq!(sent[0].messages.len(), 11, "got {:?}", sent[0].messages);
+    assert_eq!(said_in(&sent[0].messages[0]), "turn 2");
+    assert!(said.contains("oldest 4 messages"), "got {said}");
+}
+
 /// The id of the one session in `store`.
 fn only_session(store: &sandbx_session_store::SessionStore) -> sandbx_session_id::SessionId {
     let mut ids: Vec<String> = fs::read_dir(store.root())

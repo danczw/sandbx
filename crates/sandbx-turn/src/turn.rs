@@ -172,8 +172,9 @@ pub struct TurnLimits {
     /// and how much to keep.
     ///
     /// Off by default, and the only bound here that is lossy: the others refuse to go on
-    /// when hit, where this one quietly sends the model less. `None` means a long enough
-    /// conversation eventually dies on the provider's context-length error.
+    /// when hit, where this one quietly sends the model less. The operator turns it on
+    /// (`--compact-at`); `None` means a long enough conversation eventually dies on the
+    /// provider's context-length error.
     ///
     /// The cut deepens at most once per measured round and never reverses. Each move
     /// withholds context for good and rewrites the request's cached prefix, a cost taken
