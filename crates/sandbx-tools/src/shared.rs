@@ -44,32 +44,31 @@ pub(crate) fn failed(verb: &str, path: &Path, error: impl fmt::Display) -> ToolE
     }
 }
 
-/// The most a tool holds of one file whole: `edit` refuses past it, `grep` skips past it.
+/// The most a tool holds of one file: `edit` refuses past it, `grep` skips past it, and
+/// `read` stops at it whatever `max_bytes` is set to.
 ///
 /// No source file is this large; a checkout's pack files and binaries are, and they
 /// fail UTF-8 validation anyway — which is discovered only after reading them.
 pub(crate) const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
-/// Read a whole file's contents through the guard, refusing one past [`MAX_FILE_BYTES`].
-///
-/// The guard check lives here, not at the call sites, so no in-process tool can read
-/// a file by forgetting it. Reads the handle the guard returns, not the path again:
-/// re-resolving on open leaves a window to swap the leaf for a symlink — which is why no
-/// tool calls the bare `check_read` or `check_write`.
+/// Read a whole file for `edit`, refusing one past [`MAX_FILE_BYTES`]: it holds the
+/// file twice, and has no part of one to work on.
 pub(crate) fn read_file(path: &Path, ctx: &ExecutionContext) -> Result<String, ToolError> {
     let file = open(path, ctx)?;
 
     let (bytes, Cut::Whole) = read_bounded(file, path, MAX_FILE_BYTES)? else {
-        let detail = format!("larger than the {MAX_FILE_BYTES} bytes a tool reads whole");
-        return Err(failed("read", path, detail));
+        let detail = format!("the file is larger than the {MAX_FILE_BYTES} bytes it can edit");
+        return Err(failed("edit", path, detail));
     };
     String::from_utf8(bytes).map_err(|error| failed("read", path, error))
 }
 
 /// The first `max` bytes of a file, read through the guard, and how it was cut.
 ///
-/// A head cut short may end partway through a character, which is dropped; any other
-/// invalid byte is a file that is not text, and fails as `read_file` would.
+/// Only the head is judged, so a file whose head is text reads as text whatever follows.
+/// An invalid byte inside the head fails as `read_file` would; at a cut, the last few
+/// bytes that start a character but do not finish it are dropped, as they could be
+/// either a split character or a stray lead byte.
 pub(crate) fn read_head(
     path: &Path,
     ctx: &ExecutionContext,
@@ -92,7 +91,7 @@ pub(crate) fn read_head(
 /// path: a path `stat` is a second resolution the guard did not vet, and need not
 /// answer for the file opened (#275).
 pub(crate) fn read_capped(path: &Path, ctx: &ExecutionContext, max: u64) -> Option<String> {
-    let file = ctx.guard().open_read(path).ok()?;
+    let file = open(path, ctx).ok()?;
     if file.metadata().ok()?.len() > max {
         return None;
     }
@@ -109,13 +108,20 @@ pub(crate) fn read_capped(path: &Path, ctx: &ExecutionContext, max: u64) -> Opti
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Cut {
     Whole,
-    /// More was left. `total` is the size the handle reports, only where it exceeds
-    /// what was read: a device or a procfs file reports 0, which is no size at all.
+    /// More was left. `total` is the size the handle reports, dropped where it is no more
+    /// than what was read, since it is then provably false: a device or a procfs file
+    /// reports 0. A pseudo-filesystem's placeholder above that, sysfs's 4096, passes.
     Short {
         total: Option<u64>,
     },
 }
 
+/// Open `path` through the guard, the one place an in-process tool's read starts.
+///
+/// The check lives here, not at the call sites, so no tool can read a file by forgetting
+/// it. The handle the guard returns is what gets read, not the path again: re-resolving
+/// on open leaves a window to swap the leaf for a symlink — which is why no tool calls
+/// the bare `check_read` or `check_write`.
 fn open(path: &Path, ctx: &ExecutionContext) -> Result<File, ToolError> {
     ctx.guard()
         .open_read(path)
@@ -131,7 +137,10 @@ fn read_bounded(file: File, path: &Path, max: u64) -> Result<(Vec<u8>, Cut), Too
     use std::io::Read;
 
     let size = file.metadata().map(|metadata| metadata.len()).ok();
-    let mut bytes = Vec::new();
+    // `Take` hides the size hint `File` gives `read_to_end`, which would then grow the
+    // buffer by doubling to up to twice the bound.
+    let hint = size.unwrap_or(0).min(max.saturating_add(1));
+    let mut bytes = Vec::with_capacity(usize::try_from(hint).unwrap_or(0));
     file.take(max.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|error| failed("read", path, error))?;

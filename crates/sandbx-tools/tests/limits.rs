@@ -258,3 +258,49 @@ fn read_names_the_size_of_a_cut_file() {
         out.content()
     );
 }
+
+/// A cut head is judged up to the cut: an invalid byte well inside it is not text, however
+/// much of what follows the read never saw.
+#[test]
+fn read_refuses_an_invalid_byte_in_the_head() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("blob.bin");
+    let mut body = vec![b'a'; 1000];
+    body[10] = 0xff;
+    fs::write(&file, body).unwrap();
+
+    let ctx = context(
+        SandboxPolicy::default().allow_read(vetted(root.path())),
+        ToolLimits::default().with_max_bytes(100),
+    );
+
+    let err = BuiltinTool::Read
+        .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
+        .unwrap_err();
+
+    assert!(
+        matches!(err, sandbx_tools::ToolError::Failed { .. }),
+        "got {err:?}"
+    );
+}
+
+/// `max_bytes` is the embedder's to raise, but raising it does not lift the allocation
+/// bound: `read` stops at 2 MiB of an endless file whatever it is set to.
+#[test]
+fn read_stops_at_the_cap_past_max_bytes() {
+    let ctx = context(
+        SandboxPolicy::default().allow_read(vetted("/dev/zero")),
+        ToolLimits::default().with_max_bytes(usize::MAX),
+    );
+
+    let out = BuiltinTool::Read
+        .execute(json!({ "path": "/dev/zero" }), &ctx)
+        .unwrap();
+
+    assert!(
+        out.content()
+            .ends_with("... truncated: showing the first 2097152 bytes"),
+        "{} bytes",
+        out.content().len()
+    );
+}

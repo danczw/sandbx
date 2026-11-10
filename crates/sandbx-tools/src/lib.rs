@@ -23,3 +23,4 @@ pub(crate) use shared::{
     Cut, MAX_FILE_BYTES, Scan, failed, guard_error, listing, parse, read_capped, read_file,
     read_head,
 };
+pub(crate) use tool_limits::byte_marker;
