@@ -149,3 +149,53 @@ fn a_refused_edit_leaves_the_file_intact() {
         "file was truncated by an edit that failed"
     );
 }
+
+/// `edit`'s cap, 2 MiB: the tools crate's `MAX_FILE_BYTES`, private to it.
+const CAP: usize = 2 * 1024 * 1024;
+
+/// `edit` holds the whole file twice, so past the cap it refuses rather than read on.
+#[test]
+fn refuses_a_file_past_the_cap() {
+    let root = tempfile::tempdir().unwrap();
+    let original = format!("needle{}", "x".repeat(CAP + 1 - "needle".len()));
+    let file = file_with(root.path(), &original);
+
+    let ctx = context(
+        SandboxPolicy::default()
+            .allow_read(vetted(root.path()))
+            .allow_write(vetted(root.path())),
+    );
+    let err = BuiltinTool::Edit
+        .execute(
+            json!({ "path": file.to_str().unwrap(), "old": "needle", "new": "pin" }),
+            &ctx,
+        )
+        .unwrap_err();
+
+    assert!(matches!(err, ToolError::Failed { .. }), "got {err:?}");
+    assert!(
+        fs::read_to_string(&file).unwrap() == original,
+        "file changed"
+    );
+}
+
+#[test]
+fn edits_a_file_exactly_at_the_cap() {
+    let root = tempfile::tempdir().unwrap();
+    let original = format!("needle{}", "x".repeat(CAP - "needle".len()));
+    let file = file_with(root.path(), &original);
+
+    let ctx = context(
+        SandboxPolicy::default()
+            .allow_read(vetted(root.path()))
+            .allow_write(vetted(root.path())),
+    );
+    BuiltinTool::Edit
+        .execute(
+            json!({ "path": file.to_str().unwrap(), "old": "needle", "new": "pin" }),
+            &ctx,
+        )
+        .unwrap();
+
+    assert!(fs::read_to_string(&file).unwrap().starts_with("pinxxx"));
+}

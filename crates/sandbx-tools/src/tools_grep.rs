@@ -13,13 +13,6 @@ pub(crate) const SPEC: ToolSpec = ToolSpec {
     run: |input, ctx| execute(crate::parse(input)?, ctx),
 };
 
-/// Files above this size are opened and measured, but not read.
-///
-/// No source file is this large; a checkout's pack files and binaries are, and they
-/// fail UTF-8 validation anyway — which `read_to_string` discovers only after
-/// allocating the whole file.
-const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
-
 /// Arguments for the `grep` tool.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub(crate) struct GrepInput {
@@ -55,7 +48,7 @@ pub(crate) fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOu
 
         // Over the cap, not text, or refused: one rule, the caller's move being the same.
         // An unmarked skip reads as a file with no match in it (#274).
-        let Some(content) = crate::read_capped(&file, ctx, MAX_FILE_BYTES) else {
+        let Some(content) = crate::read_capped(&file, ctx, crate::MAX_FILE_BYTES) else {
             scan = crate::Scan::StoppedEarly;
             continue;
         };

@@ -178,3 +178,19 @@ fn a_substituted_root_reads_back_as_denied() {
         "the refusal does not say which grant is gone: {reason}"
     );
 }
+
+/// Reading only the head must not turn a binary into text: an invalid byte inside what
+/// was read is still a failure, not a cut.
+#[test]
+fn refuses_a_file_that_is_not_text() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("blob.bin");
+    fs::write(&file, b"ab\xffcd").unwrap();
+
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())));
+    let err = BuiltinTool::Read
+        .execute(json!({ "path": file.to_str().unwrap() }), &ctx)
+        .unwrap_err();
+
+    assert!(matches!(err, ToolError::Failed { .. }), "got {err:?}");
+}
