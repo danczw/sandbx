@@ -79,10 +79,10 @@ Beyond the network calls a port allowlist must shut, seccomp-bpf denies:
 - namespace manipulation, and *creation* on every route: `clone` filtered per
   `CLONE_NEW*` flag, `clone3` answers `ENOSYS`;
 - reshaping the filesystem under Landlock: mounting by name (`mount`) and by
-  descriptor (`open_tree`, `move_mount`, `fsopen`, `fsconfig`, `fsmount`,
-  `fspick`), `mount_setattr`, which would clear `MS_RDONLY` on a mount already
-  there, and `umount2`, `pivot_root` and `chroot`, which move the tree out from
-  under rules bound to it;
+  descriptor (`open_tree`, `open_tree_attr`, `move_mount`, `fsopen`,
+  `fsconfig`, `fsmount`, `fspick`), `mount_setattr`, which would clear
+  `MS_RDONLY` on a mount already there, and `umount2`, `pivot_root` and
+  `chroot`, which move the tree out from under rules bound to it;
 - loading code into the kernel (the module calls, `bpf`, and `kexec_load`, which
   loads a whole one), the keyring, `userfaultfd`, `memfd_create`;
 - `io_uring`, which runs operations without issuing them;

@@ -837,9 +837,9 @@ the attack unless the two are kept apart.
 This is also where the pin meets what can make a mount at all. Stage 1's
 capability drop leaves stage 2 and the command no `CAP_SYS_ADMIN`, and
 `BLOCKED_SYSCALLS` denies `mount` and the descriptor-based mount API
-(`open_tree`, `move_mount`, `fsopen`, `fsmount`, `mount_setattr`;
-`open_tree_attr` waits on libc, as `helper_seccomp_rules.rs` says). A pin that
-has to survive mounts made after the vet is worth only as much as that bound.
+(`open_tree`, `open_tree_attr`, `move_mount`, `fsopen`, `fsmount`,
+`mount_setattr`). A pin that has to survive mounts made after the vet is worth
+only as much as that bound.
 
 Two orderings fall out of which crate owns which refusal, and are worth stating
 because nothing maintains them. A grant refusal reaches the operator before
