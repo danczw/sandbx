@@ -49,7 +49,7 @@ impl ToolLimits {
         self
     }
 
-    /// Set the byte cap.
+    /// Set the byte cap. `read` holds at most 2 MiB of a file whatever this is set to.
     #[must_use]
     pub fn with_max_bytes(mut self, bytes: usize) -> Self {
         self.max_bytes = bytes;
@@ -85,10 +85,19 @@ impl ToolLimits {
                 end -= 1;
             }
 
-            let total = content.len();
+            let total = content.len() as u64;
             content.truncate(end);
-            content.push_str(&format!("\n... truncated: showing {end} of {total} bytes"));
+            content.push_str(&byte_marker(end, Some(total)));
         }
         content
+    }
+}
+
+/// The line that says bytes were cut, one wording for every tool that cuts them. `None`
+/// is a total nobody knows, and is left unsaid rather than guessed.
+pub(crate) fn byte_marker(shown: usize, total: Option<u64>) -> String {
+    match total {
+        Some(total) => format!("\n... truncated: showing {shown} of {total} bytes"),
+        None => format!("\n... truncated: showing the first {shown} bytes"),
     }
 }

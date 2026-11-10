@@ -179,8 +179,7 @@ fn a_substituted_root_reads_back_as_denied() {
     );
 }
 
-/// Reading only the head must not turn a binary into text: an invalid byte inside what
-/// was read is still a failure, not a cut.
+/// An invalid byte in a file read whole is a failure, not text.
 #[test]
 fn refuses_a_file_that_is_not_text() {
     let root = tempfile::tempdir().unwrap();

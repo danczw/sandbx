@@ -24,16 +24,12 @@ pub(crate) struct ReadInput {
 /// Never spawns, so the kernel enforcement never sees it: the `FsGuard` check
 /// inside [`crate::read_head`] is the only thing holding it inside the policy.
 pub(crate) fn execute(input: ReadInput, ctx: &ExecutionContext) -> Result<ToolOutput, ToolError> {
-    let (mut head, cut) = crate::read_head(&input.path, ctx, ctx.limits().max_bytes() as u64)?;
+    // `max_bytes` is the embedder's to raise; the allocation bound is not.
+    let max = (ctx.limits().max_bytes() as u64).min(crate::MAX_FILE_BYTES);
+    let (mut head, cut) = crate::read_head(&input.path, ctx, max)?;
 
-    // `ToolLimits::cap_bytes`'s marker, for a head the read already cut.
-    let shown = head.len();
-    let showing = match cut {
-        crate::Cut::Whole => return Ok(ToolOutput::new(head)),
-        crate::Cut::Short { total: Some(total) } => format!("{shown} of {total} bytes"),
-        crate::Cut::Short { total: None } => format!("the first {shown} bytes"),
-    };
-    head.push_str(&format!("\n... truncated: showing {showing}"));
-
+    if let crate::Cut::Short { total } = cut {
+        head.push_str(&crate::byte_marker(head.len(), total));
+    }
     Ok(ToolOutput::new(head))
 }
