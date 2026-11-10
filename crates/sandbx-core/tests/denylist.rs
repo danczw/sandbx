@@ -23,7 +23,7 @@ const CLAIMED: &[(&str, libc::c_long)] = &[
     ("chroot", libc::SYS_chroot),
     // The same, through the descriptor-based mount API, which never calls `mount`.
     ("open_tree", libc::SYS_open_tree),
-    // Raw, as in the denylist: libc names it for no target this builds for.
+    // Raw, as in the denylist, and swapped with it once libc names it for x86_64 and aarch64.
     ("open_tree_attr", 467),
     ("move_mount", libc::SYS_move_mount),
     ("fsopen", libc::SYS_fsopen),

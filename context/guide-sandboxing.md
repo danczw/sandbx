@@ -287,7 +287,7 @@ carries.
 
 ## Syscall denylist
 
-35 entries in `BLOCKED_SYSCALLS`, which every command gets. The list is where the
+36 entries in `BLOCKED_SYSCALLS`, which every command gets. The list is where the
 filter starts, not the whole of it: `blocked_syscalls` seeds from it, then adds a
 `clone` rule per flag in `NAMESPACE_CLONE_FLAGS` — unconditional too — and then
 the policy-gated rules: the `socket(AF_UNIX)` and connectionless
