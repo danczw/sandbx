@@ -9,6 +9,13 @@ use std::collections::BTreeMap;
 
 use super::filter::seccomp_failed;
 
+/// `open_tree_attr` (Linux 6.15), by raw number: libc 0.2.191 defines it for m68k alone.
+///
+/// 467 on both targets, since syscalls from 424 on share one number on every architecture
+/// (`arch/x86/entry/syscalls/syscall_64.tbl`, and `scripts/syscall.tbl` for aarch64). Swap
+/// for `libc::SYS_open_tree_attr` once libc defines it for x86_64 and aarch64.
+const SYS_OPEN_TREE_ATTR: libc::c_long = 467;
+
 /// Syscalls blocked for every sandboxed command, regardless of policy.
 ///
 /// A denylist: sandbx runs arbitrary commands — shells, compilers, package managers — whose
@@ -32,9 +39,10 @@ pub const BLOCKED_SYSCALLS: &[libc::c_long] = &[
     // The same reshaping through the descriptor-based mount API, which reaches it without
     // calling `mount`: `fsopen` → `fsconfig` → `fsmount` → `move_mount` is a complete mount
     // sequence, and `mount_setattr` clears `MS_RDONLY` on a mount already there, a
-    // write-enable with no mount at all. `open_tree_attr` belongs here and waits on a libc
-    // bump: the locked libc defines it for no target this builds for, so the gap is deliberate.
+    // write-enable with no mount at all. `open_tree_attr` is `open_tree` and `mount_setattr`
+    // in one call.
     libc::SYS_open_tree,
+    SYS_OPEN_TREE_ATTR,
     libc::SYS_move_mount,
     libc::SYS_fsopen,
     libc::SYS_fsconfig,
