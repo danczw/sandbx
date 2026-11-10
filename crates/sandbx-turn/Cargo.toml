@@ -40,8 +40,8 @@ sandbx-turn-fixture = { path = "../sandbx-turn-fixture" }
 # Dev-only: nothing under `src/` names this crate; the one reference is `turn_loop.rs`'s
 # spawnability pin, which types a field as an `AnthropicClient`.
 sandbx-anthropic = { path = "../sandbx-anthropic" }
-# For the key `live_compaction.rs` hands the client.
-secrecy = "0.10.3"
+# Dev-only: the key `live_compaction.rs` sends with, resolved as `agent-run` resolves it.
+sandbx-auth = { path = "../sandbx-auth" }
 tempfile = "3.27.0"
 # To read the trail a scripted turn leaves, never to write one: `tracing` is a
 # dependency of `sandbx-core` alone, and this crate holds no emission site.

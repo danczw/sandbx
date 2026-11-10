@@ -151,7 +151,8 @@ wrappers = ["sandbx-cli", "sandbx-turn-fixture"]
 name = "sandbx-auth"
 # `sandbx-grants` reaches `config_file` to refuse a grant covering the credential file;
 # `sandbx-cli`'s edge is its own, for the key the `auth` subcommand reads (#350).
-wrappers = ["sandbx-cli", "sandbx-grants"]
+# `sandbx-turn`'s is a dev-dependency, for the key its live test sends with.
+wrappers = ["sandbx-cli", "sandbx-grants", "sandbx-turn"]
 
 [[bans.deny]]
 name = "sandbx-logging"

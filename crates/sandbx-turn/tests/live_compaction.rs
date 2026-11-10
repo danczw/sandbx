@@ -5,13 +5,14 @@
 //! allows is one it accepts, and the reasoning-replay rules are where they could differ
 //! (`context/decision-thinking-replay.md`, rule 3).
 //!
-//! Costs real money and needs a live `ANTHROPIC_API_KEY`, so it is behind the same feature
-//! as `sandbx-anthropic`'s live test, for the same reason.
+//! Costs real money and needs a live key, `ANTHROPIC_API_KEY` or the one `sandbx auth`
+//! stored, so it is behind the same feature as `sandbx-anthropic`'s live test, for the same
+//! reason.
 //!
 //! Run manually: `cargo test -p sandbx-turn --features live-anthropic-tests`
 #![cfg(feature = "live-anthropic-tests")]
 
-use std::{env, fs};
+use std::fs;
 
 use sandbx_anthropic::AnthropicClient;
 use sandbx_core::SandboxPolicy;
@@ -22,15 +23,11 @@ use sandbx_turn::{Compaction, PromptUsage, TurnLimits, TurnStop, run_turn};
 
 use sandbx_turn_fixture::{AllowAll, ctx, turn, vetted};
 
-/// A client on the key in the environment. Blank counts as unset, as it does in the CLI.
+/// A client on the key `agent-run` would send with.
 fn client() -> AnthropicClient {
-    let key = env::var("ANTHROPIC_API_KEY")
-        .ok()
-        .map(|key| key.trim().to_owned())
-        .filter(|key| !key.is_empty())
-        .expect("a non-blank, UTF-8 ANTHROPIC_API_KEY must be set to run live-anthropic-tests");
-    AnthropicClient::new(secrecy::SecretString::from(key))
-        .expect("a client is built without a network call")
+    let key = sandbx_auth::api_key()
+        .expect("ANTHROPIC_API_KEY or a `sandbx auth` key must be set to run live-anthropic-tests");
+    AnthropicClient::new(key).expect("a client is built without a network call")
 }
 
 fn said(text: &str) -> RequestMessage {
@@ -69,8 +66,9 @@ async fn a_deepened_cut_over_reasoning_is_accepted() {
             }],
         },
         said(&format!(
-            "Call the ls tool exactly once, on {path}, then reply with the name of the one \
-             file it lists and nothing else."
+            "Think this through before any tool call: a train leaves at 14:50 and the trip \
+             takes 2 hours 25 minutes; when does it arrive? Then call the ls tool exactly once, \
+             on {path}, and reply with the arrival time and the name of the one file it lists."
         )),
     ];
     let mut asked = turn(&history, &[BuiltinTool::Ls]);
