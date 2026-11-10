@@ -60,10 +60,11 @@ pub(crate) fn read_file(path: &Path, ctx: &ExecutionContext) -> Result<String, T
         let detail = format!("the file is larger than the {MAX_FILE_BYTES} bytes it can edit");
         return Err(failed("edit", path, detail));
     };
-    String::from_utf8(bytes).map_err(|error| failed("read", path, error))
+    String::from_utf8(bytes).map_err(|error| failed("edit", path, error))
 }
 
-/// The first `max` bytes of a file, read through the guard, and how it was cut.
+/// The first `max` bytes of a file, read through the guard, and how it was cut; never more
+/// than [`MAX_FILE_BYTES`], whatever the caller asks.
 ///
 /// Only the head is judged, so a file whose head is text reads as text whatever follows.
 /// An invalid byte inside the head fails as `read_file` would; at a cut, up to three
@@ -76,7 +77,7 @@ pub(crate) fn read_head(
 ) -> Result<(String, Cut), ToolError> {
     let file = open(path, ctx)?;
 
-    let (mut bytes, cut) = read_bounded(file, path, max)?;
+    let (mut bytes, cut) = read_bounded(file, path, max.min(MAX_FILE_BYTES))?;
     if let (Cut::Short { .. }, Err(error)) = (cut, std::str::from_utf8(&bytes))
         && error.error_len().is_none()
     {
@@ -138,7 +139,8 @@ fn read_bounded(file: File, path: &Path, max: u64) -> Result<(Vec<u8>, Cut), Too
 
     let size = file.metadata().map(|metadata| metadata.len()).ok();
     // `Take` hides the size hint `File` gives `read_to_end`, which would then grow the
-    // buffer by doubling to up to twice the bound.
+    // buffer by doubling to up to twice the bound. A handle reporting 0 (a device, procfs)
+    // gives no hint to pass on, and still can.
     let hint = size.unwrap_or(0).min(max.saturating_add(1));
     let mut bytes = Vec::with_capacity(usize::try_from(hint).unwrap_or(0));
     file.take(max.saturating_add(1))

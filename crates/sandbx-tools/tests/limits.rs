@@ -283,8 +283,8 @@ fn read_refuses_an_invalid_byte_in_the_head() {
     );
 }
 
-/// `max_bytes` is the embedder's to raise, but raising it does not lift the allocation
-/// bound: `read` stops at 2 MiB of an endless file whatever it is set to.
+/// `max_bytes` is the embedder's to raise, but `read` stops at 2 MiB of an endless file
+/// whatever it is set to. What is read, not what is allocated: no allocator is counted.
 #[test]
 fn read_stops_at_the_cap_past_max_bytes() {
     let ctx = context(
