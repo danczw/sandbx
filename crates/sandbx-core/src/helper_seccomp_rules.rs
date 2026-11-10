@@ -9,11 +9,13 @@ use std::collections::BTreeMap;
 
 use super::filter::seccomp_failed;
 
-/// `open_tree_attr` (Linux 6.15), by raw number: libc 0.2.191 defines it for m68k alone.
+/// `open_tree_attr` (Linux 6.15), by raw number: the locked libc, 0.2.189, defines it for
+/// m68k alone, as does 0.2.191.
 ///
-/// 467 on both targets, since syscalls from 424 on share one number on every architecture
-/// (`arch/x86/entry/syscalls/syscall_64.tbl`, and `scripts/syscall.tbl` for aarch64). Swap
-/// for `libc::SYS_open_tree_attr` once libc defines it for x86_64 and aarch64.
+/// 467 on both targets: from 424 on, x86_64 and the generic table aarch64 uses share one
+/// number (`arch/x86/entry/syscalls/syscall_64.tbl`, `scripts/syscall.tbl`); alpha does
+/// not. Swap for `libc::SYS_open_tree_attr`, here and in `tests/denylist.rs`, once libc
+/// defines it for x86_64 and aarch64.
 const SYS_OPEN_TREE_ATTR: libc::c_long = 467;
 
 /// Syscalls blocked for every sandboxed command, regardless of policy.
