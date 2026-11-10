@@ -66,7 +66,7 @@ impl Accounting {
     /// which [`fold`] replays and `Session::append` applies, so a resumed session and a
     /// continued one agree.
     ///
-    /// Nothing reads these figures while compaction is off, and no flag turns it on (#302).
+    /// Nothing reads these figures unless the operator turns compaction on (`--compact-at`).
     /// Do not delete them as dead weight: they are recoverable only when the turn produces
     /// them, and a session resumed without them could not tell whether its history fills
     /// the window.

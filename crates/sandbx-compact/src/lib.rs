@@ -29,8 +29,8 @@ use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 
 /// When to withhold history, and how much to keep.
 ///
-/// Opt-in because the right value depends on the model named in the request, which
-/// `Turn::model` carries as a freeform string with no context-window table.
+/// Opt-in, and the operator's to set: the right value depends on the model named in the
+/// request, which `Turn::model` carries as a freeform string with no context-window table.
 #[derive(Debug, Clone, Copy)]
 pub struct Compaction {
     /// Compaction fires once the last *measured* prompt exceeded this.

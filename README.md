@@ -298,6 +298,7 @@ leave you answering one call blind.
 | `--max-tokens N`  | cap what the model may produce in one round. Default 4096 |
 | `--max-rounds N`  | cap how many rounds of tool calls one turn may spend. Default 8, plus the wrap-up round below |
 | `--no-wrap-up`    | do not spend one more request answering a turn that hit `--max-rounds` |
+| `--compact-at TOKENS` | stop sending a `--session` conversation's oldest turns once a request passes this many tokens. Off unless given, and lossy: nothing summarises what is left out |
 | `--session [ID]`  | save the conversation; bare starts one and prints its id, an id resumes it |
 | `--system TEXT`   | a system prompt, sent after whatever lines name the run's approved tools and roots |
 | `--show-thinking` | print a summary of the model's reasoning on stderr as it arrives. Stored nowhere, and a 400 on models before Claude 4.6 |

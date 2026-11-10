@@ -430,6 +430,37 @@ fn the_approved_tools_are_what_the_same_flags_approve_under_agent_run() {
     assert!(!approved.contains(&"bash"), "{approved:?}");
 }
 
+/// One `--compact-at`, one budget, whichever subcommand read it.
+#[test]
+fn the_compaction_is_what_the_same_flag_sets_under_agent_run() {
+    let flags = ["--compact-at", "5000"];
+    let prompt = ["--", "what is here?"];
+
+    let tui = tui(&[&["sandbx", "tui"], &flags[..], &prompt[..]].concat());
+    let Command::AgentRun(run) =
+        Cli::try_parse_from([&["sandbx", "agent-run"], &flags[..], &prompt[..]].concat())
+            .expect("argv parses")
+            .command
+    else {
+        panic!("not an agent-run invocation");
+    };
+
+    let drawn = tui
+        .run
+        .limits()
+        .compaction
+        .expect("compaction on under tui");
+    let run = run
+        .limits()
+        .compaction
+        .expect("compaction on under agent-run");
+    assert_eq!(
+        (drawn.budget_tokens, drawn.keep_recent),
+        (run.budget_tokens, run.keep_recent)
+    );
+    assert_eq!(drawn.budget_tokens, 5000);
+}
+
 /// The call a stop lands on never settles, so the tracker is the only account it gets; one
 /// the gate refused settled before it could be running.
 #[test]
