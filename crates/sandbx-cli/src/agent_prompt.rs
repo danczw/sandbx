@@ -55,12 +55,17 @@ pub(super) const CLOSED: &str = "the operator's terminal is closed, so no call c
 pub(super) const UNCLEARED: &str = "the operator's terminal could not be cleared to ask on, \
                                     so no call can be approved";
 
-/// What the model is told when the operator interrupts at the question.
+/// What the model is told when the screen the question was to be drawn on has failed.
+pub(super) const UNDRAWN: &str = "the operator's screen could not be drawn on, \
+                                  so no call can be approved";
+
+/// What the model is told when the operator has interrupted the turn.
 ///
 /// A refusal and not a lost channel: the interrupt is the operator speaking, and ends the
-/// turn on its own account.
+/// turn on its own account. Not "at this question": one latched earlier refuses every call
+/// behind it, whether or not its question was ever up.
 pub(super) const INTERRUPTED: &str =
-    "the operator interrupted at this question, so the call was not approved";
+    "the operator interrupted the turn, so the call was not approved";
 
 /// What this run has already been consented to beyond the call it was asked about.
 #[derive(Default)]

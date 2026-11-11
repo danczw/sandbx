@@ -8,19 +8,21 @@ use sandbx_tools::BuiltinTool;
 use sandbx_tui_input::Reply;
 
 use super::super::gate::ArgvGate;
-use super::super::prompt::{Notes, Operator};
-use super::{Modal, Replies, Shows};
+use super::super::prompt::{Consent, Notes, Operator};
+use super::{ANSWERS, Modal, Replies, Shows};
 
 /// What happened, in order, across both fakes: the order is half of what is pinned.
 type Log = Rc<RefCell<Vec<String>>>;
 
-struct Screen(Log);
+/// Whether a question reaches the screen is the second field.
+struct Screen(Log, bool);
 
 impl Shows for Screen {
-    fn show(&mut self, lines: &[&str]) {
+    fn show(&mut self, lines: &[&str]) -> bool {
         self.0
             .borrow_mut()
             .push(format!("show {}", lines.join(" / ")));
+        self.1
     }
 
     fn clear(&mut self) {
@@ -67,7 +69,7 @@ fn modal(replies: &[Reply]) -> (Modal<Screen, Keys>, Log) {
         clears: true,
     };
 
-    (Modal::new(Screen(Rc::clone(&log)), keys), log)
+    (Modal::new(Screen(Rc::clone(&log), true), keys), log)
 }
 
 fn ask(
@@ -275,4 +277,43 @@ fn the_account_of_a_call_goes_where_the_question_was_asked() {
     modal.report("sandbx: write /work/a.rs — ran");
 
     assert_eq!(*log.borrow(), ["note sandbx: write /work/a.rs — ran"]);
+}
+
+/// Consent without evidence: a question the screen could not draw is one the operator never
+/// saw, and a key pressed meanwhile would answer it.
+#[test]
+fn a_question_that_could_not_be_drawn_is_never_asked() {
+    let (mut modal, log) = modal(&[]);
+    modal.screen.1 = false;
+
+    let verdict = ask(&mut modal, BuiltinTool::Write, &write());
+
+    match verdict {
+        ApprovalDecision::Abort { reason } => {
+            assert!(reason.contains("could not be drawn"), "{reason}");
+        }
+        other => panic!("asked a question nobody could see: {other:?}"),
+    }
+    let log = log.borrow();
+    assert!(
+        !log.iter()
+            .any(|event| event.starts_with("arm") || event == "wait"),
+        "armed or waited on a question that was not on screen: {log:?}"
+    );
+    assert_eq!(log.last().map(String::as_str), Some("clear"));
+}
+
+/// Unreachable through `arm`, which keeps only the keys asked for: the vocabulary is in two
+/// places, and a key added to one alone would read as a refusal with no test failing.
+#[test]
+fn every_key_asked_for_is_an_answer() {
+    for key in ANSWERS {
+        let mut consent = Consent::new();
+        assert!(
+            consent
+                .answer(BuiltinTool::Write, &key.to_string())
+                .is_some(),
+            "{key:?} is asked for and means nothing"
+        );
+    }
 }

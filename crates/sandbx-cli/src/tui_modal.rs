@@ -10,7 +10,8 @@ use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_tui_input::{Answers, Reply};
 
 use super::prompt::{
-    CLOSED, Consent, INTERRUPTED, Notes, Operator, REFUSED, UNCLEARED, abort, deny, question,
+    CLOSED, Consent, INTERRUPTED, Notes, Operator, REFUSED, UNCLEARED, UNDRAWN, abort, deny,
+    question,
 };
 
 /// The keys that answer. Lowercase and bare, `Y` and ctrl-y being neither: a modified key
@@ -20,8 +21,9 @@ const ANSWERS: &[char] = &['y', 'n', 'a'];
 /// Where the question is put on the screen, and so where the account of each call goes:
 /// asked and told on one channel, or an operator answers call N+1 blind to call N.
 pub(super) trait Shows: Notes {
-    /// Draw `lines` as the question, replacing any showing.
-    fn show(&mut self, lines: &[&str]);
+    /// Draw `lines` as the question, replacing any showing, and say whether they reached
+    /// the screen. False is a screen that has failed, or one that cannot be reached.
+    fn show(&mut self, lines: &[&str]) -> bool;
 
     /// Take the question down.
     fn clear(&mut self);
@@ -70,7 +72,11 @@ impl<S: Shows, R: Replies> Operator for Modal<S, R> {
         }
 
         let [head, tail] = question(call);
-        self.screen.show(&[&head, &tail]);
+        // Not asked over a question nobody saw: a key pressed meanwhile would answer it.
+        if !self.screen.show(&[&head, &tail]) {
+            self.screen.clear();
+            return abort(UNDRAWN);
+        }
 
         // After the draw and never before: a key pressed while nothing was on screen to
         // answer must not be taken for an answer to it, and `arm` is what forgets those.
