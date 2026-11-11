@@ -87,6 +87,14 @@ impl Screen {
         }
     }
 
+    /// Whether what was last painted reached the terminal: false from the first failed draw
+    /// on, after which nothing is drawn again.
+    ///
+    /// For a caller whose next step is only sound if the operator saw what was painted.
+    pub fn drawing(&self) -> bool {
+        self.failed.is_none()
+    }
+
     /// The draw failure that stopped the screen updating, if one did. Taken, so a caller
     /// reports it once — and it must: everything after it happened off-screen, and a turn
     /// whose tool calls nobody saw was not watched.
