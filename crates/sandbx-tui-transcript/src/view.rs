@@ -5,7 +5,7 @@
 //! rather than on a running terminal.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Wrap};
@@ -23,9 +23,10 @@ const GUTTER: &str = "│ ";
 /// Draw one frame: the whole transcript, tail-aligned, the question under it when one is
 /// being asked, and the status bar under that.
 ///
-/// The question takes its rows from the transcript and never the other way round, and its
-/// last rows survive a pane too short for all of them: the choices are on the last, and a
-/// question that cannot be read cannot be answered.
+/// The question takes its rows from the transcript and never the other way round. In a pane
+/// too short for all of it, its middle goes and a marked row stands in: the first rows name
+/// the call and the last say what the keys do, and a question missing either cannot be
+/// answered knowingly.
 pub fn draw(frame: &mut Frame, transcript: &Transcript) {
     let area = frame.area();
 
@@ -51,10 +52,49 @@ pub fn draw(frame: &mut Frame, transcript: &Transcript) {
 
     frame.render_widget(paragraph.scroll((scroll, 0)), body);
     if let Some(question) = question {
-        let cut = u16::try_from(asked - shown).unwrap_or(u16::MAX);
-        frame.render_widget(question.scroll((cut, 0)), dock);
+        if asked <= shown {
+            frame.render_widget(question, dock);
+        } else {
+            cut_question(frame, transcript.question(), dock);
+        }
     }
     frame.render_widget(status(transcript), bar);
+}
+
+/// A question that does not fit `dock`: its head, a row marking the cut, and its last row.
+///
+/// No blank row above it, that being the first thing to go. The last row is kept whole,
+/// however it wraps. Where not even one head row would fit beside it, the last rows alone
+/// are kept, as a transcript's are.
+fn cut_question(frame: &mut Frame, rows: &[String], dock: Rect) {
+    let Some((choices, head)) = rows.split_last() else {
+        return;
+    };
+
+    let tail = marked(choices);
+    let tail_rows = u16::try_from(tail.line_count(dock.width)).unwrap_or(u16::MAX);
+    let head_rows = dock.height.saturating_sub(tail_rows.saturating_add(1));
+
+    if head_rows == 0 {
+        let all = question_paragraph(rows, true);
+        let cut = all
+            .line_count(dock.width)
+            .saturating_sub(usize::from(dock.height));
+        let cut = u16::try_from(cut).unwrap_or(u16::MAX);
+        frame.render_widget(all.scroll((cut, 0)), dock);
+        return;
+    }
+
+    let [top, mark, bottom] = Layout::vertical([
+        Constraint::Length(head_rows),
+        Constraint::Length(1),
+        Constraint::Length(tail_rows),
+    ])
+    .areas(dock);
+
+    frame.render_widget(question_paragraph(head, false), top);
+    frame.render_widget(marked("…"), mark);
+    frame.render_widget(tail, bottom);
 }
 
 /// The transcript as the screen drew it, unstyled, for a terminal the screen has given
@@ -79,16 +119,29 @@ fn question(transcript: &Transcript) -> Option<Paragraph<'static>> {
         return None;
     }
 
-    let lines: Vec<Line<'static>> = std::iter::once(Line::default())
-        .chain(rows.iter().map(|row| {
-            Line::from(Span::styled(
-                format!("{GUTTER}{row}"),
-                Style::new().add_modifier(Modifier::BOLD),
-            ))
-        }))
+    Some(question_paragraph(rows, true))
+}
+
+/// `rows` as marked lines, under a blank row where `spaced`.
+fn question_paragraph(rows: &[String], spaced: bool) -> Paragraph<'static> {
+    let blank = spaced.then(Line::default);
+    let lines: Vec<Line<'static>> = blank
+        .into_iter()
+        .chain(rows.iter().map(|row| marked_line(row)))
         .collect();
 
-    Some(Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false }))
+    Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false })
+}
+
+fn marked(row: &str) -> Paragraph<'static> {
+    Paragraph::new(marked_line(row)).wrap(Wrap { trim: false })
+}
+
+fn marked_line(row: &str) -> Line<'static> {
+    Line::from(Span::styled(
+        format!("{GUTTER}{row}"),
+        Style::new().add_modifier(Modifier::BOLD),
+    ))
 }
 
 /// The transcript as rows, one blank row between entries.
