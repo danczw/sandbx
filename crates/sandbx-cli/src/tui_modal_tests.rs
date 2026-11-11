@@ -40,8 +40,8 @@ struct Keys {
     log: Log,
     replies: RefCell<VecDeque<Reply>>,
     clears: bool,
-    /// Latched by an `Interrupted` reply, as the real stop is.
-    stopped: std::cell::Cell<bool>,
+    /// Latched by an `Interrupted` or `Closed` reply, as the real stop is.
+    stopped: std::cell::Cell<Option<Reply>>,
 }
 
 impl Replies for Keys {
@@ -61,13 +61,13 @@ impl Replies for Keys {
             .borrow_mut()
             .pop_front()
             .expect("asked more often than the test scripted");
-        if reply == Reply::Interrupted {
-            self.stopped.set(true);
+        if !matches!(reply, Reply::Key(_)) {
+            self.stopped.set(Some(reply));
         }
         reply
     }
 
-    fn interrupted(&self) -> bool {
+    fn stopped(&self) -> Option<Reply> {
         self.stopped.get()
     }
 }
@@ -78,7 +78,7 @@ fn modal(replies: &[Reply]) -> (Modal<Screen, Keys>, Log) {
         log: Rc::clone(&log),
         replies: RefCell::new(replies.iter().copied().collect()),
         clears: true,
-        stopped: std::cell::Cell::new(false),
+        stopped: std::cell::Cell::new(None),
     };
 
     (Modal::new(Screen(Rc::clone(&log), true), keys), log)
@@ -348,4 +348,29 @@ fn a_covered_call_is_refused_once_the_turn_is_interrupted() {
 
     assert!(refusal(&verdict).contains("interrupted"), "{verdict:?}");
     assert_eq!(log.borrow().len(), asked, "a stopped turn was asked again");
+}
+
+/// The same for a terminal that has hung up: an `a` is not a standing permission to run with
+/// nobody watching, and a covered call would otherwise run.
+#[test]
+fn a_covered_call_aborts_once_the_terminal_is_gone() {
+    let (mut modal, log) = modal(&[Reply::Key('a'), Reply::Closed]);
+    assert_eq!(
+        ask(&mut modal, BuiltinTool::Write, &write()),
+        ApprovalDecision::Allow
+    );
+
+    let bash = serde_json::json!({ "command": "ls" });
+    let _ = ask(&mut modal, BuiltinTool::Bash, &bash);
+    let asked = log.borrow().len();
+
+    let verdict = ask(&mut modal, BuiltinTool::Write, &write());
+
+    match verdict {
+        ApprovalDecision::Abort { reason } => {
+            assert!(reason.contains("terminal is closed"), "{reason}");
+        }
+        other => panic!("a covered call ran past a hangup: {other:?}"),
+    }
+    assert_eq!(log.borrow().len(), asked, "a gone terminal was asked again");
 }

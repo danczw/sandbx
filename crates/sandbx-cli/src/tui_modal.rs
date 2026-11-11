@@ -35,8 +35,8 @@ pub(super) trait Replies {
     /// Block until the operator answers or can no longer be asked.
     fn wait(&self) -> Reply;
 
-    /// Whether the operator has already interrupted the turn.
-    fn interrupted(&self) -> bool;
+    /// What the operator has already done to end the turn, if anything.
+    fn stopped(&self) -> Option<Reply>;
 }
 
 impl Replies for Answers {
@@ -48,8 +48,8 @@ impl Replies for Answers {
         Answers::wait(self)
     }
 
-    fn interrupted(&self) -> bool {
-        Answers::interrupted(self)
+    fn stopped(&self) -> Option<Reply> {
+        Answers::stopped(self)
     }
 }
 
@@ -73,10 +73,12 @@ impl<S, R> Modal<S, R> {
 impl<S: Shows, R: Replies> Operator for Modal<S, R> {
     fn ask(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
         // Before the `a` that covers a tool: that was the operator's word about the tool,
-        // not a way past a stop they gave since. A covered call would otherwise run, and
-        // a running call cannot be cancelled (#26).
-        if self.replies.interrupted() {
-            return deny(INTERRUPTED);
+        // not a way past a stop they gave since, or a terminal that has gone. A covered
+        // call would otherwise run, and a running call cannot be cancelled (#26).
+        match self.replies.stopped() {
+            Some(Reply::Interrupted) => return deny(INTERRUPTED),
+            Some(Reply::Closed) => return abort(CLOSED),
+            Some(Reply::Key(_)) | None => {}
         }
         if self.consent.covers(call.tool) {
             return ApprovalDecision::Allow;

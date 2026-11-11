@@ -206,13 +206,21 @@ impl Answers {
         Ok(())
     }
 
-    /// Whether the operator has already interrupted the turn.
+    /// What [`Answers::wait`] would return at once for want of anyone to ask, if anything:
+    /// an interrupt already latched, or a terminal already gone, in `wait`'s order.
     ///
-    /// For a caller with an answer that would otherwise not wait: a stop is latched, and a
-    /// call that never reaches [`Answers::wait`] would run past it.
+    /// For a caller with an answer that would otherwise not wait: a call that never reaches
+    /// `wait` would run past a stop the operator gave.
     #[must_use]
-    pub fn interrupted(&self) -> bool {
-        self.wire.seen.borrow().stop
+    pub fn stopped(&self) -> Option<Reply> {
+        let seen = *self.wire.seen.borrow();
+        if seen.stop {
+            Some(Reply::Interrupted)
+        } else if seen.gone || self.wire.slate().done {
+            Some(Reply::Closed)
+        } else {
+            None
+        }
     }
 
     /// Block until the operator answers, interrupts, or can no longer be asked.

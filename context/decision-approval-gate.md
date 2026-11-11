@@ -330,7 +330,7 @@ descriptor no task feeds, and nothing else is in flight during `approve`, since
 | `a` | `Allow`, and later calls to that tool are not asked, as under `agent-run` |
 | esc, ctrl-c | `Deny`; the stop it latched ends the turn at the next poll, exit 2 |
 | hangup, or the reader gone | `Abort`, so `GateAborted` and exit 3 |
-| not cleared, no terminal, or not drawn | `Abort`, nothing waited on |
+| not cleared, no terminal, or not shown | `Abort`, nothing waited on |
 
 - **Drawn, then armed.** The other order lets a key pressed before the question
   was visible answer it. A genuine press in the gap between the two is lost, and
@@ -341,9 +341,11 @@ descriptor no task feeds, and nothing else is in flight during `approve`, since
   answer something nobody saw, so the gate aborts instead of waiting.
 - **A short pane cuts the middle.** The rows naming the call and the row saying
   what the keys do are the two a question cannot lose, so a pane too short for
-  all of it keeps those and marks the cut with a `…` row. The transcript above it
-  goes first. A resize while a question waits is not redrawn (#508): the thread
-  that paints is the one parked.
+  all of it keeps those and marks the cut with a `…` row. The transcript above
+  it goes first. A pane that cannot keep both is not asked on: `question_fits`
+  says so, and the gate aborts as for a draw that failed. A resize while a
+  question waits is not redrawn (#508): the thread that paints is the one
+  parked.
 - **The question opens when the reader is quiet.** The reader may already hold
   events it took off the terminal, and those predate the question. `arm` does
   not reach into crossterm for them: it marks the question pending, and the
@@ -354,6 +356,11 @@ descriptor no task feeds, and nothing else is in flight during `approve`, since
   speaking, so they are a `Deny` like an `n`, and the stop they latched is what
   ends the turn, as for any interrupt. A latched stop answers every later call
   in the round at once, without waiting. Only a channel that is gone is `Abort`.
+- **A stop given earlier outranks an `a`.** Before the blanket is read, the gate
+  asks whether the turn was interrupted or the terminal has gone, and refuses or
+  aborts at once. An `a` was the operator's word about a tool, not a way past a
+  stop they gave since: a covered call would otherwise run, and a running call
+  cannot be cancelled (#26).
 - **Refusal outranks an answer already pressed.** An interrupt beats a queued
   `y`, and a hangup beats both. Each leaves the call refused, the direction a
   doubtful reading must lean.
