@@ -1,5 +1,6 @@
 //! What one turn shows, and how it is drawn: the event stream folded into entries, and the
-//! entries laid out as rows over a status bar.
+//! entries laid out as rows over a status bar, with the question being asked of the operator
+//! between them.
 //!
 //! Both halves in one crate because the fold has to strip what the layout draws:
 //! `view::GUTTER_MARK` is the view's claim that sandbx wrote a row, and the fold replaces

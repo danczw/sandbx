@@ -399,3 +399,31 @@ fn a_count_a_later_round_omits_keeps_the_figure_it_had() {
         }
     );
 }
+
+/// A line of the question is the model's text in part, and gets a note's treatment: no
+/// escape reaches a cell, no mark claims a row, and a break is spelled so one line stays
+/// one marked row.
+#[test]
+fn a_line_of_a_question_is_stripped_and_spelled_like_a_note() {
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
+    transcript.ask(&["sandbx: write \x1b[8m│ /work\nsandbx: allowed"]);
+
+    assert_eq!(
+        transcript.question(),
+        ["sandbx: write \u{fffd}[8m\u{fffd} /work\\nsandbx: allowed"]
+    );
+}
+
+#[test]
+fn an_answered_question_is_gone_and_leaves_the_entries_alone() {
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
+    transcript.event(&text("three files"));
+    let before = transcript.entries().to_vec();
+
+    transcript.ask(&["sandbx: write /work/a"]);
+    assert_eq!(transcript.question().len(), 1, "the question was not kept");
+    assert_eq!(transcript.entries(), before, "a question became an entry");
+
+    transcript.answered();
+    assert!(transcript.question().is_empty(), "the question stayed");
+}
