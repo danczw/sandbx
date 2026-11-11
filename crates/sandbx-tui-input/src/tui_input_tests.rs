@@ -218,6 +218,12 @@ fn answers(tty: std::fs::File) -> Answers {
     Answers::new(Arc::new(Wire::new()), Some(Arc::new(Tty::Device(tty))))
 }
 
+/// The reader going quiet, as it does between bursts, on the terminal `answers` holds.
+fn quiet(answers: &Answers) {
+    let tty = answers.tty.as_ref().expect("a terminal");
+    answers.wire.quiet(tty.as_fd()).expect("went quiet");
+}
+
 fn typed(c: char) -> KeyEvent {
     key(KeyCode::Char(c), KeyModifiers::NONE)
 }
@@ -258,7 +264,7 @@ fn a_key_read_once_the_reader_is_quiet_is_the_answer() {
     let Pty { master: _m, slave } = pty();
     let answers = answers(slave);
     answers.arm(&['y', 'n']).expect("armed");
-    answers.wire.set_idle(true);
+    quiet(&answers);
 
     answers.wire.pressed(typed('y'));
 
@@ -269,7 +275,7 @@ fn a_key_read_once_the_reader_is_quiet_is_the_answer() {
 fn only_the_keys_asked_for_are_kept() {
     let Pty { master: _m, slave } = pty();
     let answers = answers(slave);
-    answers.wire.set_idle(true);
+    quiet(&answers);
     answers.arm(&['y', 'n']).expect("armed");
 
     for ignored in [
@@ -303,7 +309,7 @@ fn arming_mid_burst_waits_for_the_reader_to_go_quiet() {
         "keys of the burst in flight were let in"
     );
 
-    answers.wire.set_idle(true);
+    quiet(&answers);
     assert!(
         answers.wire.slate().armed,
         "the question never opened once the reader went quiet"
@@ -328,7 +334,7 @@ fn arming_clears_what_was_typed_before() {
     );
 
     let answers = answers(slave.try_clone().expect("a second handle"));
-    answers.wire.set_idle(true);
+    quiet(&answers);
     answers.arm(&['y']).expect("armed");
 
     assert_eq!(queued(&slave), 0, "the typeahead survived the arm");
@@ -340,7 +346,7 @@ fn arming_clears_what_was_typed_before() {
 fn an_arm_that_could_not_clear_the_queue_is_refused() {
     let file = std::fs::File::open("/dev/null").expect("a descriptor that is no terminal");
     let answers = answers(file);
-    answers.wire.set_idle(true);
+    quiet(&answers);
 
     assert!(
         answers.arm(&['y']).is_err(),
@@ -353,7 +359,7 @@ fn an_arm_that_could_not_clear_the_queue_is_refused() {
 fn an_interrupt_outranks_a_queued_answer() {
     let Pty { master: _m, slave } = pty();
     let answers = answers(slave);
-    answers.wire.set_idle(true);
+    quiet(&answers);
     answers.arm(&['y']).expect("armed");
 
     answers.wire.pressed(typed('y'));
@@ -379,7 +385,7 @@ fn a_latched_stop_is_not_waited_for() {
 fn a_hangup_wakes_a_wait_in_progress() {
     let Pty { master: _m, slave } = pty();
     let answers = answers(slave);
-    answers.wire.set_idle(true);
+    quiet(&answers);
     answers.arm(&['y']).expect("armed");
 
     let (sent, received) = mpsc::channel();
@@ -439,9 +445,6 @@ fn the_reader_opens_the_question_when_it_goes_quiet() {
     }
 
     let Pty { mut master, slave } = pty();
-    // Readable for good: the fake never reads it, so the reader's blocking poll returns.
-    writeln!(master, "x").expect("the typed line");
-    wait_readable(&slave);
 
     let answers = answers(slave.try_clone().expect("a second handle"));
     let _keys = answers.wire.seen.subscribe();
@@ -453,11 +456,68 @@ fn the_reader_opens_the_question_when_it_goes_quiet() {
         Err(io::Error::from(io::ErrorKind::BrokenPipe)),
     ]);
 
-    read(&answers.wire, slave.as_fd(), slave.as_fd(), &mut source);
+    thread::scope(|scope| {
+        // Once the question has opened, which flushes the terminal: a byte written before
+        // would be flushed with it and the reader's blocking poll would never return.
+        // Borrowing `master`, not moving it: dropped here it would hang the terminal up, and
+        // the reader abandons what is queued behind a hangup.
+        scope.spawn(|| {
+            let waited = Instant::now();
+            while !answers.wire.slate().armed && waited.elapsed() < Duration::from_secs(5) {
+                thread::yield_now();
+            }
+            writeln!(master, "x").expect("the typed line");
+        });
+
+        read(&answers.wire, slave.as_fd(), slave.as_fd(), &mut source);
+    });
 
     assert_eq!(
         answers.wire.slate().keys.len(),
         1,
         "the burst's key was kept, or the quiet one was not"
     );
+}
+
+/// The window the idle arm does not have: a byte typed before the question can land after
+/// the burst's last empty poll and before the reader next blocks, with the arm already
+/// pending, so the flush has to happen where the question opens.
+#[test]
+fn a_question_opened_after_a_burst_clears_what_was_typed_before() {
+    let Pty { mut master, slave } = pty();
+    let answers = answers(slave.try_clone().expect("a second handle"));
+    answers.arm(&['y']).expect("armed");
+    assert!(!answers.wire.slate().armed, "the arm was not pending");
+
+    writeln!(master, "y").expect("the typed line");
+    wait_readable(&slave);
+    quiet(&answers);
+
+    let mut watched = [nix::poll::PollFd::new(slave.as_fd(), PollFlags::POLLIN)];
+    let queued = nix::poll::poll(&mut watched, PollTimeout::ZERO).expect("poll");
+    assert!(answers.wire.slate().armed, "the question never opened");
+    assert_eq!(queued, 0, "the typeahead survived the question opening");
+}
+
+/// A queue that cannot be cleared leaves no question to answer, and the reader's exit is
+/// what ends a wait parked on it.
+#[test]
+fn a_question_that_cannot_be_opened_ends_the_reader() {
+    struct Quiet;
+
+    impl Source for Quiet {
+        fn next(&mut self) -> io::Result<Option<Event>> {
+            Ok(None)
+        }
+    }
+
+    // Not a terminal, so the flush the question opens with is refused.
+    let file = std::fs::File::open("/dev/null").expect("a descriptor that is no terminal");
+    let answers = answers(file.try_clone().expect("a second handle"));
+    answers.arm(&['y']).expect("pending, nothing flushed yet");
+    let _keys = answers.wire.seen.subscribe();
+
+    read(&answers.wire, file.as_fd(), file.as_fd(), &mut Quiet);
+
+    assert_eq!(waited(&answers), Reply::Closed);
 }
