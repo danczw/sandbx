@@ -330,12 +330,20 @@ descriptor no task feeds, and nothing else is in flight during `approve`, since
 | `a` | `Allow`, and later calls to that tool are not asked, as under `agent-run` |
 | esc, ctrl-c | `Deny`; the stop it latched ends the turn at the next poll, exit 2 |
 | hangup, or the reader gone | `Abort`, so `GateAborted` and exit 3 |
-| the queue could not be cleared, or there is no terminal | `Abort`, nothing waited on |
+| not cleared, no terminal, or not drawn | `Abort`, nothing waited on |
 
 - **Drawn, then armed.** The other order lets a key pressed before the question
   was visible answer it. A genuine press in the gap between the two is lost, and
   the operator presses again: the wrong way round costs a keystroke, not a
   consent.
+- **Drawn means drawn.** A question the screen could not take, a draw that has
+  failed or a lock a panic poisoned, is not asked: a key pressed meanwhile would
+  answer something nobody saw, so the gate aborts instead of waiting.
+- **A short pane cuts the middle.** The rows naming the call and the row saying
+  what the keys do are the two a question cannot lose, so a pane too short for
+  all of it keeps those and marks the cut with a `…` row. The transcript above it
+  goes first. A resize while a question waits is not redrawn (#508): the thread
+  that paints is the one parked.
 - **The question opens when the reader is quiet.** The reader may already hold
   events it took off the terminal, and those predate the question. `arm` does
   not reach into crossterm for them: it marks the question pending, and the
