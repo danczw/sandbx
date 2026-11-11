@@ -295,9 +295,12 @@ architecture the filter gates on.
     the screen, in rows under the transcript, and one keypress answers. Keys
     typed before the question was drawn are discarded, so one pressed at the
     model's own prose is never its answer; escape or ctrl-c refuses the call and
-    ends the turn, and a screen whose keys cannot be read ends it at the first
-    question rather than answering it
-    ([#225](https://github.com/danczw/sandbx/issues/225)).
+    ends the turn, and a screen whose keys cannot be read or drawn on ends it at
+    the first question rather than answering it
+    ([#225](https://github.com/danczw/sandbx/issues/225)). A pane too short for
+    the whole question shows its first and last rows with a `…` row between, and
+    a resize while one waits is not redrawn until it is answered
+    ([#508](https://github.com/danczw/sandbx/issues/508)).
   - **A terminal that goes away *during* a run is fail-closed and noticed.** The
     read fails rather than returning an answer, so that call and the ones behind
     it are refused, no further request is sent, and the process exits 3 rather
