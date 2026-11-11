@@ -55,9 +55,10 @@ pub(super) const CLOSED: &str = "the operator's terminal is closed, so no call c
 pub(super) const UNCLEARED: &str = "the operator's terminal could not be cleared to ask on, \
                                     so no call can be approved";
 
-/// What the model is told when the screen the question was to be drawn on has failed.
-pub(super) const UNDRAWN: &str = "the operator's screen could not be drawn on, \
-                                  so no call can be approved";
+/// What the model is told when the screen the question was to be drawn on has failed, or
+/// is too small to show it.
+pub(super) const UNDRAWN: &str = "the operator's screen could not be drawn on, or is too small \
+                                  to show the question, so no call can be approved";
 
 /// What the model is told when the operator has interrupted the turn.
 ///

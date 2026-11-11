@@ -34,3 +34,4 @@ impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_transcript::Transcri
 impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_transcript::Transcript
 pub fn sandbx_tui_transcript::draw(&mut ratatui_core::terminal::frame::Frame<'_>, &sandbx_tui_transcript::Transcript)
 pub fn sandbx_tui_transcript::plain(&sandbx_tui_transcript::Transcript) -> alloc::string::String
+pub fn sandbx_tui_transcript::question_fits(&sandbx_tui_transcript::Transcript, u16, u16) -> bool
