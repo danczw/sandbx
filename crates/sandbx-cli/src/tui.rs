@@ -1,10 +1,10 @@
 //! `sandbx tui`: one prompt, one turn, drawn on a screen a keypress can stop.
 //!
 //! Every flag, the policy and the session are `agent-run`'s; what differs is where the
-//! turn is reported and that an operator can end one mid-flight. `--approve call` is
-//! refused rather than downgraded (#225), and no line of the account reaches the stderr the
-//! screen covers: the transcript is printed once the screen is given back, the alternate
-//! screen keeping nothing it showed (#224).
+//! turn is reported and that an operator can end one mid-flight. `--approve call` asks on
+//! the screen, in `modal`, and no line of the account reaches the stderr the screen covers:
+//! the transcript is printed once the screen is given back, the alternate screen keeping
+//! nothing it showed (#224).
 //!
 //! The drawing crates — `sandbx-tui-transcript`, `sandbx-screen` and `sandbx-tui-input` —
 //! take events and give back keys, and hold no policy, provider, session or gate: a renderer
@@ -28,14 +28,14 @@ use sandbx_session_bridge as session;
 use sandbx_session_message::TurnStop as StoredStop;
 use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
-use sandbx_tui_input::{Keys, Stopped};
+use sandbx_tui_input::{Answers, Keys, Stopped};
 use sandbx_turn::{Turn, TurnError, TurnOutcome, TurnStop, run_turn_until};
 
+use super::modal::{Modal, Shows};
 use super::prompt::{Notes, Stderr, account};
 use super::render::{Answer, Unfinished};
 use super::{
-    AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, Terminal, gate, orientation, stored_stop,
-    wrapup,
+    AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, gate, orientation, stored_stop, wrapup,
 };
 use crate::AgentError;
 
@@ -53,24 +53,34 @@ impl Tui {
     ///
     /// # Errors
     ///
-    /// [`AgentError::NotATerminal`] and [`AgentError::ApproveUnderTui`] land after only
-    /// [`AgentError::EmptyPrompt`], before the policy and the credential. The rest are
-    /// [`AgentRun::execute`]'s, plus [`AgentError::Screen`].
+    /// [`AgentError::NotATerminal`] lands after only [`AgentError::EmptyPrompt`], before the
+    /// policy and the credential. The rest are [`AgentRun::execute`]'s, plus
+    /// [`AgentError::Screen`].
     pub async fn execute(&self) -> Result<i32, AgentError> {
         let prompt = self.run.to_prompt();
         if prompt.trim().is_empty() {
             return Err(AgentError::EmptyPrompt);
         }
 
-        // Before the policy: neither refusal needs one, and a run that cannot be drawn
-        // must not read a credential on the way to finding that out.
+        // Before the policy: the refusal needs none, and a run that cannot be drawn must not
+        // read a credential on the way to finding that out.
         self.drawable(Device::of(&io::stdout()))?;
 
-        let approved = gate::approved_line(self.run.allow_tool.as_deref());
-        // Before the screen as well as on it, so a redirected log has it ahead of every call
-        // it approved. Not on a terminal stderr, where the reprint already carries it.
+        let mut approved = vec![gate::approved_line(self.run.allow_tool.as_deref())];
+        if matches!(self.run.approve, Approve::Call) {
+            // Said as `agent-run` says it, where the question will be: an inert flag
+            // announced as active would be false, and silence would read as consent.
+            approved.push(gate::asking_line(
+                self.run.allow_tool.as_deref(),
+                "on this screen",
+            ));
+        }
+        // Before the screen as well as on it, so a redirected log has them ahead of every call
+        // they approved. Not on a terminal stderr, where the reprint already carries them.
         if Device::of(&io::stderr()) == Device::Redirected {
-            Stderr.note(&approved);
+            for line in &approved {
+                Stderr.note(line);
+            }
         }
 
         // Ahead of the policy, for `AgentRun::execute`'s reason and with its trade: nothing
@@ -110,13 +120,8 @@ impl Tui {
     ///
     /// # Errors
     ///
-    /// [`AgentError::ApproveUnderTui`] first, being the more specific: a piped run that also
-    /// asked to be asked per call has two things wrong with it, and only one of them is
-    /// about this subcommand.
+    /// [`AgentError::NotATerminal`] where stdout is not one.
     fn drawable(&self, stdout: Device) -> Result<(), AgentError> {
-        if matches!(self.run.approve, Approve::Call) {
-            return Err(AgentError::ApproveUnderTui);
-        }
         if stdout == Device::Redirected {
             return Err(AgentError::NotATerminal);
         }
@@ -135,11 +140,13 @@ impl Tui {
         ctx: &ExecutionContext,
         prompt: String,
         system: Option<String>,
-        approved: &str,
+        approved: &[String],
         session: Option<Session>,
     ) -> Result<i32, AgentError> {
         let mut transcript = Transcript::new(&prompt, self.run.reasoning());
-        transcript.note(approved);
+        for line in approved {
+            transcript.note(line);
+        }
 
         let asked = RequestMessage {
             role: Role::User,
@@ -178,12 +185,12 @@ impl Tui {
         // would never see the key that is supposed to stop the turn. One lock because the
         // turn hands out two writers, `observe` and the gate's `settled`, that meet at the
         // same transcript; a `Mutex`, not a `RefCell`, so the turn's future stays `Send`.
-        // The approved line is in `said` only where `execute` did not already write it, so
-        // a reprint that fails still leaves it on a terminal stderr.
+        // The approved lines are in `said` only where `execute` did not already write them, so
+        // a reprint that fails still leaves them on a terminal stderr.
         let pane = Mutex::new(Pane {
             screen: Screen::enter(transcript).map_err(AgentError::Screen)?,
             said: match shown {
-                Device::Terminal => vec![approved.to_string()],
+                Device::Terminal => approved.to_vec(),
                 Device::Redirected => Vec::new(),
             },
             running: Running::default(),
@@ -191,6 +198,11 @@ impl Tui {
         });
         let mut keys = Keys::listen();
         paint(&pane, |_| {});
+
+        // Only under `--approve call`: without it argv is the whole answer and nothing is
+        // asked. Built after the keys, being what its answers are read from.
+        let modal =
+            matches!(self.run.approve, Approve::Call).then(|| Modal::new(&pane, keys.answers()));
 
         // Inside the loop rather than raced against it, so the rounds before the stop come
         // back to be stored. A running tool still finishes, and the process waits on it,
@@ -202,7 +214,7 @@ impl Tui {
             ctx,
             |event| paint(&pane, |transcript| transcript.event(event)),
             Gate {
-                argv: gate::ArgvGate::new(self.run.allow_tool.as_deref(), None),
+                argv: gate::ArgvGate::new(self.run.allow_tool.as_deref(), modal),
                 pane: &pane,
             },
             async { seen = Some(keys.stop().await) },
@@ -644,10 +656,24 @@ fn paint(pane: &Mutex<Pane>, change: impl FnOnce(&mut Transcript)) {
     }
 }
 
-/// The gate `tui` drives: argv decides, nothing is asked, and every call is drawn.
+/// The question goes on the screen: drawn as [`paint`] draws, and not at all under a
+/// poisoned lock.
+impl Shows for &Mutex<Pane> {
+    fn show(&mut self, lines: &[&str]) {
+        paint(self, |transcript| transcript.ask(lines));
+    }
+
+    fn clear(&mut self) {
+        paint(self, Transcript::answered);
+    }
+}
+
+/// The gate `tui` drives: argv decides, an operator may narrow it on the screen, and every
+/// call is drawn.
 struct Gate<'a> {
-    /// `agent-run`'s gate with no terminal, which is the whole of the decision.
-    argv: gate::ArgvGate<'a, Terminal>,
+    /// `agent-run`'s gate, asking on the screen under `--approve call` and nobody
+    /// otherwise. Delegated to whole, which is what keeps argv's answer one answer.
+    argv: gate::ArgvGate<'a, Modal<&'a Mutex<Pane>, Answers>>,
     pane: &'a Mutex<Pane>,
 }
 

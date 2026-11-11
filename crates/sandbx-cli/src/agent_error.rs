@@ -41,9 +41,6 @@ pub enum AgentError {
     /// `tui` was asked for where stdout is not a terminal.
     NotATerminal,
 
-    /// `--approve call` was asked for under `tui`, which has no prompt to ask with.
-    ApproveUnderTui,
-
     /// The screen could not be taken, or stopped accepting what was drawn on it.
     Screen(io::Error),
 
@@ -104,14 +101,6 @@ impl fmt::Display for AgentError {
                 "`tui` draws a full screen and stdout is not a terminal; \
                  use `agent-run` for a run whose output is read by something else"
             ),
-            // The follow-up is named: a flag refused with no issue beside it reads as unconsidered.
-            Self::ApproveUnderTui => write!(
-                f,
-                "`{}` is not available under `tui`: its question wants the terminal the \
-                 screen has taken, and a modal to ask it with is #225. Use `agent-run` to \
-                 be asked per call",
-                crate::agent::APPROVE_CALL
-            ),
             Self::Screen(error) => write!(f, "drawing the screen: {error}"),
             // The flag is named because dropping it is the whole remedy, and the run
             // refuses rather than serving the weaker regime it asks to replace.
@@ -129,7 +118,7 @@ impl fmt::Display for AgentError {
 impl std::error::Error for AgentError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::EmptyPrompt | Self::NotATerminal | Self::ApproveUnderTui => None,
+            Self::EmptyPrompt | Self::NotATerminal => None,
             Self::Policy(error) => Some(error),
             Self::Runtime(error) | Self::Output(error) | Self::Screen(error) => Some(error),
             Self::Credential(error) => Some(error),

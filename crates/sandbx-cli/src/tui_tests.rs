@@ -37,10 +37,10 @@ fn a_stdout_that_is_not_a_terminal_is_refused() {
     ));
 }
 
-/// Refused and not downgraded to the argv answer: a flag that asks for a narrower
-/// regime must not be served the wider one it asked to replace (#225).
+/// Asked on the screen, so the flag needs nothing the plain run does not: no second
+/// terminal, and no refusal where `agent-run` would not give one (#225).
 #[test]
-fn approve_call_is_refused_whether_or_not_there_is_a_terminal() {
+fn approve_call_needs_a_screen_and_nothing_else() {
     let tui = tui(&[
         "sandbx",
         "tui",
@@ -52,12 +52,13 @@ fn approve_call_is_refused_whether_or_not_there_is_a_terminal() {
         "what is here?",
     ]);
 
-    for stdout in [Device::Redirected, Device::Terminal] {
-        assert!(
-            matches!(tui.drawable(stdout), Err(AgentError::ApproveUnderTui)),
-            "{stdout:?}"
-        );
-    }
+    assert!(tui.drawable(Device::Terminal).is_ok());
+    // Non-vacuous: the pipe is still refused, so the line above is the screen and not a
+    // `drawable` that has stopped looking.
+    assert!(matches!(
+        tui.drawable(Device::Redirected),
+        Err(AgentError::NotATerminal)
+    ));
 }
 
 /// A turn that stopped `stop`, whose last round stopped `round_stop`.
