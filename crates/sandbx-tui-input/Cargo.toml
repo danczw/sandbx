@@ -11,10 +11,11 @@ publish.workspace = true
 # No default features, and no widget ever drawn here: `crossterm` is only for the
 # `event` re-export the key reader reads through. The pin is the workspace's (#352).
 ratatui = { workspace = true, features = ["crossterm"] }
-# `poll` alone: the key reader gates every call into crossterm on a `poll`, which is
-# the only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and
-# spins on the zero-byte read behind it (#264).
-nix = { version = "0.31.3", default-features = false, features = ["poll"] }
+# `poll`: the key reader gates every call into crossterm on a `poll`, which is the
+# only place a hung-up terminal can be seen — crossterm swallows `POLLHUP` and spins on
+# the zero-byte read behind it (#264). `term`: `tcflush`, to drop what was typed before
+# a question was asked (#225).
+nix = { version = "0.31.3", default-features = false, features = ["poll", "term"] }
 # `sync` alone: the key thread reaches the turn through a watch channel, and
 # nothing here spawns a task or arms a timer.
 tokio = { version = "1.53.1", default-features = false, features = ["sync"] }
