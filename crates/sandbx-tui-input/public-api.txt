@@ -41,6 +41,7 @@ impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_input::Stopped
 pub struct sandbx_tui_input::Answers
 impl sandbx_tui_input::Answers
 pub fn sandbx_tui_input::Answers::arm(&self, &'static [char]) -> nix::Result<()>
+pub fn sandbx_tui_input::Answers::interrupted(&self) -> bool
 pub fn sandbx_tui_input::Answers::wait(&self) -> sandbx_tui_input::Reply
 impl core::clone::Clone for sandbx_tui_input::Answers
 pub fn sandbx_tui_input::Answers::clone(&self) -> sandbx_tui_input::Answers

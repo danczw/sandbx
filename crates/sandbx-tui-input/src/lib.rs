@@ -208,6 +208,15 @@ impl Answers {
         Ok(())
     }
 
+    /// Whether the operator has already interrupted the turn.
+    ///
+    /// For a caller with an answer that would otherwise not wait: a stop is latched, and a
+    /// call that never reaches [`Answers::wait`] would run past it.
+    #[must_use]
+    pub fn interrupted(&self) -> bool {
+        self.wire.seen.borrow().stop
+    }
+
     /// Block until the operator answers, interrupts, or can no longer be asked.
     ///
     /// No timeout, as a prompt on a terminal has none. An interrupt outranks an answer

@@ -521,3 +521,17 @@ fn a_question_that_cannot_be_opened_ends_the_reader() {
 
     assert_eq!(waited(&answers), Reply::Closed);
 }
+
+#[test]
+fn a_latched_stop_is_visible_without_waiting() {
+    let Pty { master: _m, slave } = pty();
+    let answers = answers(slave);
+    assert!(
+        !answers.interrupted(),
+        "a turn nobody stopped reads as stopped"
+    );
+
+    answers.wire.pressed(key(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(answers.interrupted());
+}
