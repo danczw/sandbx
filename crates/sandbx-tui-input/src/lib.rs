@@ -120,14 +120,31 @@ impl Wire {
         self.wake.notify_all();
     }
 
-    /// The reader is about to block on the terminal, or has stopped doing so.
-    fn set_idle(&self, idle: bool) {
+    /// The reader is about to block on the terminal with nothing buffered anywhere. A
+    /// question asked for during the burst before this opens now.
+    ///
+    /// The kernel's queue is flushed as it opens: a byte typed before the question can land
+    /// after the burst's last empty poll, and would otherwise be the first thing read.
+    ///
+    /// # Errors
+    ///
+    /// When the flush fails. The question is then never opened, and the reader is to
+    /// return, which is what ends a wait parked on it.
+    fn quiet(&self, tty: BorrowedFd<'_>) -> nix::Result<()> {
         let mut slate = self.slate();
-        slate.idle = idle;
-        if idle && slate.pending {
+        slate.idle = true;
+        if slate.pending {
             slate.pending = false;
+            tcflush(tty, FlushArg::TCIFLUSH)?;
             slate.armed = true;
         }
+
+        Ok(())
+    }
+
+    /// The reader is reading again, or has stopped blocking.
+    fn busy(&self) {
+        self.slate().idle = false;
     }
 }
 
@@ -368,9 +385,11 @@ fn read(wire: &Wire, tty: BorrowedFd<'_>, out: BorrowedFd<'_>, source: &mut impl
         // Quiet only across a blocking poll, and only once nothing is buffered: a question
         // opens at this point, never mid-burst, which is what keeps a key read before it
         // from answering it.
-        wire.set_idle(!buffered);
+        if !buffered && wire.quiet(tty).is_err() {
+            return;
+        }
         let hung = hung_up(tty, out, PollFlags::POLLIN, wait);
-        wire.set_idle(false);
+        wire.busy();
 
         // Ahead of every call into crossterm: on a hung-up terminal `event::read` loops on
         // a zero-byte read with no timeout check at all (crossterm 0.29,
