@@ -52,9 +52,9 @@ ended, its timeout is dropped, and `answer_calls` is sequential, which #242
 records as a constraint rather than a design choice. Staying sync is what keeps
 `run_turn`'s future `Send` (`documented_call_shape_stays_spawnable`) and keeps
 RPITIT off the trait. The limit is a precondition on the caller, not something
-a second front end inherits: `tui` drives a UI from the same runtime and met it
-by building the gate with no terminal at all, refusing `--approve call` rather
-than downgrading it (#225).
+a second front end inherits: `tui` drives a UI from the same runtime, and meets
+it by waiting on the key thread rather than on anything a task feeds (#225, last
+section).
 
 ## A refusal is a `tool_result`, not a `TurnError`
 
@@ -78,7 +78,8 @@ refusals above the gate are reported at all (#169). One line per `tool_use`
 block, whichever of the five outcomes it reached.
 
 **It goes where the question went.** stderr by default; the terminal under
-`--approve call`, which is the same reason the question is not on stderr either.
+`--approve call`, which is the same reason the question is not on stderr either;
+the screen under `tui`.
 Both directions on one channel or neither: `2> run.log` would otherwise leave an
 operator answering call N+1 having not seen what call N did, which is consent
 given with the evidence redirected away.
@@ -175,14 +176,16 @@ this section is about would not be checkable at all.
 ### The rule covers a second surface, where nothing was being asked
 
 "A lost operator is neither a bound nor anything they configured" is about
-consent, but it does not depend on a question being in flight. Under `tui` no
-call is waiting on an answer — the gate decided from argv before the first
-request — and yet a terminal that hangs up mid-turn is the same event: the turn
-goes on with nobody watching what it does, and the per-call account is drawn to a
-screen that no longer exists. So `tui` ends the turn on a hangup and exits 3 on
-this rule rather than on one of its own (#264).
+consent, but it does not depend on a question being in flight. Under `tui`
+without `--approve call` no call is waiting on an answer — the gate decided from
+argv before the first request — and yet a terminal that hangs up mid-turn is the
+same event: the turn goes on with nobody watching what it does, and the per-call
+account is drawn to a screen that no longer exists. So `tui` ends the turn on a
+hangup and exits 3 on this rule rather than on one of its own (#264).
 
-Three differences follow from there being no question to refuse:
+Three differences follow from there being no question to refuse, which is the
+case without `--approve call`; with it, a hangup lands on a question and is the
+`Abort` above:
 
 - **The stop is the whole of it.** There is no call to deny and no `tool_result`
   to write, so of the three durable records only two remain: the exit code and
@@ -296,5 +299,70 @@ operator asked for, so the terminal is shared and that is the cost of sharing it
 whether it may. `SECURITY.md`'s standing commitment holds under both — a tool call
 you approve runs; sandbx bounds what it can reach, it does not judge the intent
 behind it — and an operator answering `y` to a question whose arguments they did
-not read has approved it as surely as a flag would have. #225 is where the same
-question gets a surface with somewhere to render it.
+not read has approved it as surely as a flag would have. Under `tui` the same
+question has a surface with somewhere to render it, which is the next section.
+
+## The same question, on the screen
+
+`tui` asks `--approve call` on the screen it took (#225). What is asked is
+`agent_prompt.rs`'s: `question` is one function for both surfaces, so the
+arguments, the 512-character cap and the strip read the same wherever a call is
+asked. What differs is where the answer comes from.
+
+```
+runtime thread (one, current-thread)          key thread (std, sandbx-tui-input)
+────────────────────────────────────          ──────────────────────────────────
+approve → Modal::ask
+  1  draw the question on the screen
+  2  Answers::arm  ───────────────────────►   open the question (see below)
+  3  Answers::wait  (Condvar, parked)    ◄──   y / n / a · esc / ctrl-c · hangup
+  4  take the question down, map the reply
+```
+
+Blocking in step 3 is the class the first section allows: the key thread is a
+descriptor no task feeds, and nothing else is in flight during `approve`, since
+`answer_calls` is sequential (#242).
+
+| reply | verdict |
+|---|---|
+| `y` | `Allow` |
+| `n` | `Deny`, as under `agent-run` |
+| `a` | `Allow`, and later calls to that tool are not asked, as under `agent-run` |
+| esc, ctrl-c | `Deny`; the stop it latched ends the turn at the next poll, exit 2 |
+| hangup, or the reader gone | `Abort`, so `GateAborted` and exit 3 |
+| the queue could not be cleared, or there is no terminal | `Abort`, nothing waited on |
+
+- **Drawn, then armed.** The other order lets a key pressed before the question
+  was visible answer it. A genuine press in the gap between the two is lost, and
+  the operator presses again: the wrong way round costs a keystroke, not a
+  consent.
+- **The question opens when the reader is quiet.** The reader may already hold
+  events it took off the terminal, and those predate the question. `arm` does
+  not reach into crossterm for them: it marks the question pending, and the
+  reader opens it the next time it blocks with nothing buffered. Only then is
+  the kernel's queue flushed. The same two layers as `discard_typeahead`, with
+  the second one owned by the thread that holds it.
+- **An interrupt refuses; a hangup aborts.** Esc and ctrl-c are the operator
+  speaking, so they are a `Deny` like an `n`, and the stop they latched is what
+  ends the turn, as for any interrupt. A latched stop answers every later call
+  in the round at once, without waiting. Only a channel that is gone is `Abort`.
+- **Refusal outranks an answer already pressed.** An interrupt beats a queued
+  `y`, and a hangup beats both. Each leaves the call refused, the direction a
+  doubtful reading must lean.
+- **No timeout, and no wait that cannot end.** As with the `/dev/tty` read.
+  Every way the reader can stop wakes the wait, a reader that failed as much
+  as one that saw a hangup, so a dead thread cannot leave the operator at a
+  frozen screen.
+- **One bare lowercase key.** `Y`, ctrl-y and Enter are not answers, and nothing
+  asks again: a key that is not one of the three is ignored, as a typo is not
+  consent.
+- **The rows carry the mark.** Each row of the question is drawn behind the
+  gutter mark no model text can draw, and there is no rule: an answer can draw
+  one. The model's prose shares the screen, as it shares the terminal under
+  `agent-run`, so the same cost stands: a counterfeit that makes the real
+  question *look* already answered, which no flush reaches.
+
+Consent is not a third device here. The question is asked on the screen and
+answered on the keys, so the account of a call and the record of the refusal
+leave with the terminal that carried them: the exit code and the line printed
+once the screen is gone are what survive, as for the hangup rule above.

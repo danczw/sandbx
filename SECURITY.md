@@ -286,23 +286,28 @@ architecture the filter gates on.
   - **`--approve run`**, the default, asks nothing in between: once a tool is
     approved, every call to it in that turn runs, including one a prompt injection
     induced.
-  - **`--approve call`** asks on your terminal before each write and each
-    command — `y` for the one call, `n` to refuse it, `a` for every later call to
-    that tool — and refuses to start where there is no terminal to ask on. It
+  - **`--approve call`** asks before each write and each command — `y` for the
+    one call, `n` to refuse it, `a` for every later call to that tool — and
+    `agent-run` refuses to start where there is no terminal to ask on. It
     shows the arguments the model chose, cut at 512 characters: the tail of a
     longer command is not shown, and no answer to the prompt reveals it
-    ([#169](https://github.com/danczw/sandbx/issues/169)). Under `tui` the flag is
-    refused outright, the screen having taken the terminal that question wants
+    ([#169](https://github.com/danczw/sandbx/issues/169)). Under `tui` it asks on
+    the screen, in rows under the transcript, and one keypress answers. Keys
+    typed before the question was drawn are discarded, so one pressed at the
+    model's own prose is never its answer; escape or ctrl-c refuses the call and
+    ends the turn, and a screen whose keys cannot be read ends it at the first
+    question rather than answering it
     ([#225](https://github.com/danczw/sandbx/issues/225)).
   - **A terminal that goes away *during* a run is fail-closed and noticed.** The
     read fails rather than returning an answer, so that call and the ones behind
     it are refused, no further request is sent, and the process exits 3 rather
     than 0. A typed end-of-input ends it the same way. What the turn did before is
     on stdout and in `--session`
-    ([#218](https://github.com/danczw/sandbx/issues/218)). Under `tui` nothing is
-    being asked, but a terminal that hangs up is a turn nobody is watching, so it
-    ends the turn and exits 3 on the same reasoning — the screen or the keyboard,
-    either one ([#264](https://github.com/danczw/sandbx/issues/264)). A command
+    ([#218](https://github.com/danczw/sandbx/issues/218)). Under `tui` a terminal
+    that hangs up is a turn nobody is watching, whether or not a question is
+    waiting, so it ends the turn and exits 3 on the same reasoning — the screen
+    or the keyboard, either one
+    ([#264](https://github.com/danczw/sandbx/issues/264)). A command
     line sandbx would not take exits 64 instead, before a turn or a sandbox
     exists, so none of these codes is reachable by mistyping a flag
     ([#265](https://github.com/danczw/sandbx/issues/265)).
