@@ -20,6 +20,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_transcript::Reasonin
 impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_transcript::Reasoning
 pub struct sandbx_tui_transcript::Transcript
 impl sandbx_tui_transcript::Transcript
+pub fn sandbx_tui_transcript::Transcript::answered(&mut self)
+pub fn sandbx_tui_transcript::Transcript::ask(&mut self, &[&str])
 pub fn sandbx_tui_transcript::Transcript::event(&mut self, &sandbx_event::AgentEvent)
 pub fn sandbx_tui_transcript::Transcript::new(&str, sandbx_tui_transcript::Reasoning) -> Self
 pub fn sandbx_tui_transcript::Transcript::note(&mut self, &str)

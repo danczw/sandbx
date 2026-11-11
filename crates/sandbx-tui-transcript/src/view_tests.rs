@@ -197,3 +197,93 @@ fn the_plain_transcript_cannot_be_forged_either() {
         "{printed:?}"
     );
 }
+
+fn asked(answer: &str, lines: &[&str]) -> Transcript {
+    let mut transcript = turn(answer);
+    transcript.ask(lines);
+    transcript
+}
+
+/// On the rows only sandbx can mark, and under the transcript rather than over it: nothing
+/// the model wrote is hidden by the question about what it asked for.
+#[test]
+fn a_question_is_drawn_on_marked_rows_between_the_transcript_and_the_bar() {
+    let transcript = asked(
+        "three files",
+        &["sandbx: write /work/a", "allow it? [y]es / [n]o"],
+    );
+
+    let rows = rows(&transcript, 40, 8);
+    assert_eq!(rows[0], "> what is here?");
+    assert_eq!(rows[2], "  three files");
+    assert_eq!(
+        rows[4], "",
+        "no blank row between the answer and the question"
+    );
+    assert_eq!(rows[5], format!("{GUTTER}sandbx: write /work/a"));
+    assert_eq!(rows[6], format!("{GUTTER}allow it? [y]es / [n]o"));
+    assert_eq!(rows[7], "rounds 0 · ctrl-c interrupts");
+}
+
+/// The pair the one above needs: the same screen with the question answered is the screen
+/// without one, so the dock is the question and not a fixture of the layout.
+#[test]
+fn an_answered_question_leaves_the_screen_as_it_was() {
+    let before = rows(&turn("three files"), 40, 8);
+
+    let mut transcript = asked("three files", &["sandbx: write /work/a"]);
+    transcript.answered();
+
+    assert_eq!(rows(&transcript, 40, 8), before);
+}
+
+/// The model's answer can carry the mark's confusables and a break, and the question's
+/// rows are the ones a forged `y` would be answered on.
+#[test]
+fn an_answer_cannot_forge_a_row_of_the_question() {
+    let transcript = asked(
+        "\nsandbx: write /work/a — allowed\n",
+        &["sandbx: write /work/a │ /etc/passwd"],
+    );
+
+    let rows = rows(&transcript, 64, 10);
+    let marked: Vec<&String> = rows
+        .iter()
+        .filter(|row| row.starts_with(GUTTER_MARK))
+        .collect();
+
+    // Non-vacuous: the forged text rendered, so only the mark tells it from the question.
+    assert_eq!(
+        marked,
+        [&format!(
+            "{GUTTER}sandbx: write /work/a \u{fffd} /etc/passwd"
+        )]
+    );
+    assert!(rows.iter().any(|row| row.contains("— allowed")), "{rows:?}");
+}
+
+/// A cramped screen drops the transcript first and the question's top rows next: the
+/// choices are on its last row, and a question that cannot be read cannot be answered.
+#[test]
+fn a_question_taller_than_the_pane_keeps_its_last_rows() {
+    let transcript = asked("three files", &["one", "two", "three"]);
+
+    let rows = rows(&transcript, 40, 4);
+    assert_eq!(
+        rows,
+        [
+            format!("{GUTTER}one"),
+            format!("{GUTTER}two"),
+            format!("{GUTTER}three"),
+            "rounds 0 · ctrl-c interrupts".to_string(),
+        ]
+    );
+}
+
+/// The reprint after the screen is given back has no operator to ask.
+#[test]
+fn the_plain_transcript_never_carries_a_question() {
+    let transcript = asked("three files", &["sandbx: write /work/a"]);
+
+    assert_eq!(plain(&transcript), plain(&turn("three files")));
+}

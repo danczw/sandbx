@@ -1,6 +1,7 @@
 //! What the screen shows, folded from the event stream one event at a time.
 //!
-//! Nothing here renders a *requested* call: only a settled one has an outcome.
+//! Nothing here renders a *requested* call: only a settled one has an outcome. What it does
+//! hold is the one question the operator is being asked about a call, until it is answered.
 
 use sandbx_event::AgentEvent;
 use sandbx_text::{invisible, line_separator};
@@ -49,6 +50,10 @@ pub struct Transcript {
     /// figure, and an absence must not take a shown one back off the screen. Not a sum:
     /// each is one request's, as `TurnOutcome::usage` is.
     tokens: Tokens,
+
+    /// The rows of the question being asked of the operator, empty when there is none.
+    /// Apart from `entries`: it is not part of the turn, and is gone once answered.
+    question: Vec<String>,
 }
 
 /// The last token counts reported for a turn's requests.
@@ -69,6 +74,7 @@ impl Transcript {
             reasoning,
             rounds: 0,
             tokens: Tokens::default(),
+            question: Vec::new(),
         }
     }
 
@@ -108,6 +114,28 @@ impl Transcript {
             kind: Kind::Note,
             text: printable(line).replace('\n', "\\n"),
         });
+    }
+
+    /// Show the question the operator is being asked, one row per line, replacing any that
+    /// was showing.
+    ///
+    /// Rows are stripped and spelled as a [`note`](Self::note) is, and the view marks every
+    /// one: a line carrying the model's own words, a path or a command, would otherwise draw
+    /// a row of the question that sandbx never wrote. The caller decides what is asked.
+    pub fn ask(&mut self, lines: &[&str]) {
+        self.question = lines
+            .iter()
+            .map(|line| printable(line).replace('\n', "\\n"))
+            .collect();
+    }
+
+    /// Take the question down: the call has its answer.
+    pub fn answered(&mut self) {
+        self.question.clear();
+    }
+
+    pub(crate) fn question(&self) -> &[String] {
+        &self.question
     }
 
     pub(crate) fn entries(&self) -> &[Entry] {
