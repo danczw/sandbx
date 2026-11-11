@@ -1,7 +1,7 @@
 use super::super::prompt::Operator;
 use super::{
-    ArgvGate, SUBJECT_CAP, approved_tools, approves, asks_about_anything, line, printable, report,
-    stripped, tool_name,
+    ArgvGate, SUBJECT_CAP, approved_tools, approves, asking_line, asks_about_anything, line,
+    printable, report, stripped, tool_name,
 };
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_tools::{BuiltinTool, ToolError};
@@ -630,4 +630,22 @@ fn an_argument_too_long_to_read_is_marked_as_cut() {
 
     let whole = "y".repeat(SUBJECT_CAP);
     assert_eq!(printable(&whole), whole, "an argument at the cap was cut");
+}
+
+/// Said before the first request, and not left to silence: a run that asks nothing reads as
+/// one that was consented to call by call.
+#[test]
+fn the_announcement_says_where_a_call_is_asked_or_that_none_is() {
+    let some = allowed(&["sandbx", "agent-run", "--allow-tool", "write", "--", "hi"]);
+    assert_eq!(
+        asking_line(some.as_deref(), "on this screen"),
+        "sandbx: each call that writes or runs a program will be asked for on this screen"
+    );
+
+    let none = allowed(&["sandbx", "agent-run", "--", "hi"]);
+    assert_eq!(
+        asking_line(none.as_deref(), "on this screen"),
+        "sandbx: nothing in this run will be asked for: `--approve call` asks only about the \
+         tools `--allow-tool` approved, and none was"
+    );
 }

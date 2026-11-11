@@ -45,26 +45,52 @@ pub(super) enum Approve {
 ///
 /// Says no flag lifts it, so a model told its tools were approved does not spend a round
 /// advising the operator to pass one.
-const REFUSED: &str = "the operator refused this call; no flag lifts a refusal, though a \
+pub(super) const REFUSED: &str = "the operator refused this call; no flag lifts a refusal, though a \
                        later call may still be approved";
 
 /// What the model is told when the terminal can no longer be asked.
-const CLOSED: &str = "the operator's terminal is closed, so no call can be approved";
+pub(super) const CLOSED: &str = "the operator's terminal is closed, so no call can be approved";
 
 /// What the model is told when the terminal could not be cleared to ask on.
-const UNCLEARED: &str = "the operator's terminal could not be cleared to ask on, \
-                         so no call can be approved";
+pub(super) const UNCLEARED: &str = "the operator's terminal could not be cleared to ask on, \
+                                    so no call can be approved";
+
+/// What the model is told when the operator interrupts at the question.
+///
+/// A refusal and not a lost channel: the interrupt is the operator speaking, and ends the
+/// turn on its own account.
+pub(super) const INTERRUPTED: &str =
+    "the operator interrupted at this question, so the call was not approved";
 
 /// What this run has already been consented to beyond the call it was asked about.
 #[derive(Default)]
-struct Consent {
+pub(super) struct Consent {
     /// The tools an `a` answer approved for every later call in the run.
     blanket: Vec<BuiltinTool>,
 }
 
 impl Consent {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::default()
+    }
+
+    /// Whether an `a` already approved every call to `tool` in this run.
+    pub(super) fn covers(&self, tool: BuiltinTool) -> bool {
+        self.blanket.contains(&tool)
+    }
+
+    /// What one typed answer means for a call to `tool`: `None` for one that is neither
+    /// yes, no nor all, which is asked again because a typo is not consent.
+    pub(super) fn answer(&mut self, tool: BuiltinTool, typed: &str) -> Option<ApprovalDecision> {
+        match typed {
+            "y" | "yes" => Some(ApprovalDecision::Allow),
+            "n" | "no" => Some(deny(REFUSED)),
+            "a" | "all" => {
+                self.blanket.push(tool);
+                Some(ApprovalDecision::Allow)
+            }
+            _ => None,
+        }
     }
 
     /// Ask about one call, writing the question to `out` and reading the answer from
@@ -78,21 +104,15 @@ impl Consent {
         input: &mut impl BufRead,
         out: &mut impl Write,
     ) -> ApprovalDecision {
-        if self.blanket.contains(&call.tool) {
+        if self.covers(call.tool) {
             return ApprovalDecision::Allow;
         }
 
-        let name = call.tool.name();
+        let [head, tail] = question(call);
         loop {
             // Flushed before the read: a question still in a buffer is an operator
             // staring at nothing, and the deadlock has no timeout to end it.
-            let asked = write!(
-                out,
-                "\nsandbx: {}\nsandbx: this call {}. allow it? [y]es / [n]o / [a]ll `{name}` calls > ",
-                gate::describe(call.tool, call.input),
-                verb(call.tool),
-            )
-            .and_then(|()| out.flush());
+            let asked = write!(out, "\n{head}\n{tail} > ").and_then(|()| out.flush());
             if asked.is_err() {
                 return abort(CLOSED);
             }
@@ -112,18 +132,28 @@ impl Consent {
                 Ok(_) => {}
             }
 
-            match answer.trim() {
-                "y" | "yes" => return ApprovalDecision::Allow,
-                "n" | "no" => return deny(REFUSED),
-                "a" | "all" => {
-                    self.blanket.push(call.tool);
-                    return ApprovalDecision::Allow;
-                }
-                // Asked again rather than read as either answer: a typo is not consent.
-                _ => {}
+            // Asked again where there is none: a typo is not consent.
+            if let Some(decision) = self.answer(call.tool, answer.trim()) {
+                return decision;
             }
         }
     }
+}
+
+/// The two lines a call is asked about in, before whatever each surface appends to say
+/// where the answer goes.
+///
+/// One text for both surfaces, so the cap and the strip `describe` carries cover the line
+/// prompt and the screen's alike, and an operator is asked the same thing on either.
+pub(super) fn question(call: ToolCall<'_>) -> [String; 2] {
+    [
+        format!("sandbx: {}", gate::describe(call.tool, call.input)),
+        format!(
+            "sandbx: this call {}. allow it? [y]es / [n]o / [a]ll `{}` calls",
+            verb(call.tool),
+            call.tool.name()
+        ),
+    ]
 }
 
 /// What a tool's [`RiskLevel`] is, in the words the question is phrased in.
@@ -136,7 +166,7 @@ fn verb(tool: BuiltinTool) -> &'static str {
     }
 }
 
-fn deny(reason: &str) -> ApprovalDecision {
+pub(super) fn deny(reason: &str) -> ApprovalDecision {
     ApprovalDecision::Deny {
         reason: reason.to_owned(),
     }
@@ -148,7 +178,7 @@ fn deny(reason: &str) -> ApprovalDecision {
 /// Drawn here because this is the only layer that can draw it without guessing — an
 /// operator's `n` refuses one call, a read that cannot complete refuses every call there
 /// will ever be.
-fn abort(reason: &str) -> ApprovalDecision {
+pub(super) fn abort(reason: &str) -> ApprovalDecision {
     ApprovalDecision::Abort {
         reason: reason.to_owned(),
     }

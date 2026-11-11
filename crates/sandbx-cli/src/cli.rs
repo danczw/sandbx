@@ -104,8 +104,9 @@ pub enum Command {
     /// `--show-thinking` reads differently here: it draws the reasoning in the
     /// pane rather than on stderr.
     ///
-    /// Needs a terminal on stdout, and refuses `--approve call`: that prompt
-    /// wants the terminal this screen has taken. Use `agent-run` for either.
+    /// Needs a terminal on stdout; use `agent-run` for a run whose output is read by
+    /// something else. `--approve call` asks on this screen, under the transcript:
+    /// press y, n or a.
     ///
     /// Put the prompt after `--`:
     ///

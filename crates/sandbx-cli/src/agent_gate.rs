@@ -8,7 +8,7 @@ use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_text::{invisible, line_separator};
 use sandbx_tools::{BuiltinTool, RiskLevel, ToolError};
 
-use super::prompt::{Operator, to_stderr};
+use super::prompt::{APPROVE_CALL, Operator, to_stderr};
 
 /// The flag that lifts the default refusal.
 ///
@@ -71,6 +71,22 @@ pub(super) fn asks_about_anything(allowed: Option<&[BuiltinTool]>) -> bool {
     BuiltinTool::ALL
         .iter()
         .any(|tool| tool.risk() != RiskLevel::ReadOnly && approves(allowed, *tool))
+}
+
+/// What `--approve call` will do in this run, said before the first request: where each
+/// call is asked about, or that none is.
+///
+/// Said either way. Silence for a run that asks nothing would read as one consented to call
+/// by call, and the flag being inert there is argv's doing, not a failure to ask.
+pub(super) fn asking_line(allowed: Option<&[BuiltinTool]>, place: &str) -> String {
+    if asks_about_anything(allowed) {
+        format!("sandbx: each call that writes or runs a program will be asked for {place}")
+    } else {
+        format!(
+            "sandbx: nothing in this run will be asked for: `{APPROVE_CALL}` \
+             asks only about the tools `{ALLOW_TOOL}` approved, and none was"
+        )
+    }
 }
 
 /// The gate `agent-run` drives: argv decides, an operator may narrow it, and every call

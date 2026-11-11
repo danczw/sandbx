@@ -27,7 +27,7 @@ use sandbx_turn::{Compaction, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn}
 use crate::{AgentError, Grants, PolicyError};
 
 use super::gate::{self, tool_name};
-use super::prompt::{APPROVE_CALL, Approve, Notes, Stderr, Terminal};
+use super::prompt::{Approve, Notes, Stderr, Terminal};
 use super::render::{Answer, Render, Unfinished};
 use super::{Device, orientation, wrapup};
 
@@ -364,20 +364,10 @@ impl AgentRun {
                 let terminal =
                     Terminal::open().map_err(|source| AgentError::NoTerminal { source })?;
                 // After the open: claiming the run will ask would be false for one that couldn't.
-                if gate::asks_about_anything(self.allow_tool.as_deref()) {
-                    Stderr.note(
-                        "sandbx: each call that writes or runs a program will be asked for \
-                         on this terminal",
-                    );
-                } else {
-                    // Inert, not wrong: argv is the ceiling. Said plainly, or silence reads
-                    // as consent.
-                    Stderr.note(&format!(
-                        "sandbx: nothing in this run will be asked for: `{APPROVE_CALL}` \
-                         asks only about the tools `{}` approved, and none was",
-                        gate::ALLOW_TOOL
-                    ));
-                }
+                Stderr.note(&gate::asking_line(
+                    self.allow_tool.as_deref(),
+                    "on this terminal",
+                ));
                 Ok(Some(terminal))
             }
         }

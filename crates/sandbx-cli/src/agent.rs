@@ -2,13 +2,15 @@
 //!
 //! [`agent_run`] is the argv surface and the sequence that consumes it; [`tui`] is the same
 //! turn drawn on a screen. [`gate`] decides which calls may run, [`prompt`] asks the
-//! operator about one, [`render`] reports what happened, [`orientation`] and [`wrapup`]
-//! bracket the turn.
+//! operator about one and [`modal`] asks it on that screen, [`render`] reports what
+//! happened, [`orientation`] and [`wrapup`] bracket the turn.
 
 #[path = "agent_run.rs"]
 mod agent_run;
 #[path = "agent_gate.rs"]
 mod gate;
+#[path = "tui_modal.rs"]
+mod modal;
 #[path = "agent_orientation.rs"]
 mod orientation;
 #[path = "agent_prompt.rs"]
@@ -28,7 +30,7 @@ pub(crate) use prompt::APPROVE_CALL;
 // Reached as `super::…` from the sibling modules rather than used here: `tui` takes the
 // prompt types, the exit codes and `stored_stop`, `render` the exit codes.
 use agent_run::{INCOMPLETE, NO_CONSENT, stored_stop};
-use prompt::{Approve, Terminal};
+use prompt::Approve;
 
 /// Whether a stream reaches a terminal: what decides both that an SGR escape renders on it
 /// and that a screen can be drawn on it.
