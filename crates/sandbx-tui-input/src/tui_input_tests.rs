@@ -523,15 +523,29 @@ fn a_question_that_cannot_be_opened_ends_the_reader() {
 }
 
 #[test]
-fn a_latched_stop_is_visible_without_waiting() {
+fn a_stop_already_latched_is_visible_without_waiting() {
     let Pty { master: _m, slave } = pty();
     let answers = answers(slave);
-    assert!(
-        !answers.interrupted(),
+    assert_eq!(
+        answers.stopped(),
+        None,
         "a turn nobody stopped reads as stopped"
     );
 
     answers.wire.pressed(key(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(answers.stopped(), Some(Reply::Interrupted));
 
-    assert!(answers.interrupted());
+    // An interrupt outranks a hangup, as in `wait`.
+    answers.wire.gone();
+    assert_eq!(answers.stopped(), Some(Reply::Interrupted));
+}
+
+#[test]
+fn a_hangup_already_seen_is_visible_without_waiting() {
+    let Pty { master: _m, slave } = pty();
+    let answers = answers(slave);
+
+    answers.wire.gone();
+
+    assert_eq!(answers.stopped(), Some(Reply::Closed));
 }
