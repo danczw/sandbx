@@ -1,4 +1,24 @@
 pub mod sandbx_tui_input
+pub enum sandbx_tui_input::Reply
+pub sandbx_tui_input::Reply::Closed
+pub sandbx_tui_input::Reply::Interrupted
+pub sandbx_tui_input::Reply::Key(char)
+impl core::clone::Clone for sandbx_tui_input::Reply
+pub fn sandbx_tui_input::Reply::clone(&self) -> sandbx_tui_input::Reply
+impl core::cmp::Eq for sandbx_tui_input::Reply
+impl core::cmp::PartialEq for sandbx_tui_input::Reply
+pub fn sandbx_tui_input::Reply::eq(&self, &sandbx_tui_input::Reply) -> bool
+impl core::fmt::Debug for sandbx_tui_input::Reply
+pub fn sandbx_tui_input::Reply::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for sandbx_tui_input::Reply
+impl core::marker::StructuralPartialEq for sandbx_tui_input::Reply
+impl core::marker::Freeze for sandbx_tui_input::Reply
+impl core::marker::Send for sandbx_tui_input::Reply
+impl core::marker::Sync for sandbx_tui_input::Reply
+impl core::marker::Unpin for sandbx_tui_input::Reply
+impl core::marker::UnsafeUnpin for sandbx_tui_input::Reply
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_input::Reply
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_input::Reply
 pub enum sandbx_tui_input::Stopped
 pub sandbx_tui_input::Stopped::Gone
 pub sandbx_tui_input::Stopped::Pressed
@@ -18,8 +38,22 @@ impl core::marker::Unpin for sandbx_tui_input::Stopped
 impl core::marker::UnsafeUnpin for sandbx_tui_input::Stopped
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_input::Stopped
 impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_input::Stopped
+pub struct sandbx_tui_input::Answers
+impl sandbx_tui_input::Answers
+pub fn sandbx_tui_input::Answers::arm(&self, &'static [char]) -> nix::Result<()>
+pub fn sandbx_tui_input::Answers::wait(&self) -> sandbx_tui_input::Reply
+impl core::clone::Clone for sandbx_tui_input::Answers
+pub fn sandbx_tui_input::Answers::clone(&self) -> sandbx_tui_input::Answers
+impl core::marker::Freeze for sandbx_tui_input::Answers
+impl core::marker::Send for sandbx_tui_input::Answers
+impl core::marker::Sync for sandbx_tui_input::Answers
+impl core::marker::Unpin for sandbx_tui_input::Answers
+impl core::marker::UnsafeUnpin for sandbx_tui_input::Answers
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tui_input::Answers
+impl core::panic::unwind_safe::UnwindSafe for sandbx_tui_input::Answers
 pub struct sandbx_tui_input::Keys
 impl sandbx_tui_input::Keys
+pub fn sandbx_tui_input::Keys::answers(&self) -> sandbx_tui_input::Answers
 pub fn sandbx_tui_input::Keys::listen() -> Self
 pub async fn sandbx_tui_input::Keys::stop(&mut self) -> sandbx_tui_input::Stopped
 impl core::marker::Freeze for sandbx_tui_input::Keys
