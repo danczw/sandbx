@@ -40,6 +40,8 @@ struct Keys {
     log: Log,
     replies: RefCell<VecDeque<Reply>>,
     clears: bool,
+    /// Latched by an `Interrupted` reply, as the real stop is.
+    stopped: std::cell::Cell<bool>,
 }
 
 impl Replies for Keys {
@@ -54,10 +56,19 @@ impl Replies for Keys {
 
     fn wait(&self) -> Reply {
         self.log.borrow_mut().push("wait".to_string());
-        self.replies
+        let reply = self
+            .replies
             .borrow_mut()
             .pop_front()
-            .expect("asked more often than the test scripted")
+            .expect("asked more often than the test scripted");
+        if reply == Reply::Interrupted {
+            self.stopped.set(true);
+        }
+        reply
+    }
+
+    fn interrupted(&self) -> bool {
+        self.stopped.get()
     }
 }
 
@@ -67,6 +78,7 @@ fn modal(replies: &[Reply]) -> (Modal<Screen, Keys>, Log) {
         log: Rc::clone(&log),
         replies: RefCell::new(replies.iter().copied().collect()),
         clears: true,
+        stopped: std::cell::Cell::new(false),
     };
 
     (Modal::new(Screen(Rc::clone(&log), true), keys), log)
@@ -316,4 +328,24 @@ fn every_key_asked_for_is_an_answer() {
             "{key:?} is asked for and means nothing"
         );
     }
+}
+
+/// An `a` is the operator's word about a tool, not a way past a stop they gave afterwards:
+/// a call it covers is refused once the turn has been interrupted, unasked.
+#[test]
+fn a_covered_call_is_refused_once_the_turn_is_interrupted() {
+    let (mut modal, log) = modal(&[Reply::Key('a'), Reply::Interrupted]);
+    assert_eq!(
+        ask(&mut modal, BuiltinTool::Write, &write()),
+        ApprovalDecision::Allow
+    );
+
+    let bash = serde_json::json!({ "command": "ls" });
+    let _ = ask(&mut modal, BuiltinTool::Bash, &bash);
+    let asked = log.borrow().len();
+
+    let verdict = ask(&mut modal, BuiltinTool::Write, &write());
+
+    assert!(refusal(&verdict).contains("interrupted"), "{verdict:?}");
+    assert_eq!(log.borrow().len(), asked, "a stopped turn was asked again");
 }
