@@ -309,8 +309,9 @@ escape ends it mid-flight — `--session` keeping the rounds it finished but not
 the one it stopped in, and a running tool call left to finish unseen. When the
 turn ends the screen goes and the transcript is printed in its place, so the
 answer stays in your scrollback. It needs a terminal on stdout, so it refuses a
-piped run, and it refuses `--approve call`, whose question wants the terminal
-the screen has taken ([#225](https://github.com/danczw/sandbx/issues/225)):
+piped run. `--approve call` asks on the screen, in rows under the transcript,
+and one key answers: `y`, `n` or `a`, escape or ctrl-c refusing the call and
+ending the turn ([#225](https://github.com/danczw/sandbx/issues/225)):
 
 ```sh
 sandbx tui --allow-tool bash -- "what is in this directory?"
