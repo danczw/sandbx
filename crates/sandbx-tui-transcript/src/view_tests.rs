@@ -262,22 +262,63 @@ fn an_answer_cannot_forge_a_row_of_the_question() {
     assert!(rows.iter().any(|row| row.contains("— allowed")), "{rows:?}");
 }
 
-/// A cramped screen drops the transcript first and the question's top rows next: the
-/// choices are on its last row, and a question that cannot be read cannot be answered.
+/// A cramped screen drops the transcript first, and then the middle of the question: the
+/// call is named on its first rows and the choices are on its last, and a question missing
+/// either cannot be answered knowingly. What was cut is marked, so a short pane is not read
+/// as a short command.
 #[test]
-fn a_question_taller_than_the_pane_keeps_its_last_rows() {
-    let transcript = asked("three files", &["one", "two", "three"]);
+fn a_question_taller_than_the_pane_keeps_its_head_and_its_choices() {
+    let transcript = asked(
+        "three files",
+        &[
+            "sandbx: write /work/a.rs",
+            "second row",
+            "third row",
+            "fourth row",
+            "allow it? [y]es / [n]o",
+        ],
+    );
 
-    let rows = rows(&transcript, 40, 4);
+    let rows = rows(&transcript, 40, 6);
     assert_eq!(
         rows,
         [
-            format!("{GUTTER}one"),
-            format!("{GUTTER}two"),
-            format!("{GUTTER}three"),
+            format!("{GUTTER}sandbx: write /work/a.rs"),
+            format!("{GUTTER}second row"),
+            format!("{GUTTER}third row"),
+            format!("{GUTTER}…"),
+            format!("{GUTTER}allow it? [y]es / [n]o"),
             "rounds 0 · ctrl-c interrupts".to_string(),
         ]
     );
+}
+
+/// The same question with room for all of it has no mark, so the mark means something was
+/// cut and not that the question has one.
+#[test]
+fn a_question_that_fits_is_drawn_whole() {
+    let transcript = asked("", &["sandbx: write /work/a.rs", "allow it? [y]es / [n]o"]);
+
+    let rows = rows(&transcript, 40, 8);
+    assert!(
+        !rows.iter().any(|row| row.contains('…')),
+        "a question that fit was marked as cut: {rows:?}"
+    );
+}
+
+/// A choices row that wraps is kept whole: it is the part that says what the keys do.
+#[test]
+fn a_wrapped_choices_row_is_kept_whole() {
+    let transcript = asked(
+        "three files",
+        &["one", "two", "three", "four", "alpha bravo charlie delta"],
+    );
+
+    let rows = rows(&transcript, 14, 6);
+    assert_eq!(rows[0], format!("{GUTTER}one"), "{rows:?}");
+    let tail = rows[1..5].join("|");
+    assert!(tail.ends_with("alpha bravo|charlie delta"), "{rows:?}");
+    assert!(tail.contains('…'), "{rows:?}");
 }
 
 /// The reprint after the screen is given back has no operator to ask.
