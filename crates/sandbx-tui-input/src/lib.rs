@@ -106,7 +106,6 @@ impl Wire {
         self.wake();
     }
 
-    /// Record one key press: an interrupt latches, an answer is kept if one is asked for.
     fn pressed(&self, key: KeyEvent) {
         self.seen.send_modify(|seen| pressed(seen, key));
 
@@ -142,7 +141,6 @@ impl Wire {
         Ok(())
     }
 
-    /// The reader is reading again, or has stopped blocking.
     fn busy(&self) {
         self.slate().idle = false;
     }
