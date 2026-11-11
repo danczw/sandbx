@@ -61,6 +61,28 @@ pub fn draw(frame: &mut Frame, transcript: &Transcript) {
     frame.render_widget(status(transcript), bar);
 }
 
+/// Whether a pane of `width` by `height` can show the question being asked well enough to
+/// answer it: whole, or cut to a head row, the mark and the choices. True where none is asked.
+///
+/// For a caller about to wait on keys: a question the pane cannot show is one the operator
+/// would answer blind, and [`draw`] shows what it can regardless.
+pub fn question_fits(transcript: &Transcript, width: u16, height: u16) -> bool {
+    let Some(question) = question(transcript) else {
+        return true;
+    };
+
+    let room = usize::from(height.saturating_sub(1));
+    if question.line_count(width) <= room {
+        return true;
+    }
+
+    let Some(choices) = transcript.question().last() else {
+        return true;
+    };
+    // A head row, the mark, and the choices however they wrap.
+    room >= marked(choices).line_count(width) + 2
+}
+
 /// A question that does not fit `dock`: its head, a row marking the cut, and its last row.
 ///
 /// No blank row above it, that being the first thing to go. The last row is kept whole,

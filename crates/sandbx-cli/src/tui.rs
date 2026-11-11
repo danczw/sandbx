@@ -657,11 +657,12 @@ fn paint(pane: &Mutex<Pane>, change: impl FnOnce(&mut Transcript)) {
 }
 
 /// The question goes on the screen: drawn as [`paint`] draws, and reported undrawn under a
-/// poisoned lock or once a draw has failed.
+/// poisoned lock, once a draw has failed, or in a window too small to show it.
 impl Shows for &Mutex<Pane> {
     fn show(&mut self, lines: &[&str]) -> bool {
         paint(self, |transcript| transcript.ask(lines));
-        self.lock().is_ok_and(|pane| pane.screen.drawing())
+        self.lock()
+            .is_ok_and(|pane| pane.screen.drawing() && pane.screen.shows_question())
     }
 
     fn clear(&mut self) {

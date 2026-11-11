@@ -9,6 +9,7 @@ pub fn sandbx_screen::Screen::enter(sandbx_tui_transcript::transcript::Transcrip
 pub fn sandbx_screen::Screen::failure(&mut self) -> core::option::Option<core::io::error::Error>
 pub fn sandbx_screen::Screen::paint(&mut self, impl core::ops::function::FnOnce(&mut sandbx_tui_transcript::transcript::Transcript))
 pub fn sandbx_screen::Screen::plain(&self) -> alloc::string::String
+pub fn sandbx_screen::Screen::shows_question(&self) -> bool
 impl core::ops::drop::Drop for sandbx_screen::Screen
 pub fn sandbx_screen::Screen::drop(&mut self)
 impl core::marker::Freeze for sandbx_screen::Screen

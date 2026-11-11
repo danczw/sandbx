@@ -2,7 +2,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use sandbx_event::AgentEvent;
 
-use super::{GUTTER, GUTTER_MARK, draw, plain};
+use super::{GUTTER, GUTTER_MARK, draw, plain, question_fits};
 use crate::transcript::{Reasoning, Transcript};
 
 /// Render `transcript` at that size and read the cells back as rows of text.
@@ -327,4 +327,52 @@ fn the_plain_transcript_never_carries_a_question() {
     let transcript = asked("three files", &["sandbx: write /work/a"]);
 
     assert_eq!(plain(&transcript), plain(&turn("three files")));
+}
+
+/// A pane that cannot show a question's head, a cut and its choices cannot be answered
+/// knowingly, and says so: the gate is told, rather than left waiting on keys for a call the
+/// operator was never shown.
+#[test]
+fn a_pane_too_small_for_the_question_says_so() {
+    let transcript = asked(
+        "three files",
+        &[
+            "sandbx: write /work/a.rs",
+            "second row",
+            "allow it? [y]es / [n]o",
+        ],
+    );
+
+    // Nothing asked fits anywhere.
+    assert!(question_fits(&turn("three files"), 40, 1));
+    // Whole: blank row, three rows, and the bar.
+    assert!(question_fits(&transcript, 40, 5));
+    // Cut to head, mark and choices: the smallest that is still a question.
+    assert!(question_fits(&transcript, 40, 4));
+    // Choices alone, or less.
+    assert!(
+        !question_fits(&transcript, 40, 3),
+        "choices and a mark only"
+    );
+    assert!(!question_fits(&transcript, 40, 2));
+    assert!(!question_fits(&transcript, 40, 1), "no room for anything");
+}
+
+/// The choices row wrapping takes room from the head, so what fits depends on the width.
+#[test]
+fn a_narrow_pane_needs_more_rows_for_the_same_question() {
+    let transcript = asked(
+        "three files",
+        &[
+            "sandbx: write /work/a.rs",
+            "second row",
+            "allow it? [y]es / [n]o",
+        ],
+    );
+
+    assert!(question_fits(&transcript, 40, 4));
+    assert!(
+        !question_fits(&transcript, 12, 4),
+        "a wrapped choices row left no head"
+    );
 }

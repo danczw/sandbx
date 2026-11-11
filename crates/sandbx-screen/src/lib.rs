@@ -15,7 +15,7 @@ use ratatui::buffer::Cell;
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
 use ratatui::layout::{Position, Size};
-use sandbx_tui_transcript::{draw, plain};
+use sandbx_tui_transcript::{draw, plain, question_fits};
 
 /// Re-exported, not left to the caller: every entry point here takes or returns a
 /// [`Transcript`], and building one takes a [`Reasoning`] (#352).
@@ -93,6 +93,17 @@ impl Screen {
     /// For a caller whose next step is only sound if the operator saw what was painted.
     pub fn drawing(&self) -> bool {
         self.failed.is_none()
+    }
+
+    /// Whether this screen can show the question the transcript holds well enough to answer
+    /// it: false where the window is too small, or cannot be read.
+    ///
+    /// For a caller about to wait on keys, with `drawing`: an operator who cannot see the
+    /// call would be answering blind.
+    pub fn shows_question(&self) -> bool {
+        self.terminal
+            .size()
+            .is_ok_and(|size| question_fits(&self.transcript, size.width, size.height))
     }
 
     /// The draw failure that stopped the screen updating, if one did. Taken, so a caller
