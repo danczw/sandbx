@@ -3,8 +3,7 @@
 //! What is asked, and what an answer means, are `agent_prompt.rs`'s; this is only where the
 //! question is drawn and the answer comes from. A gate cannot await, so it waits on the key
 //! thread `sandbx-tui-input` owns, which no task of the runtime feeds — the class
-//! `context/decision-approval-gate.md` allows a gate to block on, and the reason the screen
-//! never needs a second runtime thread to take the answer.
+//! `context/decision-approval-gate.md` allows a gate to block on.
 
 use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_tui_input::{Answers, Reply};
@@ -25,7 +24,6 @@ pub(super) trait Shows: Notes {
     /// the screen. False is a screen that has failed, or one that cannot be reached.
     fn show(&mut self, lines: &[&str]) -> bool;
 
-    /// Take the question down.
     fn clear(&mut self);
 }
 
