@@ -185,10 +185,7 @@ fn text(transcript: &Transcript) -> Text<'static> {
 
     if let Some(call) = transcript.running() {
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled(
-            format!("{}sandbx: running {call}", gutter(Kind::Note, 0)),
-            Style::new().add_modifier(Modifier::BOLD),
-        )));
+        lines.push(marked_line(&format!("sandbx: running {call}")));
     }
 
     Text::from(lines)
