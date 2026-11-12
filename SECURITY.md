@@ -300,7 +300,8 @@ architecture the filter gates on.
     ([#225](https://github.com/danczw/sandbx/issues/225)). A pane too short for
     the whole question shows its first and last rows with a `…` row between, one
     too small even for that counts as unable to show it. A resize while one waits
-    redraws it, and a key pressed before the redraw is not its answer.
+    redraws it within about a tenth of a second. A key pressed in that gap still
+    answers the old frame, and one pressed once the redraw begins does not.
   - **A terminal that goes away *during* a run is fail-closed and noticed.** The
     read fails rather than returning an answer, so that call and the ones behind
     it are refused, no further request is sent, and the process exits 3 rather
