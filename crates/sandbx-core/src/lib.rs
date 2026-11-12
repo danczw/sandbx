@@ -19,6 +19,7 @@ compile_error!(
 );
 
 mod audit_event;
+mod cancel;
 mod command;
 mod concealment;
 mod degradation;
@@ -33,6 +34,7 @@ mod spawn;
 mod spawn_id;
 
 pub use audit_event::{AUDIT_TARGET, AuditEvent, Pinning};
+pub use cancel::Cancel;
 pub use command::{
     CommandLine, HELPER_FLAG, HELPER_INNER_FLAG, SandboxedCommand, with_helper_dispatch,
 };

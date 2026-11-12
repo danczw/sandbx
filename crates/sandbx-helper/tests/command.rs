@@ -9,7 +9,7 @@
 //! off, which `-D warnings` refuses.
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
-use sandbx_core::{SandboxPolicy, SandboxedCommand};
+use sandbx_core::{Cancel, SandboxError, SandboxPolicy, SandboxedCommand};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
@@ -137,6 +137,94 @@ fn a_command_that_outruns_its_timeout_is_killed() {
         elapsed < Duration::from_secs(5),
         "returned an error but only after {elapsed:?} — the caller was still blocked"
     );
+}
+
+/// Raise `cancel` once the command has had time to start.
+fn raise_soon(cancel: &Cancel) -> thread::JoinHandle<()> {
+    let raiser = cancel.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(200));
+        raiser.raise();
+    })
+}
+
+/// Cancellation is the deadline's kill on a different condition, so it must not need the
+/// deadline: no timeout is set, and the elapsed time is the guarantee, as above.
+#[test]
+fn a_raised_cancel_kills_a_command_with_no_timeout() {
+    let cancel = Cancel::new();
+    let stopper = raise_soon(&cancel);
+    let started = Instant::now();
+
+    let result = SandboxedCommand::new(
+        "/bin/sh",
+        SandboxPolicy::default().allow_system_executables(),
+    )
+    .arg("-c")
+    .arg("sleep 30")
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .cancel_on(cancel)
+    .output();
+
+    let elapsed = started.elapsed();
+    stopper.join().unwrap();
+
+    assert!(
+        matches!(result, Err(SandboxError::Cancelled)),
+        "expected a cancellation, got: {result:?}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "cancelled but only after {elapsed:?} — the caller was still blocked"
+    );
+}
+
+/// The group kill, not just the direct child: a pipeline leaves a grandchild holding the
+/// pipes, which would keep the readers waiting past the cancel.
+#[test]
+fn a_raised_cancel_frees_the_call_from_a_grandchild() {
+    let cancel = Cancel::new();
+    let stopper = raise_soon(&cancel);
+    let started = Instant::now();
+
+    let result = SandboxedCommand::new(
+        "/bin/sh",
+        SandboxPolicy::default().allow_system_executables(),
+    )
+    .arg("-c")
+    .arg("sleep 30 | cat")
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .timeout(Duration::from_secs(60))
+    .cancel_on(cancel)
+    .output();
+
+    let elapsed = started.elapsed();
+    stopper.join().unwrap();
+
+    assert!(
+        matches!(result, Err(SandboxError::Cancelled)),
+        "expected a cancellation, got: {result:?}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "a grandchild kept the cancelled call blocked for {elapsed:?}"
+    );
+}
+
+/// A token nobody raises changes nothing, so every existing caller keeps its behaviour.
+#[test]
+fn an_unraised_cancel_lets_a_command_finish() {
+    let output = SandboxedCommand::new(
+        "/bin/echo",
+        SandboxPolicy::default().allow_system_executables(),
+    )
+    .arg("done")
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .cancel_on(Cancel::new())
+    .output()
+    .expect("a command nobody cancelled must run");
+
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "done");
 }
 
 /// Grandchildren inherit the pipes, so killing only the direct child leaves the reader

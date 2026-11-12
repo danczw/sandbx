@@ -101,6 +101,7 @@ fn every_variant() -> Vec<SandboxError> {
         SandboxError::TimedOut {
             after: Duration::from_secs(1),
         },
+        SandboxError::Cancelled,
         SandboxError::Unsupported { detail: "sample" },
         SandboxError::UnboundedResolution { detail: "sample" },
         SandboxError::GrantBoundByResolver {
@@ -136,6 +137,7 @@ fn every_variant() -> Vec<SandboxError> {
             | SandboxError::PinUnreadable { .. }
             | SandboxError::PinnedScript { .. }
             | SandboxError::TimedOut { .. }
+            | SandboxError::Cancelled
             | SandboxError::HelperRefused { .. }
             | SandboxError::UnboundedResolution { .. }
             | SandboxError::GrantBoundByResolver { .. }
@@ -181,6 +183,7 @@ fn each_variant_keeps_the_label_a_trail_filters_by() {
             SandboxError::PinUnreadable { .. } => "pin_unreadable",
             SandboxError::PinnedScript { .. } => "pinned_script",
             SandboxError::TimedOut { .. } => "timeout",
+            SandboxError::Cancelled => "cancelled",
             SandboxError::Unsupported { .. } => "unsupported",
             SandboxError::UnboundedResolution { .. } => "unbounded_resolution",
             SandboxError::GrantBoundByResolver { .. } => "grant_bound_by_resolver",
@@ -262,6 +265,7 @@ fn the_reasons_the_helper_does_not_decide_are_not_refusals() {
                 | SandboxError::UnboundedResolution { .. }
                 | SandboxError::GrantBoundByResolver { .. }
                 | SandboxError::TimedOut { .. }
+                | SandboxError::Cancelled
         );
 
         assert_eq!(

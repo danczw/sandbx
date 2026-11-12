@@ -173,6 +173,8 @@ impl SandboxError {
             Self::GrantBoundByResolver { .. } => Parent("grant_bound_by_resolver"),
             // The word the operator typed and the docs use, so a trail reader greps for it.
             Self::TimedOut { .. } => Parent("timeout"),
+            // Decided by the caller's token, not by anything the command did.
+            Self::Cancelled => Parent("cancelled"),
             // The relay's own output: reporting it would be a second crossing. Borrowed, so a
             // trail filtered by `reason=` cannot tell which side of the channel decided it.
             Self::HelperRefused { refusal, .. } => Parent(refusal.label()),

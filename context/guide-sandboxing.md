@@ -436,7 +436,7 @@ construction rather than a call each site has to remember:
 sandbx ──► helper stage 1 ──► stage 2 ──► the command
        ↑                  ↑           ↑
  helper_command()      inner stage   .spawn()   ◄── the load-bearing one
- (output, run_with_deadline)
+ (output, run_supervised)
        └──────────────────┴───────────┘
               all three via spawn::command
 ```

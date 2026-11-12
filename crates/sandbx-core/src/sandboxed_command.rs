@@ -14,7 +14,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use std::{fs, io, mem, thread};
 
-use crate::{HelperArgs, SandboxError, SandboxPolicy, Sha256Digest};
+use crate::{Cancel, HelperArgs, SandboxError, SandboxPolicy, Sha256Digest};
 
 use super::dispatch::HELPER_FLAG;
 
@@ -31,6 +31,7 @@ pub struct SandboxedCommand {
     policy: SandboxPolicy,
     helper: Option<PathBuf>,
     timeout: Option<Duration>,
+    cancel: Option<Cancel>,
     pin: Option<Sha256Digest>,
     session: Option<String>,
 }
@@ -60,6 +61,7 @@ impl SandboxedCommand {
             policy,
             helper: None,
             timeout: None,
+            cancel: None,
             pin: None,
             session: None,
         }
@@ -99,6 +101,17 @@ impl SandboxedCommand {
     #[must_use]
     pub fn timeout(mut self, limit: Duration) -> Self {
         self.timeout = Some(limit);
+        self
+    }
+
+    /// Kill the command once `cancel` is raised, from any thread; unset by default.
+    ///
+    /// Reaches the same group kill a timeout does, on a different condition, and is noticed
+    /// within a poll interval. Setting one puts the run on the polled path even with no
+    /// [`timeout`](Self::timeout), the unpolled one having no way to look.
+    #[must_use]
+    pub fn cancel_on(mut self, cancel: Cancel) -> Self {
+        self.cancel = Some(cancel);
         self
     }
 
@@ -157,17 +170,25 @@ impl SandboxedCommand {
 
     /// Run the command to completion and collect its output. Blocks until the command exits,
     /// or — with a [`timeout`](Self::timeout) set — until the limit expires, which kills it
-    /// and returns [`SandboxError::TimedOut`]. A helper stage that refused returns
+    /// and returns [`SandboxError::TimedOut`]. A [`cancel_on`](Self::cancel_on) token raised
+    /// does the same and returns [`SandboxError::Cancelled`] — before anything starts, where
+    /// it was raised already. A helper stage that refused returns
     /// [`SandboxError::HelperRefused`] rather than the status it exited with, which is
     /// indistinguishable from the command's own.
     ///
-    /// Untimed, nothing kills anything: no process group is made, and namespace teardown is
-    /// the only thing that ends a descendant.
+    /// Neither timed nor cancellable, nothing kills anything: no process group is made, and
+    /// namespace teardown is the only thing that ends a descendant.
     ///
     /// A run is two records (#96): `spawned`, then any `degraded`, then exactly one `exited`
     /// or `failed`, emitted here and nowhere else.
     pub fn output(&self) -> Result<Output, SandboxError> {
         let CommandLine { helper, argv } = self.command_line()?;
+
+        // Ahead of the `spawned` record, so a run that never started leaves no pair to close.
+        if self.cancel.as_ref().is_some_and(Cancel::is_raised) {
+            return Err(SandboxError::Cancelled);
+        }
+
         let (audit, write_end) = audit_channel()?;
 
         // Minted here and not in `new`: this takes `&self`, so one builder can be run more
@@ -188,9 +209,16 @@ impl SandboxedCommand {
         )
         .emit();
 
-        let result = match self.timeout {
-            None => run_to_completion(&helper, &argv, &self.policy, write_end),
-            Some(limit) => run_with_deadline(&helper, &argv, &self.policy, limit, write_end),
+        let result = match (self.timeout, &self.cancel) {
+            (None, None) => run_to_completion(&helper, &argv, &self.policy, write_end),
+            (limit, cancel) => run_supervised(
+                &helper,
+                &argv,
+                &self.policy,
+                limit,
+                cancel.as_ref(),
+                write_end,
+            ),
         };
 
         // Both paths wait before returning, so nothing drains the pipe while the helper
@@ -242,7 +270,7 @@ fn helper_command(helper: &Path, argv: &[OsString], policy: &SandboxPolicy) -> C
 
 /// Spawn the helper and wait for it, with no deadline. `Command::output` reads both pipes
 /// to EOF before it waits, so a command that never exits wedges the caller;
-/// [`run_with_deadline`] is the path that cannot.
+/// [`run_supervised`] is the path that cannot.
 fn run_to_completion(
     helper: &Path,
     argv: &[OsString],
@@ -310,14 +338,15 @@ fn record_reports(
     refused
 }
 
-/// Spawn the helper and wait for it, giving up after `limit`. Not `output()`:
-/// `std::process` has no timed wait, so this drains both pipes on their own threads and
-/// polls for exit until the deadline.
-fn run_with_deadline(
+/// Spawn the helper and wait for it, giving up after `limit` or once `cancel` is raised.
+/// Not `output()`: `std::process` has no timed wait, so this drains both pipes on their own
+/// threads and polls for exit, for the deadline and the token alike.
+fn run_supervised(
     helper: &Path,
     argv: &[OsString],
     policy: &SandboxPolicy,
-    limit: Duration,
+    limit: Option<Duration>,
+    cancel: Option<&Cancel>,
     write_end: PipeWriter,
 ) -> Result<Output, SandboxError> {
     use std::os::unix::process::CommandExt;
@@ -348,33 +377,40 @@ fn run_with_deadline(
     let out = drain(child.stdout.take());
     let err = drain(child.stderr.take());
 
-    let deadline = Instant::now() + limit;
+    let expiry = limit.map(|limit| (Instant::now() + limit, limit));
     let finished = loop {
         match child.try_wait() {
-            Ok(Some(status)) => break Ok(Some(status)),
-            Ok(None) if Instant::now() >= deadline => break Ok(None),
-            Ok(None) => thread::sleep(POLL_INTERVAL),
+            // Ahead of the token: a command that already exited was not stopped by it.
+            Ok(Some(status)) => break Ok(status),
+            Ok(None) if cancel.is_some_and(Cancel::is_raised) => {
+                break Err(SandboxError::Cancelled);
+            }
+            Ok(None) => {
+                if let Some((_, after)) = expiry.filter(|&(deadline, _)| Instant::now() >= deadline)
+                {
+                    break Err(SandboxError::TimedOut { after });
+                }
+                thread::sleep(POLL_INTERVAL);
+            }
             // Broken out and not returned, so the kill below is not skipped: the caller
             // reads the audit channel to an EOF only a dead helper gives.
             Err(source) => break Err(spawn_failed(source)),
         }
     };
 
-    // On every path out of the loop, not just the timeout: a command may background work and
-    // exit inside its deadline, leaving behind processes that inherited the pipe write ends
-    // — the readers would otherwise never see EOF.
+    // On every path out of the loop, not just a timeout or a cancel: a command may background
+    // work and exit inside its deadline, leaving behind processes that inherited the pipe
+    // write ends — the readers would otherwise never see EOF.
     kill_group(group);
 
     let status = match finished {
-        Ok(Some(status)) => status,
-        // A refused `try_wait` and a timeout leave the same thing behind: no status, a child
-        // to reap and readers to let go.
-        outcome => {
+        Ok(status) => status,
+        // A refused `try_wait`, a timeout and a cancel leave the same thing behind: no
+        // status, a child to reap and readers to let go.
+        Err(error) => {
             let _ = child.wait();
             settle(&out.reader, &err.reader);
-            return Err(outcome
-                .err()
-                .unwrap_or(SandboxError::TimedOut { after: limit }));
+            return Err(error);
         }
     };
 
