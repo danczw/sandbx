@@ -609,10 +609,7 @@ impl Pane {
     /// A call ended: its line replaces the row naming it, in one frame, so no frame shows
     /// the call both running and settled. Kept as [`Notes::note`] keeps a line.
     fn settle(&mut self, line: &str) {
-        self.apply(|transcript| {
-            transcript.ended();
-            transcript.note(line);
-        });
+        self.apply(|transcript| transcript.settle(line));
         self.said.push(line.to_string());
     }
 }

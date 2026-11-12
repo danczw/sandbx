@@ -56,9 +56,9 @@ pub struct Transcript {
     /// Apart from `entries`: it is not part of the turn, and is gone once answered.
     question: Vec<String>,
 
-    /// The approved call being run, `None` when there is none. Apart from `entries` for the
-    /// question's reason, and for #169's: it is drawn while the call runs, and nothing of it
-    /// is left to contradict a refusal that comes after approval.
+    /// The approved call being run, `None` when there is none. Apart from `entries`, so it is
+    /// never reprinted: a refusal after approval leaves its own line and no row claiming a
+    /// run (#169).
     running: Option<String>,
 }
 
@@ -146,10 +146,14 @@ impl Transcript {
         self.running = Some(spelled(call));
     }
 
-    /// Take the running call down: it ended, however it ended. The line saying how is a
-    /// [`note`](Self::note), and the caller makes both changes together.
-    pub fn ended(&mut self) {
+    /// A call ended, however it ended: take the running call down and show `line`, which
+    /// says how, as [`note`](Self::note) does.
+    ///
+    /// One change, so no caller can note the line and leave the row beside it, or take the
+    /// row down and lose the line. Harmless where no call was running.
+    pub fn settle(&mut self, line: &str) {
         self.running = None;
+        self.note(line);
     }
 
     pub(crate) fn running(&self) -> Option<&str> {

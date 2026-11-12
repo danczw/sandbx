@@ -340,15 +340,18 @@ fn a_running_call_is_drawn_on_a_marked_row() {
     assert_eq!(rows[7], "rounds 0 · ctrl-c interrupts");
 }
 
-/// The pair the one above needs: the screen once the call settles is the screen without one.
+/// The pair the one above needs: the screen once the call settles is the screen with its
+/// line and without the row.
 #[test]
-fn a_settled_call_leaves_the_screen_as_it_was() {
-    let before = rows(&turn("three files"), 40, 8);
+fn a_settled_call_leaves_only_its_line() {
+    let line = "sandbx: bash make test — ran";
+    let mut expected = turn("three files");
+    expected.note(line);
 
     let mut transcript = running("three files", "bash make test");
-    transcript.ended();
+    transcript.settle(line);
 
-    assert_eq!(rows(&transcript, 40, 8), before);
+    assert_eq!(rows(&transcript, 40, 8), rows(&expected, 40, 8));
 }
 
 /// The command can carry the mark's confusables and a break, and the row is the one that
@@ -432,8 +435,7 @@ fn a_refused_call_leaves_no_line_saying_it_ran() {
         "{during:?}"
     );
 
-    transcript.ended();
-    transcript.note("sandbx: write /etc/passwd — refused by the policy: no grant covers it");
+    transcript.settle("sandbx: write /etc/passwd — refused by the policy: no grant covers it");
 
     let after = rows(&transcript, 90, 8);
     assert!(
