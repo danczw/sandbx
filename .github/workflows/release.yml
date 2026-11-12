@@ -1,6 +1,6 @@
 name: Release
 
-# Nothing publishes on a branch push, so a merge cannot ship a binary by itself.
+# Tags only: a merge cannot ship a binary by itself.
 on:
   push:
     tags: ["v*"]
@@ -8,8 +8,8 @@ on:
 permissions:
   contents: read
 
-# Workflow-wide, not per-ref as in ci.yml: the race is between two *tags*, each
-# reading the published release set before either has published into it.
+# Workflow-wide, unlike ci.yml: two *tags* race, each reading the published
+# release set before either has published into it.
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
@@ -20,12 +20,11 @@ env:
 
 jobs:
   build:
-    # Gated on `notes` so a malformed file fails before two native legs, one paid.
+    # After `notes`, so a malformed file fails before two native legs, one paid.
     needs: notes
     strategy:
       fail-fast: false
-      # musl, not gnu: a glibc build records the build machine's glibc as a
-      # *minimum* version, so it refuses to start on an older distribution.
+      # musl, not gnu: a glibc build needs the build machine's glibc or newer.
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
@@ -38,17 +37,17 @@ jobs:
         with:
           persist-credentials: false
 
-      # Same SHA as ci.yml's rust-toolchain steps; why `v1` and not `stable` is there.
+      # Same SHA as ci.yml's toolchain steps; why `v1`, not `stable`, is there.
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
 
-      # No cache here, unlike ci.yml: this build is published, and a cache entry
-      # any PR run could have written is attacker-influenced input to it.
+      # No cache, unlike ci.yml: any PR run could have written the entry, and
+      # this build is published.
 
-      # Nothing else checks this pairing, and the enforcement gate below rests on
-      # it: a mismatch would cross-compile and publish a green result proving nothing.
+      # The enforcement gate below rests on this pairing: a mismatch would
+      # cross-compile and go green proving nothing.
       - name: Check the runner matches the target
         run: |
           case "${{ matrix.target }}" in
@@ -80,8 +79,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      # Enforcement gates the release and not only the merge; see SECURITY.md.
-      # `--locked`, so the graph tested is the graph the build below ships.
+      # Enforcement gates the release, not only the merge; see SECURITY.md.
+      # `--locked`: the graph tested is the graph shipped.
       - name: Test, including real sandbox enforcement
         run: |
           cargo test --workspace --locked \
@@ -127,8 +126,7 @@ jobs:
           path: docs/release-notes/${{ github.ref_name }}.md
           if-no-files-found: error
 
-      # Here and not in `build`, which is a matrix: two legs writing one output
-      # map is last-writer-wins.
+      # Not in `build`: matrix legs writing one output map are last-writer-wins.
       - name: Classify the tag
         id: classify
         run: |
@@ -144,12 +142,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          # Two statements, not a pipe: the default shell has no `pipefail`, so a
-          # failed API call would read as an empty release set, answering `true`.
+          # Not a pipe: no `pipefail` by default, so a failed call would read as
+          # an empty release set and answer `true`.
           gh api --paginate "repos/$GH_REPO/releases" \
             --jq '.[] | select(.draft == false) | .tag_name' > published.txt
-          # A call that succeeds and matches nothing answers `true` unchallenged.
-          # This repository has published releases, so empty means the query broke.
+          # Empty would answer `true` unchallenged, and this repository has
+          # releases, so it means the query broke.
           [ -s published.txt ] || { echo "::error::no releases returned"; exit 1; }
           latest="$(.github/scripts/release-channel.sh --latest \
             "$GITHUB_REF_NAME" < published.txt)"
@@ -189,7 +187,7 @@ jobs:
           # newline, so a size test would pass on both.
           grep -q '[^[:space:]]' generated.md && ! grep -qx 'null' generated.md \
             || { echo "::error::generate-notes returned no PR list"; exit 1; }
-          # $(cat) strips trailing newlines, so the join is exactly one blank line.
+          # $(cat) strips trailing newlines: the join is exactly one blank line.
           printf '%s\n\n' "$(cat "$notes")" > notes.md
           cat generated.md >> notes.md
 
@@ -203,8 +201,8 @@ jobs:
           CHANNEL: ${{ needs.notes.outputs.channel }}
           LATEST: ${{ needs.notes.outputs.latest }}
         run: |
-          # An empty `$CHANNEL` means the handoff broke, and defaulting it to
-          # pre-release would be right for every pre-1.0 tag and hide that until 1.0.
+          # Empty `$CHANNEL` means the handoff broke; defaulting to pre-release
+          # would hide that until 1.0.
           prerelease=()
           case "$CHANNEL" in
             release) ;;
@@ -215,8 +213,8 @@ jobs:
             true | false) ;;
             *) echo "::error::unusable latest: '$LATEST'"; exit 1 ;;
           esac
-          # `make_latest` defaults to true in the API, so omitting this lets
-          # publication order decide the link; a backport would demote its own line.
+          # `make_latest` defaults to true: publication order would pick the
+          # link and a backport would demote its own line.
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
             --notes-file notes.md \
