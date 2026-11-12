@@ -430,8 +430,9 @@ fn stop(stopped: Stopped, wrapping: bool) -> Ending {
         format!(
             "{how}. Under `--session` the rounds it finished are kept, and the one it stopped \
              in is kept if it was running tools and is lost if the model was still writing. A \
-             `bash` command already running is killed and a `grep` stops before its next file; \
-             any other tool call already running finishes first, and what it did stays (#26)"
+             `bash` command already running is killed, and a call that only reads is left \
+             running and not waited for; a `write` or `edit` already running finishes first, \
+             and what it did stays (#26)"
         )
     };
 
