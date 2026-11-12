@@ -20,23 +20,20 @@ pub(crate) const GUTTER_MARK: char = '│';
 /// [`GUTTER_MARK`] as it is drawn: the mark, then the space separating it from the row.
 const GUTTER: &str = "│ ";
 
-/// Draw one frame: the whole transcript, tail-aligned, the question under it when one is
-/// being asked or else the call being run, and the status bar under that.
+/// Draw one frame: the whole transcript, tail-aligned, and the call being run under its last
+/// line, the question under that when one is being asked, and the status bar under that.
 ///
 /// The question takes its rows from the transcript and never the other way round. In a pane
 /// too short for all of it, its middle goes and a marked row stands in: the first rows name
 /// the call and the last say what the keys do, and a question missing either cannot be
-/// answered knowingly. The running call is one row, cut at the pane's edge.
+/// answered knowingly.
 pub fn draw(frame: &mut Frame, transcript: &Transcript) {
     let area = frame.area();
 
     let question = question(transcript);
-    // Never both: the gate takes the question down before it approves the call.
-    let call = running(transcript).filter(|_| question.is_none());
     let asked = question
         .as_ref()
-        .or(call.as_ref())
-        .map_or(0, |dock| dock.line_count(area.width));
+        .map_or(0, |question| question.line_count(area.width));
     // The bar keeps its row.
     let shown = asked.min(usize::from(area.height.saturating_sub(1)));
     let [body, dock, bar] = Layout::vertical([
@@ -60,9 +57,6 @@ pub fn draw(frame: &mut Frame, transcript: &Transcript) {
         } else {
             cut_question(frame, transcript.question(), dock);
         }
-    }
-    if let Some(call) = call {
-        frame.render_widget(call, dock);
     }
     frame.render_widget(status(transcript), bar);
 }
@@ -150,23 +144,6 @@ fn question(transcript: &Transcript) -> Option<Paragraph<'static>> {
     Some(question_paragraph(rows, true))
 }
 
-/// The call being run, on one [`GUTTER`]ed row, or `None` where none is. The mark is why the
-/// command, which is the model's, cannot pass as sandbx's own words. "Running" is all it
-/// claims: the call may still be refused after approval, and the row is gone by then, so no
-/// entry is left to say otherwise.
-///
-/// Not wrapped, so a long command is cut at the pane's edge rather than taking the pane from
-/// the transcript, its continuation rows carrying no mark. The state leads the row, so the
-/// cut loses the command's tail and never the word that tells this row from a settled line,
-/// which ends in its outcome.
-fn running(transcript: &Transcript) -> Option<Paragraph<'static>> {
-    let call = transcript.running()?;
-
-    Some(Paragraph::new(marked_line(&format!(
-        "sandbx: running {call}"
-    ))))
-}
-
 /// `rows` as marked lines, under a blank row where `spaced`.
 fn question_paragraph(rows: &[String], spaced: bool) -> Paragraph<'static> {
     let blank = spaced.then(Line::default);
@@ -189,16 +166,32 @@ fn marked_line(row: &str) -> Line<'static> {
     ))
 }
 
-/// The transcript as rows, one blank row between entries.
+/// The transcript as rows, one blank row between entries, and the call being run after the
+/// last of them.
+///
+/// The call is a row here and not an entry, which is why [`plain`] never has it: it is drawn
+/// where the line saying how it ended will go, wearing the same mark, and is gone when that
+/// line arrives. "Running" is all it claims: the call may still be refused after approval,
+/// and no entry is left to say otherwise. The state leads the row, so it is never the part
+/// of a long command that wraps off, and tells the row from a settled line, which ends in
+/// its outcome.
 fn text(transcript: &Transcript) -> Text<'static> {
-    Text::from(
-        rows(transcript)
-            .map(|(kind, row)| match kind {
-                Some(kind) => Line::from(Span::styled(row, style(kind))),
-                None => Line::default(),
-            })
-            .collect::<Vec<_>>(),
-    )
+    let mut lines: Vec<Line<'static>> = rows(transcript)
+        .map(|(kind, row)| match kind {
+            Some(kind) => Line::from(Span::styled(row, style(kind))),
+            None => Line::default(),
+        })
+        .collect();
+
+    if let Some(call) = transcript.running() {
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(
+            format!("{}sandbx: running {call}", gutter(Kind::Note, 0)),
+            Style::new().add_modifier(Modifier::BOLD),
+        )));
+    }
+
+    Text::from(lines)
 }
 
 /// Every row with its gutter, and the kind it is styled as; `None` for the blank row between
