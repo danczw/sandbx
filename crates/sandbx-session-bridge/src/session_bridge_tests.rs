@@ -207,9 +207,10 @@ fn an_unanswered_call_is_explained_by_the_stop_recorded() {
     assert!(!note(None).contains("rounds"));
 }
 
-/// A hangup is not reported as a keypress, and both name the round they lost (#271).
+/// A hangup is not reported as a keypress, and both say the round was kept and what the
+/// call the stop landed on left out (#271, #26).
 #[test]
-fn a_stopped_turn_names_its_stop_and_what_it_lost() {
+fn a_stopped_turn_names_its_stop_and_what_it_kept() {
     let pressed = resume_note(true, Some(TurnStop::Interrupted)).expect("a note");
     let gone = resume_note(true, Some(TurnStop::HungUp)).expect("a note");
 
@@ -217,7 +218,8 @@ fn a_stopped_turn_names_its_stop_and_what_it_lost() {
     assert!(gone.contains("terminal went away"), "{gone}");
     assert!(!gone.contains("interrupted"), "{gone}");
     for note in [pressed, gone] {
-        assert!(note.contains("is not stored"), "{note}");
+        assert!(note.contains("output withheld"), "{note}");
+        assert!(!note.contains("not stored"), "{note}");
         assert!(!note.contains("rounds"), "{note}");
     }
 }
