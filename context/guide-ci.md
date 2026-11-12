@@ -339,6 +339,16 @@ which then has to be re-run by hand. That is the trade taken deliberately: a
 cancelled run is visible and repeatable, and a tag that took the "latest" link
 wrongly cannot be un-pushed.
 
+### What `publish` attests, and why only there
+
+`publish` mints a provenance attestation for each archive, so it holds
+`id-token: write` and `attestations: write` beside `contents: write`. They stay
+out of `build`: its tests and build scripts run the dependency graph's code, and
+a token there would let that code sign. The cost is that the subject is the
+bytes `build` uploaded, so a compromised build is attested as well — the claim
+is "this run published it", and `SECURITY.md` says no more. The step runs before
+`gh release create`, so a failed attestation leaves no release without one.
+
 ## Pinned actions, and what updates them
 
 Every action is pinned to a SHA with a `# vX.Y.Z` comment beside it. Dependabot

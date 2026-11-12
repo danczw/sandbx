@@ -361,13 +361,19 @@ beside it. Statically linked (musl): no minimum glibc, no runtime dependency
 beyond a Linux 6.10+ kernel with unprivileged user namespaces.
 
 The `.sha256` catches a corrupt download, not a swapped one: it sits on the same
-page as the archive. Each archive also carries a build provenance attestation
-naming the workflow run and commit that built it. Check it with the
-[GitHub CLI](https://cli.github.com/):
+page as the archive. From `v0.1.0-alpha.26` on, each archive also carries a
+provenance attestation naming the release workflow run and commit that
+published it; earlier releases have none. Check it with the
+[GitHub CLI](https://cli.github.com/), signed in (`gh auth login`):
 
 ```sh
-gh attestation verify sandbx-<tag>-<target>.tar.gz --repo danczw/sandbx
+gh attestation verify sandbx-v0.1.0-alpha.26-x86_64-unknown-linux-musl.tar.gz \
+  --repo danczw/sandbx \
+  --signer-workflow danczw/sandbx/.github/workflows/release.yml
 ```
+
+`--signer-workflow` is what ties the archive to a release run: `--repo` alone
+accepts an attestation from any workflow in the repository.
 
 Or build from source:
 
