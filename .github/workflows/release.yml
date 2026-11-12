@@ -161,8 +161,8 @@ jobs:
   publish:
     needs: [build, notes]
     runs-on: ubuntu-latest
-    # `id-token` lets this job mint an attestation, so it stays here and out of
-    # `build`, whose tests and build scripts run the dependency graph's code.
+    # `id-token` lives here, not in `build`: its tests and build scripts run
+    # dependency code.
     permissions:
       contents: write
       id-token: write
@@ -194,7 +194,6 @@ jobs:
           cat generated.md >> notes.md
 
       # Before `Publish`, so a failed attestation leaves no release without one.
-      # The archives only: each `.sha256` is derived from its archive.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*.tar.gz
