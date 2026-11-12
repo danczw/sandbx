@@ -240,6 +240,10 @@ where
 
 /// [`run_turn`], ended as [`TurnStop::Interrupted`] once `stop` resolves.
 ///
+/// The turn owns the stop: it installs a token of its own on `ctx` for the length of the
+/// turn, replacing one the caller set with [`ExecutionContext::with_cancel`], so `stop` is
+/// the only way to cancel a call from here.
+///
 /// Raced against each round's request and its tool calls, `stop` first, so a stop that
 /// has already resolved opens no further request. The round it lands in is dropped whole,
 /// calls already answered in it included. A call already running is waited for rather than

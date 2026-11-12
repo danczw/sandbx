@@ -172,7 +172,8 @@ impl SandboxedCommand {
     /// or — with a [`timeout`](Self::timeout) set — until the limit expires, which kills it
     /// and returns [`SandboxError::TimedOut`]. A [`cancel_on`](Self::cancel_on) token raised
     /// does the same and returns [`SandboxError::Cancelled`] — before anything starts, where
-    /// it was raised already. A helper stage that refused returns
+    /// it was raised already, and then with no record on the trail, as for a policy refused
+    /// in [`command_line`](Self::command_line). A helper stage that refused returns
     /// [`SandboxError::HelperRefused`] rather than the status it exited with, which is
     /// indistinguishable from the command's own.
     ///
@@ -382,6 +383,8 @@ fn run_supervised(
         match child.try_wait() {
             // Ahead of the token: a command that already exited was not stopped by it.
             Ok(Some(status)) => break Ok(status),
+            // Ahead of the deadline: when both are due, the caller's act is the cause worth
+            // recording, not the overrun it happened to coincide with.
             Ok(None) if cancel.is_some_and(Cancel::is_raised) => {
                 break Err(SandboxError::Cancelled);
             }

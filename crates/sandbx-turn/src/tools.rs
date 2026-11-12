@@ -17,6 +17,10 @@ use crate::TurnError;
 /// every other task — hence `spawn_blocking`, whose uncancellability `run_turn` documents.
 /// Every answered block reports to [`CallGate::settled`], including the two refusals above
 /// the gate, which the gate's own verdict cannot account for.
+///
+/// A cancelled `ctx` ends the loop early, leaving a `tool_use` with no `tool_result`: the
+/// caller must drop the round, which `run_turn_until` does and is the only caller to hold
+/// the token.
 pub(crate) async fn answer_calls<G>(
     blocks: &[ContentBlock],
     ctx: &ExecutionContext,
