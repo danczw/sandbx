@@ -97,9 +97,10 @@ pub enum Command {
     ///
     /// Interrupting costs two things, which sandbx prints again once the screen goes:
     /// `--session` keeps the rounds the turn finished but not the one it stopped
-    /// in, and a tool already running finishes — sandbx cannot cancel one
-    /// mid-call, and the process waits for it before it exits. A turn interrupted
-    /// while it is being summarised after `--max-rounds` loses only the summary.
+    /// in, and a tool already running is dealt with first: a `bash` command is
+    /// killed, any other tool call finishes, and the process waits for it before
+    /// it exits. A turn interrupted while it is being summarised after
+    /// `--max-rounds` loses only the summary.
     ///
     /// `--show-thinking` reads differently here: it draws the reasoning in the
     /// pane rather than on stderr.
