@@ -358,8 +358,18 @@ already is.
 Prebuilt Linux binaries are attached to each
 [release](https://github.com/danczw/sandbx/releases), each with a `.sha256`
 beside it. Statically linked (musl): no minimum glibc, no runtime dependency
-beyond a Linux 6.10+ kernel with unprivileged user namespaces. Or build from
-source:
+beyond a Linux 6.10+ kernel with unprivileged user namespaces.
+
+The `.sha256` catches a corrupt download, not a swapped one: it sits on the same
+page as the archive. Each archive also carries a build provenance attestation
+naming the workflow run and commit that built it. Check it with the
+[GitHub CLI](https://cli.github.com/):
+
+```sh
+gh attestation verify sandbx-<tag>-<target>.tar.gz --repo danczw/sandbx
+```
+
+Or build from source:
 
 ```sh
 cargo install --git https://github.com/danczw/sandbx sandbx-cli

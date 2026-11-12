@@ -520,6 +520,12 @@ architecture the filter gates on.
   above — and
   that same reset is why it costs the command nothing: the command's environment
   holds only what `--allow-env` named, plus the constants `imposed_env` sets.
+- **A release archive's provenance says where it was built, not that the source
+  is trustworthy.** The attestation names the workflow run and commit that
+  produced the archive; it does not vouch for that commit, and it protects only
+  a user who runs `gh attestation verify` — sandbx checks nothing on download.
+  The `.sha256` beside each archive detects corruption and nothing more, since
+  whoever can replace the archive can replace it too.
 
 ## Known weaknesses
 
