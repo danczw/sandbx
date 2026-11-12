@@ -32,6 +32,12 @@ where
     let mut aborted: Option<String> = None;
 
     for block in blocks {
+        // A stop raised during the last call: nothing behind it is asked about or run. The
+        // round is dropped whole by the caller, so no `tool_result` is owed for these.
+        if ctx.cancelled() {
+            break;
+        }
+
         let ContentBlock::ToolUse { id, name, input } = block else {
             continue;
         };
@@ -59,8 +65,8 @@ where
             continue;
         }
 
-        // Before `spawn_blocking`, never racing it: a blocking task cannot be cancelled, so
-        // a late decision would not stop the call it refused (#26).
+        // Before `spawn_blocking`, never racing it: an in-process tool cannot be cancelled,
+        // so a late decision would not stop the call it refused (#26).
         let verdict = match &aborted {
             Some(reason) => ApprovalDecision::Deny {
                 reason: reason.clone(),

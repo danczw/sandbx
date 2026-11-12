@@ -15,7 +15,7 @@ use sandbx_compact::{Compaction, PromptUsage, over_budget, plan_cut, window};
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{Prompt, RequestMessage, Role, Thinking, ToolChoice, ToolDefinition};
 use sandbx_provider::{EventStream, ProviderError};
-use sandbx_tools::{BuiltinTool, ExecutionContext};
+use sandbx_tools::{BuiltinTool, Cancel, ExecutionContext};
 
 use crate::TurnError;
 use crate::accumulate::accumulate;
@@ -141,8 +141,8 @@ pub enum TurnStop {
     ///
     /// The transcript is every round before it, as legal to send again as
     /// [`RoundLimit`](Self::RoundLimit)'s, or empty. Not in it: anything of the dropped
-    /// round, the calls it had already run included, and a call it had started, which still
-    /// runs to completion (#26).
+    /// round, the calls it had already run included. A `bash` it had started is killed; any
+    /// other call it had started finishes, and its effect stays (#26).
     Interrupted,
 }
 
@@ -164,8 +164,8 @@ pub struct TurnLimits {
     ///
     /// Bounds one round's *consumption*, which `sandbx-anthropic` leaves to a caller: its own
     /// read timeout resets on every chunk, so a connection kept warm while producing nothing
-    /// is not bounded by it. Not a bound on the turn itself: an outer deadline would not help a
-    /// tool call either, since `spawn_blocking` cannot be cancelled (#26).
+    /// is not bounded by it. Not a bound on the turn itself: an outer deadline would not help an
+    /// in-process tool call either, which cannot be cancelled (#26).
     pub stream_timeout: Duration,
 
     /// Whether to withhold the oldest history from a request that has outgrown a budget,
@@ -215,8 +215,9 @@ impl Default for TurnLimits {
 /// [`TurnStop::GateAborted`]. `context/decision-approval-gate.md` has the rest.
 ///
 /// Tools run on `spawn_blocking`, uncancellable: dropping this future still lets the
-/// blocking task finish, so a turn abandoned mid-tool applies the `write` anyway, recorded
-/// only in the audit trail (#26). [`run_turn_until`] stops a turn and keeps its rounds.
+/// blocking task finish, so a turn abandoned mid-tool applies the `write` anyway, or lets a
+/// `bash` run out its timeout, recorded only in the audit trail (#26). [`run_turn_until`]
+/// stops a turn instead: it keeps the rounds before the stop and kills a running `bash`.
 ///
 /// Needs a tokio runtime with the time driver enabled: the per-round bound is
 /// `tokio::time::timeout`, which panics with "there is no timer running" otherwise.
@@ -241,8 +242,10 @@ where
 ///
 /// Raced against each round's request and its tool calls, `stop` first, so a stop that
 /// has already resolved opens no further request. The round it lands in is dropped whole,
-/// calls already answered in it included; a call already running goes on unseen,
-/// `spawn_blocking` being what it is (#26), and [`CallGate::settled`] never hears of it.
+/// calls already answered in it included. A call already running is waited for rather than
+/// abandoned, and reported to [`CallGate::settled`] as it ends: a `bash` is killed, but an
+/// in-process tool cannot be cancelled (#26), so it finishes and its effect stays. No call
+/// behind it is put to the gate or run.
 ///
 /// [`TurnOutcome::usage`] keeps the dropped round's figure when it reported one, its request
 /// being exactly the messages kept. [`TurnOutcome::withheld`] is the cut of the last request
@@ -267,6 +270,11 @@ where
     G: CallGate,
 {
     let mut stop = pin!(stop);
+    // One per turn, never reused: raised for good, so a token carried over would stop the
+    // next turn's first call before it started. The context is cloned to carry it, which
+    // leaves the caller's untouched.
+    let cancel = Cancel::new();
+    let ctx = &ctx.clone().with_cancel(cancel.clone());
     // Built once: the offered set does not change between rounds.
     let definitions: Vec<ToolDefinition> = turn.tools.iter().copied().map(definition).collect();
     let mut produced: Vec<RequestMessage> = Vec::new();
@@ -369,7 +377,7 @@ where
 
         // Before pushing: answering borrows `round.blocks`, pushing moves them.
         let answered = answer_calls(&round.blocks, ctx, turn.tools, &mut gate);
-        let Some(answers) = unless(stop.as_mut(), answered).await else {
+        let Some(answers) = unless_cancelling(stop.as_mut(), &cancel, answered).await else {
             return Ok(outcome(
                 produced,
                 usage,
@@ -434,6 +442,27 @@ async fn unless<T>(
 ) -> Option<T> {
     match select(stop, pin!(work)).await {
         Either::Left(((), _)) => None,
+        Either::Right((done, _)) => Some(done),
+    }
+}
+
+/// [`unless`], for work that can be told to stop: once `stop` has resolved, raise `cancel` and
+/// wait for `work` to wind down, rather than drop it with a call still running on a thread
+/// nothing can reach.
+///
+/// What `work` returns then is discarded, the round it belongs to being dropped whole.
+async fn unless_cancelling<T>(
+    stop: Pin<&mut impl Future<Output = ()>>,
+    cancel: &Cancel,
+    work: impl Future<Output = T>,
+) -> Option<T> {
+    let mut work = pin!(work);
+    match select(stop, work.as_mut()).await {
+        Either::Left(((), _)) => {
+            cancel.raise();
+            work.await;
+            None
+        }
         Either::Right((done, _)) => Some(done),
     }
 }
