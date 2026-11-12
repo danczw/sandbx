@@ -19,6 +19,7 @@ use crate::TurnError;
 /// `ExecutionContext` settled first (#242). `BuiltinTool::execute` may sit in a `write`, a
 /// directory walk or a 90-second command, which on a current-thread runtime would freeze
 /// every other task — hence `spawn_blocking`, whose uncancellability `run_turn` documents.
+/// A stop abandons a read-only call there and still waits for a `write` or `edit`.
 /// Every answered block reports to [`CallGate::settled`], including the two refusals above
 /// the gate, which the gate's own verdict cannot account for.
 ///
@@ -73,7 +74,7 @@ where
             continue;
         }
 
-        // Before `spawn_blocking`, never racing it: an in-process tool cannot be cancelled,
+        // Before `spawn_blocking`, never racing it: a `write` or `edit` cannot be cancelled,
         // so a late decision would not stop the call it refused (#26).
         let verdict = match &aborted {
             Some(reason) => ApprovalDecision::Deny {

@@ -203,9 +203,9 @@ impl Tui {
             matches!(self.run.approve, Approve::Call).then(|| Modal::new(&pane, keys.answers()));
 
         // Inside the loop rather than raced against it, so the rounds before the stop come
-        // back to be stored. The stop kills a running `bash`, stops a `grep` and waits for
-        // another in-process tool, so the call it stood on settles, and is drawn, before the
-        // turn returns (#26).
+        // back to be stored. The stop kills a running `bash`, leaves a read-only call running
+        // and waits for a `write` or `edit`, so the call it stood on settles, and is drawn,
+        // before the turn returns (#26).
         let mut seen = None;
         let first = run_turn_until(
             &mut open,
