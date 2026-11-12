@@ -204,9 +204,9 @@ It also keeps less. The abort is a `TurnStop`, so the turn returns and its
 messages, usage and `withheld` are stored. A `tui` stop ends the turn through
 `run_turn_until`, which keeps the rounds before it and drops the one it lands
 in, so the round the operator was watching is stored nowhere, for a hangup as
-for an interrupt (#271). A tool call already running is killed if it is a `bash`,
-stopped if it is a `grep`, and finishes if it is neither (#26), on both surfaces
-alike.
+for an interrupt (#271). A tool call already running is killed if it is a
+`bash`, stopped if it is a `grep`, and finishes if it is neither (#26), on both
+surfaces alike.
 
 ## Deny by default, and the honest claim
 
