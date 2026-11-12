@@ -274,9 +274,8 @@ where
     G: CallGate,
 {
     let mut stop = pin!(stop);
-    // One per turn, never reused: raised for good, so a token carried over would stop the
-    // next turn's first call before it started. The context is cloned to carry it, which
-    // leaves the caller's untouched.
+    // One per turn: raised for good, so a carried-over token would stop the next turn's
+    // first call before it started. Cloned, so the caller's context is untouched.
     let cancel = Cancel::new();
     let ctx = &ctx.clone().with_cancel(cancel.clone());
     // Built once: the offered set does not change between rounds.

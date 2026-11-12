@@ -36,8 +36,7 @@ where
     let mut aborted: Option<String> = None;
 
     for block in blocks {
-        // A stop raised during the last call: nothing behind it is asked about or run. The
-        // round is dropped whole by the caller, so no `tool_result` is owed for these.
+        // Nothing behind a stopped call is asked about or run.
         if ctx.cancelled() {
             break;
         }
