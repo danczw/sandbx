@@ -142,11 +142,11 @@ pub enum TurnStop {
     /// A stop that lands while the model is streaming drops that round: the transcript is
     /// every round before it, or empty. One that lands in a round's tool calls keeps the
     /// round, every call answered, so it ends on a user turn of results, as legal to send
-    /// again as [`RoundLimit`](Self::RoundLimit)'s. A call that finished before the stop
-    /// says what it found; one running at it is killed if it is a `bash`, left running if it
-    /// only reads, and waited for if it writes, its effect standing (#26), and says only
-    /// that its output was withheld or that it was cancelled; one behind it was never put to
-    /// the gate or run, and says so.
+    /// again as [`RoundLimit`](Self::RoundLimit)'s. A call that had settled when the stop
+    /// was raised says what it found; one running then is killed if it is a `bash`, left
+    /// running if it only reads, and waited for if it writes, its effect standing (#26), and
+    /// says only that its output was withheld or that it was cancelled; one behind it was
+    /// never put to the gate or run, and says so.
     Interrupted,
 }
 
@@ -257,6 +257,10 @@ where
 /// thread with its result unread, a `grep` also stopping at its next file. A `write` or
 /// `edit` cannot be cancelled (#26), so it is waited for and its effect stays. No call
 /// behind it is put to the gate or run.
+///
+/// An abandoned call keeps its blocking thread, and dropping a runtime waits for every one:
+/// a caller that must exit promptly after a stop ends its runtime with
+/// `shutdown_background`, as `sandbx` does.
 ///
 /// [`TurnOutcome::usage`] keeps the dropped round's figure when it reported one, its request
 /// being exactly the messages kept. [`TurnOutcome::withheld`] is the cut of the last request
@@ -382,13 +386,9 @@ where
         // Before pushing: answering borrows `round.blocks`, pushing moves them.
         let answered = answer_calls(&round.blocks, ctx, turn.tools, &mut gate);
         let (answers, stopped) = unless_cancelling(stop.as_mut(), &cancel, answered).await;
-        let answers = match answers {
-            Ok(answers) => answers,
-            // A panicked tool during a stop: the round has no answers to keep.
-            Err(_) if stopped => return Ok(interrupted(produced, usage, streamed_cut, last_stop)),
-            Err(error) => return Err(error),
-        };
-        let Answers { results, aborted } = answers;
+        // A tool that panics after the stop is answered as a failure, so an error here is one
+        // that came before it.
+        let Answers { results, aborted } = answers?;
 
         // No result means no call in the round, so nothing a stop could have left unsaid: it
         // is dropped as it was before calls were kept, not stored as a bare assistant turn.
@@ -480,7 +480,6 @@ async fn unless_cancelling<T>(
     }
 }
 
-/// [`TurnStop::Interrupted`], over the rounds kept so far.
 fn interrupted(
     produced: Vec<RequestMessage>,
     usage: Option<PromptUsage>,

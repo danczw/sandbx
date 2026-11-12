@@ -299,6 +299,50 @@ fn a_stop_mid_call_starts_no_call_behind_it() {
     assert_eq!(after.1, Some(true));
 }
 
+/// A `write` the stop landed on that then fails changed nothing, and is not stored as a
+/// call whose effect stands: a resume would take it for done, and never redo it.
+#[test]
+fn a_call_that_fails_after_the_stop_is_not_stored_as_done() {
+    let root = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let refused = outside.path().join("refused.txt");
+    let ctx = ctx(SandboxPolicy::default()
+        .allow_read(vetted(root.path()))
+        .allow_write(vetted(root.path())));
+    let listed = serde_json::json!({ "path": root.path().to_str().unwrap() });
+    let mut script = Script::new([
+        vec![
+            call("ls", listed),
+            call(
+                "write",
+                serde_json::json!({ "path": refused.to_str().unwrap(), "content": "no" }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("never asked"), stop(StopReason::EndTurn)],
+    ]);
+
+    let stopped = stopped_in_second_call_under(
+        &mut script,
+        turn(&[], &[BuiltinTool::Ls, BuiltinTool::Write]),
+        &ctx,
+    );
+
+    assert!(!refused.exists(), "the write was outside the policy");
+    let [_, user] = &stopped.outcome.messages[..] else {
+        panic!(
+            "expected the stopped round, got {:?}",
+            stopped.outcome.messages
+        );
+    };
+    let [_, write] = &answers(user)[..] else {
+        panic!("a result for each of two calls, got {user:?}");
+    };
+    assert!(!write.0.contains("effect stands"), "got {write:?}");
+    assert!(write.0.contains("did not succeed"), "got {write:?}");
+    assert_eq!(write.1, Some(true));
+}
+
 /// Round one answered, the stop in round two's only call: both rounds are kept (#26).
 #[test]
 fn a_stop_mid_call_keeps_the_rounds_before_it() {
@@ -386,6 +430,8 @@ async fn a_stop_does_not_wait_for_a_read_that_cannot_finish() {
         panic!("a result for the one call, got {user:?}");
     };
     assert!(result.0.contains("cancelled"), "got {result:?}");
+    // A killed `bash` shares this text, and may have changed state before it died.
+    assert!(result.0.contains("already done"), "got {result:?}");
     assert_eq!(result.1, Some(true));
 }
 
