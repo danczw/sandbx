@@ -338,7 +338,10 @@ descriptor no task feeds, and nothing else is in flight during `approve`, since
   the operator presses again: the wrong way round costs a keystroke, not a
   consent. A resize is the same gap again: the thread that would repaint is the
   one parked, so `wait` returns `Reply::Resized` and `ask` draws and arms once
-  more, and a key pressed against the old frame is forgotten with it.
+  more, and a key pressed against the old frame is forgotten with it. The
+  reader looks for a resize every 100 ms because crossterm reports `SIGWINCH`
+  only from inside its own poll; a key pressed in that gap still answers the
+  old frame.
 - **Drawn means drawn.** A question the screen could not take, a draw that has
   failed or a lock a panic poisoned, is not asked: a key pressed meanwhile would
   answer something nobody saw, so the gate aborts instead of waiting.
