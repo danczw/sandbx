@@ -449,17 +449,20 @@ fn a_running_call_is_not_an_entry() {
     );
 }
 
+/// One change, so no caller can note the line and leave the row up, or take the row down
+/// and lose the line.
 #[test]
-fn a_settled_call_is_gone_and_entries_stay() {
+fn a_settled_call_is_gone_and_its_line_is_noted() {
     let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     transcript.event(&text("three files"));
     transcript.run("bash make test");
-    let before = transcript.entries().to_vec();
+    let mut expected = transcript.entries().to_vec();
+    expected.push(entry(Kind::Note, "sandbx: bash make test — ran"));
 
-    transcript.ended();
+    transcript.settle("sandbx: bash make test — ran");
 
     assert_eq!(transcript.running(), None, "the running call stayed");
-    assert_eq!(transcript.entries(), before, "settling changed the entries");
+    assert_eq!(transcript.entries(), expected, "the line was not noted");
 }
 
 /// The command is the model's text in part, and gets a note's treatment.
