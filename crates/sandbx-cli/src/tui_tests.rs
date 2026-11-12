@@ -386,7 +386,11 @@ fn every_stop_keeps_the_rounds_it_finished() {
             "{said:?}"
         );
         assert!(
-            said[0].contains("`grep` stops before its next file"),
+            said[0].contains("a call that only reads is left running and not waited for"),
+            "{said:?}"
+        );
+        assert!(
+            said[0].contains("a `write` or `edit` already running finishes first"),
             "{said:?}"
         );
     }
