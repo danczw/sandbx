@@ -332,13 +332,15 @@ architecture the filter gates on.
   round it finished, under a stop naming an interrupt or a hung-up terminal, and
   loses the round it stopped in whole: whatever it streamed, including the part
   of the answer you read, and every tool call it asked for. The calls it had
-  already run did run, and one still running finishes, but the transcript
-  records the effect of neither. A stop before the first round finishes stores
+  already run did run, and one still running is killed if it is a `bash` and
+  finishes if it is not, but the transcript records the effect of neither. A
+  stop before the first round finishes stores
   nothing, the prompt included, and leaves no trace in the session that a call
   ran ([#271](https://github.com/danczw/sandbx/issues/271)). Where a round was
   stored, resuming says so on stderr; the model is told nothing of it. What the
   turn showed is printed back to the terminal once the screen is gone, and the
-  running call is named on stderr but never its result. Where the terminal is
+  call a stop stood on is named there as it ended, run or cancelled, but never
+  with its output. Where the terminal is
   what went away, only a redirected stderr still has either. A stop during the
   wrap-up round after `--max-rounds` keeps the rounds before it as the cap left
   them, and loses only the wrap-up's prose
@@ -376,8 +378,12 @@ architecture the filter gates on.
   Nothing else is capped: no CPU bound, no memory bound, no limit on processes
   spawned. A fork bomb is unbounded while the call lasts; bounded is that it does
   not outlive it.
-- **A running tool call cannot be interrupted.** Only its own deadline stops it;
-  no way to cancel one from outside
+- **Only a spawned command can be interrupted.** A stop on `tui` (ctrl-c,
+  escape, or a hung-up terminal) kills a running `bash` command with the kill a
+  timeout makes, and starts no call behind it. The six in-process tools cannot
+  be cancelled: one already running finishes, so a `write` under way lands, and
+  the stop waits for it — for as long as a stalled filesystem takes. Nothing a
+  killed command had already done is undone
   ([#26](https://github.com/danczw/sandbx/issues/26)).
 - **A bound on the harness's own loop is not a containment claim.** A turn is
   bounded — `TurnLimits::max_rounds` caps the requests one turn may make of the
