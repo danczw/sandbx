@@ -16,7 +16,8 @@ that ask it and implement it.
 In `answer_calls`, between resolving the name and `spawn_blocking`.
 
 A blocking task cannot be cancelled (#26): dropping the `JoinHandle` leaves the
-task running to completion, and only a `bash` has a kill to reach for besides.
+task running to completion, and only a `bash` and a `grep` can be stopped
+besides, a `write` not at all.
 So a gate consulted *concurrently* with the call — `select!` on a decision and a
 `JoinHandle` — would answer "denied" about a `write` that had already landed.
 Before the spawn is the only position where a refusal means anything.
@@ -203,8 +204,9 @@ It also keeps less. The abort is a `TurnStop`, so the turn returns and its
 messages, usage and `withheld` are stored. A `tui` stop ends the turn through
 `run_turn_until`, which keeps the rounds before it and drops the one it lands
 in, so the round the operator was watching is stored nowhere, for a hangup as
-for an interrupt (#271). A tool call already running is killed if it is a `bash`
-and finishes if it is not (#26), on both surfaces alike.
+for an interrupt (#271). A tool call already running is killed if it is a `bash`,
+stopped if it is a `grep`, and finishes if it is neither (#26), on both surfaces
+alike.
 
 ## Deny by default, and the honest claim
 

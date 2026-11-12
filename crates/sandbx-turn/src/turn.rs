@@ -247,9 +247,9 @@ where
 /// Raced against each round's request and its tool calls, `stop` first, so a stop that
 /// has already resolved opens no further request. The round it lands in is dropped whole,
 /// calls already answered in it included. A call already running is waited for rather than
-/// abandoned, and reported to [`CallGate::settled`] as it ends: a `bash` is killed, but an
-/// in-process tool cannot be cancelled (#26), so it finishes and its effect stays. No call
-/// behind it is put to the gate or run.
+/// abandoned, and reported to [`CallGate::settled`] as it ends: a `bash` is killed and a
+/// `grep` stops between files, but the other in-process tools cannot be cancelled (#26), so
+/// one finishes and its effect stays. No call behind it is put to the gate or run.
 ///
 /// [`TurnOutcome::usage`] keeps the dropped round's figure when it reported one, its request
 /// being exactly the messages kept. [`TurnOutcome::withheld`] is the cut of the last request
