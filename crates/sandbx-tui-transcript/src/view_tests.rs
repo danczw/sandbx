@@ -346,7 +346,7 @@ fn a_settled_call_leaves_the_screen_as_it_was() {
     let before = rows(&turn("three files"), 40, 8);
 
     let mut transcript = running("three files", "bash make test");
-    transcript.settled();
+    transcript.ended();
 
     assert_eq!(rows(&transcript, 40, 8), before);
 }
@@ -412,7 +412,7 @@ fn a_refused_call_leaves_no_line_saying_it_ran() {
         "{during:?}"
     );
 
-    transcript.settled();
+    transcript.ended();
     transcript.note("sandbx: write /etc/passwd — refused by the policy: no grant covers it");
 
     let after = rows(&transcript, 90, 8);
