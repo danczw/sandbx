@@ -119,7 +119,7 @@ impl Transcript {
     pub fn note(&mut self, line: &str) {
         self.entries.push(Entry {
             kind: Kind::Note,
-            text: printable(line).replace('\n', "\\n"),
+            text: spelled(line),
         });
     }
 
@@ -130,10 +130,7 @@ impl Transcript {
     /// one: a line carrying the model's own words, a path or a command, would otherwise draw
     /// a row of the question that sandbx never wrote. The caller decides what is asked.
     pub fn ask(&mut self, lines: &[&str]) {
-        self.question = lines
-            .iter()
-            .map(|line| printable(line).replace('\n', "\\n"))
-            .collect();
+        self.question = lines.iter().map(|line| spelled(line)).collect();
     }
 
     /// Take the question down: the call has its answer.
@@ -146,12 +143,12 @@ impl Transcript {
     ///
     /// Stripped and spelled as a [`note`](Self::note) is, the command being the model's.
     pub fn run(&mut self, call: &str) {
-        self.running = Some(printable(call).replace('\n', "\\n"));
+        self.running = Some(spelled(call));
     }
 
     /// Take the running call down: it ended, however it ended. The line saying how is a
     /// [`note`](Self::note), and the caller makes both changes together.
-    pub fn settled(&mut self) {
+    pub fn ended(&mut self) {
         self.running = None;
     }
 
@@ -188,6 +185,13 @@ impl Transcript {
             _ => self.entries.push(Entry { kind, text }),
         }
     }
+}
+
+/// One line of the harness's own, as [`Transcript::note`] shows it: [`printable`], with a
+/// break spelled rather than kept, so the view's mark on a row cannot be minted a second
+/// time. The one place a line carrying the model's words is made safe to mark.
+fn spelled(line: &str) -> String {
+    printable(line).replace('\n', "\\n")
 }
 
 /// Model-chosen text as it may be written to a cell. ratatui writes a cell's content

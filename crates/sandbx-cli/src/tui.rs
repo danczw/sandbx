@@ -610,7 +610,7 @@ impl Pane {
     /// the call both running and settled. Kept as [`Notes::note`] keeps a line.
     fn settle(&mut self, line: &str) {
         self.apply(|transcript| {
-            transcript.settled();
+            transcript.ended();
             transcript.note(line);
         });
         self.said.push(line.to_string());

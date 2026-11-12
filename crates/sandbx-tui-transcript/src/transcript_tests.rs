@@ -456,7 +456,7 @@ fn a_settled_call_is_gone_and_entries_stay() {
     transcript.run("bash make test");
     let before = transcript.entries().to_vec();
 
-    transcript.settled();
+    transcript.ended();
 
     assert_eq!(transcript.running(), None, "the running call stayed");
     assert_eq!(transcript.entries(), before, "settling changed the entries");
