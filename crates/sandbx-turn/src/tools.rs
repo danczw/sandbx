@@ -20,8 +20,9 @@ use crate::TurnError;
 /// directory walk or a 90-second command, which on a current-thread runtime would freeze
 /// every other task — hence `spawn_blocking`, whose uncancellability `run_turn` documents.
 /// A stop abandons a read-only call there and still waits for a `write` or `edit`.
-/// Every answered block reports to [`CallGate::settled`], including the two refusals above
-/// the gate, which the gate's own verdict cannot account for.
+/// Every call that was put to the gate, or refused above it, reports to
+/// [`CallGate::settled`]. A call behind a stop is answered as not run and reports nothing:
+/// it never reached the gate, so there is no verdict for the account to close.
 ///
 /// A cancelled `ctx` ends the loop early. Every call still gets a result, so the round stays
 /// legal to store: a call behind the stop says it did not run, and one that settled once
@@ -111,9 +112,18 @@ where
             RiskLevel::Writes | RiskLevel::Executes => Some(running.await),
         };
         let outcome = match joined {
-            Some(joined) => joined.map_err(|_| TurnError::ToolPanicked {
-                name: name.to_string(),
-            })?,
+            Some(Ok(outcome)) => outcome,
+            // Answered and not propagated: the calls before it in this round have landed, and
+            // a round dropped for one panic would leave a resume knowing nothing of them.
+            Some(Err(_)) if ctx.cancelled() => Err(ToolError::Failed {
+                subject: name.to_string(),
+                detail: "the tool panicked".to_string(),
+            }),
+            Some(Err(_)) => {
+                return Err(TurnError::ToolPanicked {
+                    name: name.to_string(),
+                });
+            }
             // Left running on its blocking thread, its result never read. Safe only because it
             // is read-only: abandoning a `write` is what the gate's position ahead of the
             // spawn exists to rule out. Exhaustive above, so a fourth level must pick a side.
@@ -143,7 +153,7 @@ where
                 match (stopped, &error) {
                     (false, _) => refused(id, error.to_string()),
                     (true, ToolError::Cancelled { .. }) => refused(id, CANCELLED.to_string()),
-                    (true, _) => refused(id, FINISHED_AFTER_STOP.to_string()),
+                    (true, _) => refused(id, ERRORED_AFTER_STOP.to_string()),
                 }
             }
         });
@@ -213,13 +223,21 @@ pub(crate) struct Answers {
 /// A call behind the one the stop landed on, never put to the gate or run.
 const NOT_RUN: &str = "not run: the turn was stopped";
 
-/// A call the stop killed or interrupted before it could finish.
-const CANCELLED: &str = "cancelled: the turn was stopped before it finished";
+/// A call the stop killed or abandoned before it finished. Says it may have changed
+/// something, because a `bash` killed halfway recorded as plainly cancelled would be rerun
+/// on top of what it had done.
+const CANCELLED: &str = "cancelled: the turn was stopped before it finished; anything it \
+                         had already done may remain";
 
 /// A call that finished once the stop was raised. Says its effect stands, because a `write`
 /// that landed and was recorded as not run would be done again.
 const FINISHED_AFTER_STOP: &str = "was running when the turn was stopped; it finished, its \
                                    effect stands, its output was withheld";
+
+/// A call that failed once the stop was raised. Claims no effect either way: a failed
+/// `write` changed nothing, a timed-out `bash` may have.
+const ERRORED_AFTER_STOP: &str = "was running when the turn was stopped; it did not succeed, \
+                                  and its error was withheld";
 
 fn refused(id: &str, content: String) -> ContentBlock {
     ContentBlock::ToolResult {
