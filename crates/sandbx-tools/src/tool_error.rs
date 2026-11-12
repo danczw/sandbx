@@ -43,6 +43,15 @@ pub enum ToolError {
         /// The limit it exceeded.
         after: Duration,
     },
+
+    /// The operation was killed because the caller stopped waiting for it.
+    ///
+    /// Separate from [`TimedOut`](Self::TimedOut): no limit was hit, so there is nothing to
+    /// narrow or lengthen, and the operation may have changed state before it died.
+    Cancelled {
+        /// What was attempted.
+        subject: String,
+    },
 }
 
 impl fmt::Display for ToolError {
@@ -55,6 +64,9 @@ impl fmt::Display for ToolError {
             Self::Failed { subject, detail } => write!(f, "{subject} failed: {detail}"),
             Self::TimedOut { subject, after } => {
                 write!(f, "{subject} timed out after {after:?} and was killed")
+            }
+            Self::Cancelled { subject } => {
+                write!(f, "{subject} was cancelled and killed before it finished")
             }
         }
     }

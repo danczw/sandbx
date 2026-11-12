@@ -6,11 +6,11 @@
 #![cfg(all(feature = "sandbox-integration", target_os = "linux"))]
 
 use sandbx_core::{SandboxPolicy, VettedPath};
-use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
+use sandbx_tools::{BuiltinTool, Cancel, ExecutionContext, ToolError};
 use serde_json::json;
-use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
+use std::{fs, thread};
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
 fn vetted(path: impl AsRef<Path>) -> VettedPath {
@@ -150,6 +150,52 @@ fn a_command_that_outruns_the_timeout_says_so() {
     assert!(
         elapsed < Duration::from_secs(5),
         "the tool call stayed blocked for {elapsed:?}"
+    );
+}
+
+/// The token reaches the spawn through the context, so a stop raised elsewhere kills the
+/// command the tool is blocked on. No timeout is lowered: the default 90 seconds is what
+/// the elapsed time is measured against.
+#[test]
+fn a_raised_cancel_kills_the_command_the_tool_is_blocked_on() {
+    let cancel = Cancel::new();
+    let ctx =
+        context(SandboxPolicy::default().allow_system_executables()).with_cancel(cancel.clone());
+    let stopper = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(200));
+        cancel.raise();
+    });
+    let started = Instant::now();
+
+    let result = BuiltinTool::Bash.execute(json!({ "command": "sleep 30" }), &ctx);
+
+    let elapsed = started.elapsed();
+    stopper.join().unwrap();
+
+    assert!(
+        matches!(result, Err(ToolError::Cancelled { .. })),
+        "expected a cancellation, got: {result:?}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "the tool call stayed blocked for {elapsed:?}"
+    );
+}
+
+/// A context cloned before the stop is raised is the same context to it: the turn clones
+/// one per call.
+#[test]
+fn a_cancel_raised_beforehand_runs_nothing() {
+    let cancel = Cancel::new();
+    let ctx =
+        context(SandboxPolicy::default().allow_system_executables()).with_cancel(cancel.clone());
+    cancel.raise();
+
+    let result = BuiltinTool::Bash.execute(json!({ "command": "echo ran" }), &ctx.clone());
+
+    assert!(
+        matches!(result, Err(ToolError::Cancelled { .. })),
+        "expected a cancellation, got: {result:?}"
     );
 }
 

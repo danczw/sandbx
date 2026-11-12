@@ -15,6 +15,8 @@ mod tools;
 
 pub use builtin_tool::{BuiltinTool, RiskLevel, ToolOutput};
 pub use execution_context::{DEFAULT_TIMEOUT, ExecutionContext};
+/// Re-exported so a caller stopping a call needs no dependency on the crate that defines it.
+pub use sandbx_core::Cancel;
 pub use tool_error::ToolError;
 pub use tool_limits::ToolLimits;
 
