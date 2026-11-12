@@ -21,19 +21,26 @@ pub(crate) const GUTTER_MARK: char = '│';
 const GUTTER: &str = "│ ";
 
 /// Draw one frame: the whole transcript, tail-aligned, the question under it when one is
-/// being asked, and the status bar under that.
+/// being asked or else the call being run, and the status bar under that.
 ///
 /// The question takes its rows from the transcript and never the other way round. In a pane
 /// too short for all of it, its middle goes and a marked row stands in: the first rows name
 /// the call and the last say what the keys do, and a question missing either cannot be
-/// answered knowingly.
+/// answered knowingly. The running call is one row, clipped where the pane is short.
 pub fn draw(frame: &mut Frame, transcript: &Transcript) {
     let area = frame.area();
 
     let question = question(transcript);
+    // Never both: the gate takes the question down before it approves the call.
+    let running = if question.is_none() {
+        running(transcript)
+    } else {
+        None
+    };
     let asked = question
         .as_ref()
-        .map_or(0, |question| question.line_count(area.width));
+        .or(running.as_ref())
+        .map_or(0, |dock| dock.line_count(area.width));
     // The bar keeps its row.
     let shown = asked.min(usize::from(area.height.saturating_sub(1)));
     let [body, dock, bar] = Layout::vertical([
@@ -57,6 +64,9 @@ pub fn draw(frame: &mut Frame, transcript: &Transcript) {
         } else {
             cut_question(frame, transcript.question(), dock);
         }
+    }
+    if let Some(running) = running {
+        frame.render_widget(running, dock);
     }
     frame.render_widget(status(transcript), bar);
 }
@@ -142,6 +152,16 @@ fn question(transcript: &Transcript) -> Option<Paragraph<'static>> {
     }
 
     Some(question_paragraph(rows, true))
+}
+
+/// The call being run, on one [`GUTTER`]ed row in the gate's grammar, or `None` where none
+/// is. The mark is why the command, which is the model's, cannot pass as sandbx's own words.
+/// "Running" is all it claims: the call may still be refused after approval, and the row is
+/// gone by then, so no entry is left to say otherwise.
+fn running(transcript: &Transcript) -> Option<Paragraph<'static>> {
+    let call = transcript.running()?;
+
+    Some(marked(&format!("sandbx: {call} — running")))
 }
 
 /// `rows` as marked lines, under a blank row where `spaced`.

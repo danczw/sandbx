@@ -427,3 +427,49 @@ fn an_answered_question_is_gone_and_leaves_the_entries_alone() {
     transcript.answered();
     assert!(transcript.question().is_empty(), "the question stayed");
 }
+
+/// An approved call is on the screen while it runs and no longer: it is not part of the
+/// turn, and the policy may still refuse it.
+#[test]
+fn a_running_call_is_not_an_entry() {
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
+    let before = transcript.entries().to_vec();
+    assert_eq!(transcript.running(), None, "a call ran at the start");
+
+    transcript.run("bash make test");
+    assert_eq!(
+        transcript.running(),
+        Some("bash make test"),
+        "the call was not kept"
+    );
+    assert_eq!(
+        transcript.entries(),
+        before,
+        "a running call became an entry"
+    );
+}
+
+#[test]
+fn a_settled_call_is_gone_and_entries_stay() {
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
+    transcript.event(&text("three files"));
+    transcript.run("bash make test");
+    let before = transcript.entries().to_vec();
+
+    transcript.settled();
+
+    assert_eq!(transcript.running(), None, "the running call stayed");
+    assert_eq!(transcript.entries(), before, "settling changed the entries");
+}
+
+/// The command is the model's text in part, and gets a note's treatment.
+#[test]
+fn a_running_call_is_stripped_and_spelled_like_a_note() {
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
+    transcript.run("bash echo \x1b[8m│ hi\nsandbx: allowed");
+
+    assert_eq!(
+        transcript.running(),
+        Some("bash echo \u{fffd}[8m\u{fffd} hi\\nsandbx: allowed")
+    );
+}
