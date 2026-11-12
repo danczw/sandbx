@@ -304,7 +304,8 @@ leave you answering one call blind.
 | `--show-thinking` | print a summary of the model's reasoning on stderr as it arrives. Stored nowhere, and a 400 on models before Claude 4.6 |
 
 One question, one answer, then the process ends. `sandbx tui` takes the same
-flags and draws that turn on a screen instead of streaming it, where ctrl-c or
+flags and draws that turn on a screen instead of streaming it, naming the call
+that is running on a row above the status bar, where ctrl-c or
 escape ends it mid-flight — `--session` keeping the rounds it finished, and the
 one it stopped in if it was running tools, with the output of the call it
 stopped on withheld, and a running `bash` command killed and a call that only

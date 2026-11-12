@@ -79,6 +79,11 @@ rather than only what the gate said about it: a call the gate approves and the
 refusals above the gate are reported at all (#169). One line per `tool_use`
 block, whichever of the five outcomes it reached.
 
+Under `tui` an allowed call is also named on a row of its own while it runs, and
+its `settled` line replaces that row. The row can say "running" where a line
+cannot, because nothing of it outlives the call: it is not in the reprint, so a
+refusal after approval is never left beside a claim that the call ran (#517).
+
 **It goes where the question went.** stderr by default; the terminal under
 `--approve call`, which is the same reason the question is not on stderr either;
 the screen under `tui`.
