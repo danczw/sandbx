@@ -3,6 +3,7 @@ pub enum sandbx_tui_input::Reply
 pub sandbx_tui_input::Reply::Closed
 pub sandbx_tui_input::Reply::Interrupted
 pub sandbx_tui_input::Reply::Key(char)
+pub sandbx_tui_input::Reply::Resized
 impl core::clone::Clone for sandbx_tui_input::Reply
 pub fn sandbx_tui_input::Reply::clone(&self) -> sandbx_tui_input::Reply
 impl core::cmp::Eq for sandbx_tui_input::Reply
