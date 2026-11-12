@@ -1,4 +1,5 @@
 pub mod sandbx_tools
+pub use sandbx_tools::Cancel
 pub enum sandbx_tools::BuiltinTool
 pub sandbx_tools::BuiltinTool::Bash
 pub sandbx_tools::BuiltinTool::Edit
@@ -58,6 +59,8 @@ impl core::panic::unwind_safe::UnwindSafe for sandbx_tools::RiskLevel
 pub enum sandbx_tools::ToolError
 pub sandbx_tools::ToolError::BadInput
 pub sandbx_tools::ToolError::BadInput::detail: alloc::string::String
+pub sandbx_tools::ToolError::Cancelled
+pub sandbx_tools::ToolError::Cancelled::subject: alloc::string::String
 pub sandbx_tools::ToolError::Denied
 pub sandbx_tools::ToolError::Denied::reason: alloc::string::String
 pub sandbx_tools::ToolError::Denied::subject: alloc::string::String
@@ -81,11 +84,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for sandbx_tools::ToolError
 impl core::panic::unwind_safe::UnwindSafe for sandbx_tools::ToolError
 pub struct sandbx_tools::ExecutionContext
 impl sandbx_tools::ExecutionContext
+pub fn sandbx_tools::ExecutionContext::cancelled(&self) -> bool
 pub fn sandbx_tools::ExecutionContext::for_session(sandbx_core::policy::sandbox_policy::SandboxPolicy, alloc::string::String) -> Self
 pub fn sandbx_tools::ExecutionContext::guard(&self) -> &sandbx_core::fs_guard::FsGuard
 pub fn sandbx_tools::ExecutionContext::limits(&self) -> &sandbx_tools::ToolLimits
 pub fn sandbx_tools::ExecutionContext::new(sandbx_core::policy::sandbox_policy::SandboxPolicy) -> Self
 pub fn sandbx_tools::ExecutionContext::sandboxed_command(&self, alloc::string::String) -> sandbx_core::command::sandboxed_command::SandboxedCommand
+pub fn sandbx_tools::ExecutionContext::with_cancel(self, sandbx_core::cancel::Cancel) -> Self
 pub fn sandbx_tools::ExecutionContext::with_helper(self, std::path::PathBuf) -> Self
 pub fn sandbx_tools::ExecutionContext::with_limits(self, sandbx_tools::ToolLimits) -> Self
 pub fn sandbx_tools::ExecutionContext::with_timeout(self, core::time::Duration) -> Self

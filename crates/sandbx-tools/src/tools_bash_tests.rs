@@ -151,3 +151,15 @@ fn a_timeout_names_the_command_that_ran() {
         "a command killed on its deadline did run: {error:?}"
     );
 }
+
+/// Its own kind, not a timeout: the limit was not what stopped it, and "might succeed
+/// given longer" would be the wrong thing to tell a model whose operator pressed ctrl-C.
+#[test]
+fn a_cancel_names_the_command_that_was_stopped() {
+    let error = sandbox_error(COMMAND, SandboxError::Cancelled);
+
+    assert!(
+        matches!(&error, ToolError::Cancelled { subject } if subject == &format!("run `{COMMAND}`")),
+        "a command stopped from outside did run: {error:?}"
+    );
+}

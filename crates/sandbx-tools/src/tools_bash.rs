@@ -94,6 +94,7 @@ fn sandbox_error(command: &str, error: sandbx_core::SandboxError) -> ToolError {
             subject: ran(),
             after,
         },
+        SandboxError::Cancelled => ToolError::Cancelled { subject: ran() },
         // Exhaustive over the refusals and not over `SandboxError`, most of which is
         // `FsGuard`'s and unreachable from a spawn: an arm for one would claim an unreachable
         // path is handled.

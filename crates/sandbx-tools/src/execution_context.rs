@@ -1,4 +1,4 @@
-use sandbx_core::{FsGuard, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{Cancel, FsGuard, SandboxPolicy, SandboxedCommand};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -25,6 +25,7 @@ pub struct ExecutionContext {
     helper: Option<PathBuf>,
     limits: ToolLimits,
     timeout: Duration,
+    cancel: Cancel,
     session: Option<String>,
 }
 
@@ -68,6 +69,7 @@ impl ExecutionContext {
             helper: None,
             limits: ToolLimits::default(),
             timeout: DEFAULT_TIMEOUT,
+            cancel: Cancel::new(),
             session,
         }
     }
@@ -95,6 +97,23 @@ impl ExecutionContext {
         self
     }
 
+    /// Stop what this context spawns once `cancel` is raised, instead of a token nobody holds.
+    ///
+    /// Every clone shares the token, so one raised stops a command started through any of
+    /// them. Only a spawned command can be stopped: the in-process tools are bounded by
+    /// work and finish what they started.
+    #[must_use]
+    pub fn with_cancel(mut self, cancel: Cancel) -> Self {
+        self.cancel = cancel;
+        self
+    }
+
+    /// Whether the token given to [`with_cancel`](Self::with_cancel) has been raised, for a
+    /// caller choosing whether to start another call.
+    pub fn cancelled(&self) -> bool {
+        self.cancel.is_raised()
+    }
+
     /// How much tools may do, and how much they may return.
     pub fn limits(&self) -> &ToolLimits {
         &self.limits
@@ -105,17 +124,19 @@ impl ExecutionContext {
         &self.guard
     }
 
-    /// A command to spawn, with the policy, the helper and the timeout already
-    /// applied.
+    /// A command to spawn, with the policy, the helper, the timeout and the cancel token
+    /// already applied.
     ///
     /// The only route to the policy, and one that spends it rather than lending it
     /// out: an accessor returning `&SandboxPolicy` would let an in-process tool read
     /// the path lists and open files itself, bypassing the TOCTOU-safe handles
-    /// [`FsGuard`] hands back (#56). Timeout, helper and session are applied here so a
-    /// second spawning built-in cannot forget them.
+    /// [`FsGuard`] hands back (#56). Timeout, cancel, helper and session are applied here so
+    /// a second spawning built-in cannot forget them.
     #[must_use]
     pub fn sandboxed_command(&self, program: String) -> SandboxedCommand {
-        let mut command = SandboxedCommand::new(program, self.policy.clone()).timeout(self.timeout);
+        let mut command = SandboxedCommand::new(program, self.policy.clone())
+            .timeout(self.timeout)
+            .cancel_on(self.cancel.clone());
         if let Some(helper) = &self.helper {
             command = command.helper(helper);
         }
