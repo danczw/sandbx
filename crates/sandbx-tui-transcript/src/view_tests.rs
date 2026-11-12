@@ -336,7 +336,7 @@ fn a_running_call_follows_the_log_on_a_marked_row() {
     let rows = rows(&transcript, 40, 8);
     assert_eq!(rows[0], "> what is here?");
     assert_eq!(rows[2], "  three files");
-    assert_eq!(rows[3], "", "no blank row between the answer and the call");
+    assert_eq!(rows[3], "", "one blank row, as before a settled line");
     assert_eq!(rows[4], format!("{GUTTER}sandbx: running bash make test"));
     assert_eq!(rows[7], "rounds 0 · ctrl-c interrupts");
 }

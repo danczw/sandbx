@@ -163,9 +163,10 @@ pub(super) fn line(call: Settled<'_>) -> String {
 
 /// The operator's account of one call, without the `sandbx: ` prefix.
 ///
-/// All five outcomes here, so a refused call cannot read as one that ran (#169). Nothing
-/// announces a call before this: a line printed when it was *requested* would claim a run
-/// the policy then refused.
+/// All five outcomes here, so a refused call cannot read as one that ran (#169). Under
+/// `agent-run` nothing announces a call before this: a line printed when it was *requested*
+/// would claim a run the policy then refused. `tui` names an approved call while it runs,
+/// on a row it takes down as this line arrives, so none is left to say so.
 fn report(call: Settled<'_>) -> String {
     let head = match call.tool {
         Some(tool) => describe(tool, call.input),
@@ -173,8 +174,9 @@ fn report(call: Settled<'_>) -> String {
     };
 
     match call.outcome {
-        // A tail like the other four: nothing prints when a call is requested, so a bare
-        // head after a 90-second `bash` reads as the call starting rather than ending.
+        // A tail like the other four: under `agent-run` nothing prints when a call is
+        // requested, so a bare head after a 90-second `bash` reads as the call starting
+        // rather than ending.
         Outcome::Ran => format!("{head} — ran"),
         Outcome::Unknown => format!("{head} — no tool answers to that name"),
         Outcome::NotOffered => format!("{head} — not offered this turn"),
