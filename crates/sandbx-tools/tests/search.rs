@@ -9,7 +9,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use sandbx_core::{SandboxPolicy, VettedPath};
-use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
+use sandbx_tools::{BuiltinTool, Cancel, ExecutionContext, ToolError};
 use serde_json::json;
 use std::fs;
 use std::os::unix::fs as unix_fs;
@@ -81,6 +81,47 @@ fn grep_reports_no_matches_rather_than_failing() {
         .unwrap();
 
     assert_eq!(out.content(), "no matches");
+}
+
+/// A stop is an error and not a short listing: a search that gave up must not read as one
+/// that found nothing.
+#[test]
+fn grep_stops_between_files_once_cancelled() {
+    let root = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("a.txt"), "needle\n").unwrap();
+    fs::write(root.path().join("b.txt"), "needle\n").unwrap();
+
+    let cancel = Cancel::new();
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())))
+        .with_cancel(cancel.clone());
+    cancel.raise();
+
+    let result = BuiltinTool::Grep.execute(
+        json!({ "path": root.path().to_str().unwrap(), "pattern": "needle" }),
+        &ctx,
+    );
+
+    assert!(
+        matches!(result, Err(ToolError::Cancelled { .. })),
+        "expected a cancellation, got: {result:?}"
+    );
+}
+
+#[test]
+fn grep_is_unchanged_by_a_token_nobody_raised() {
+    let root = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("a.txt"), "needle\n").unwrap();
+
+    let ctx = context(SandboxPolicy::default().allow_read(vetted(root.path())))
+        .with_cancel(Cancel::new());
+    let out = BuiltinTool::Grep
+        .execute(
+            json!({ "path": root.path().to_str().unwrap(), "pattern": "needle" }),
+            &ctx,
+        )
+        .unwrap();
+
+    assert!(out.content().contains("a.txt:1"), "got: {}", out.content());
 }
 
 #[cfg(unix)]

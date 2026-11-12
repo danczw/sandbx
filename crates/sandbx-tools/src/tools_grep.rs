@@ -39,6 +39,15 @@ pub(crate) fn execute(input: GrepInput, ctx: &ExecutionContext) -> Result<ToolOu
     // Nothing is sorted afterwards: `walk_readable` returns files sorted and lines
     // are visited ascending. Sorting the rendered lines would put `:10` before `:2`.
     for file in walk.files {
+        // An error and not `StoppedEarly`: a listing, even a marked one, reads as an answer.
+        // Between files because a read in flight cannot be interrupted, and a search holds
+        // no state a stop could leave half-done.
+        if ctx.cancelled() {
+            return Err(ToolError::Cancelled {
+                subject: format!("grep {}", input.path.display()),
+            });
+        }
+
         // Before the read, so the budget bounds what is read rather than noticing
         // once it is spent. A file skipped below is not charged for.
         if scanned >= ctx.limits().max_bytes_scanned {
