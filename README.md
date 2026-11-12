@@ -306,8 +306,8 @@ leave you answering one call blind.
 One question, one answer, then the process ends. `sandbx tui` takes the same
 flags and draws that turn on a screen instead of streaming it, where ctrl-c or
 escape ends it mid-flight — `--session` keeping the rounds it finished but not
-the one it stopped in, and a running `bash` command killed, where any other tool
-call finishes first. When the turn ends the screen goes and the transcript is
+the one it stopped in, and a running `bash` command killed and a `grep` stopped
+before its next file, where any other tool call finishes first. When the turn ends the screen goes and the transcript is
 printed in its place, so the answer stays in your scrollback. It needs a
 terminal on stdout, so it refuses a
 piped run. `--approve call` asks on the screen, in rows under the transcript,

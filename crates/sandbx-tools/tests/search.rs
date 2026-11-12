@@ -105,6 +105,9 @@ fn grep_stops_between_files_once_cancelled() {
         matches!(result, Err(ToolError::Cancelled { .. })),
         "expected a cancellation, got: {result:?}"
     );
+    // The model and the operator both read this, and nothing was killed.
+    let message = result.unwrap_err().to_string();
+    assert!(!message.contains("killed"), "got: {message}");
 }
 
 #[test]
