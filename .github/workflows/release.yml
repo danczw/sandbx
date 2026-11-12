@@ -161,8 +161,12 @@ jobs:
   publish:
     needs: [build, notes]
     runs-on: ubuntu-latest
+    # `id-token` lets this job mint an attestation, so it stays here and out of
+    # `build`, whose tests and build scripts run the dependency graph's code.
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       GH_TOKEN: ${{ github.token }}
       # No checkout here, so `gh` has no git remote to infer the repo from.
@@ -188,6 +192,11 @@ jobs:
           # $(cat) strips trailing newlines, so the join is exactly one blank line.
           printf '%s\n\n' "$(cat "$notes")" > notes.md
           cat generated.md >> notes.md
+
+      # The archives only: each `.sha256` is derived from its archive.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz
 
       - name: Publish
         env:
