@@ -336,7 +336,7 @@ fn a_running_call_is_drawn_on_a_marked_row() {
     let rows = rows(&transcript, 40, 8);
     assert_eq!(rows[0], "> what is here?");
     assert_eq!(rows[2], "  three files");
-    assert_eq!(rows[6], format!("{GUTTER}sandbx: bash make test — running"));
+    assert_eq!(rows[6], format!("{GUTTER}sandbx: running bash make test"));
     assert_eq!(rows[7], "rounds 0 · ctrl-c interrupts");
 }
 
@@ -370,14 +370,15 @@ fn a_command_cannot_forge_a_row_of_the_running_call() {
     assert_eq!(
         marked,
         [&format!(
-            "{GUTTER}sandbx: bash echo \u{fffd} hi\\nsandbx: write /etc/x — ran — running"
+            "{GUTTER}sandbx: running bash echo \u{fffd} hi\\nsandbx: write /etc/x — ran"
         )]
     );
     assert!(rows.iter().any(|row| row.contains("write /work/a — ran")));
 }
 
 /// A call is one row however long its command: a wrapped one would take the pane from the
-/// transcript, and its continuation rows would carry no mark.
+/// transcript, and its continuation rows would carry no mark. The state leads the row, so
+/// the cut takes the command and never the word saying the call is under way.
 #[test]
 fn a_long_command_stays_on_one_marked_row() {
     let transcript = running("three files", &format!("bash echo {}", "x".repeat(200)));
@@ -388,7 +389,7 @@ fn a_long_command_stays_on_one_marked_row() {
         "the transcript lost rows: {rows:?}"
     );
     assert!(
-        rows[6].starts_with(&format!("{GUTTER}sandbx: bash echo xxx")),
+        rows[6].starts_with(&format!("{GUTTER}sandbx: running bash echo xxx")),
         "{rows:?}"
     );
     assert_eq!(rows[5], "", "the call took a second row: {rows:?}");
@@ -427,7 +428,7 @@ fn a_refused_call_leaves_no_line_saying_it_ran() {
     // Non-vacuous: the call is shown while it is under way.
     let during = rows(&transcript, 90, 8);
     assert!(
-        during.contains(&format!("{GUTTER}sandbx: write /etc/passwd — running")),
+        during.contains(&format!("{GUTTER}sandbx: running write /etc/passwd")),
         "{during:?}"
     );
 

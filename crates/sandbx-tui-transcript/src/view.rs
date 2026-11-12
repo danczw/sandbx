@@ -32,14 +32,10 @@ pub fn draw(frame: &mut Frame, transcript: &Transcript) {
 
     let question = question(transcript);
     // Never both: the gate takes the question down before it approves the call.
-    let running = if question.is_none() {
-        running(transcript)
-    } else {
-        None
-    };
+    let call = running(transcript).filter(|_| question.is_none());
     let asked = question
         .as_ref()
-        .or(running.as_ref())
+        .or(call.as_ref())
         .map_or(0, |dock| dock.line_count(area.width));
     // The bar keeps its row.
     let shown = asked.min(usize::from(area.height.saturating_sub(1)));
@@ -65,8 +61,8 @@ pub fn draw(frame: &mut Frame, transcript: &Transcript) {
             cut_question(frame, transcript.question(), dock);
         }
     }
-    if let Some(running) = running {
-        frame.render_widget(running, dock);
+    if let Some(call) = call {
+        frame.render_widget(call, dock);
     }
     frame.render_widget(status(transcript), bar);
 }
@@ -154,19 +150,20 @@ fn question(transcript: &Transcript) -> Option<Paragraph<'static>> {
     Some(question_paragraph(rows, true))
 }
 
-/// The call being run, on one [`GUTTER`]ed row in the gate's grammar, or `None` where none
-/// is. The mark is why the command, which is the model's, cannot pass as sandbx's own words.
-/// "Running" is all it claims: the call may still be refused after approval, and the row is
-/// gone by then, so no entry is left to say otherwise.
+/// The call being run, on one [`GUTTER`]ed row, or `None` where none is. The mark is why the
+/// command, which is the model's, cannot pass as sandbx's own words. "Running" is all it
+/// claims: the call may still be refused after approval, and the row is gone by then, so no
+/// entry is left to say otherwise.
 ///
 /// Not wrapped, so a long command is cut at the pane's edge rather than taking the pane from
-/// the transcript, its continuation rows carrying no mark. The operator was shown the whole
-/// command when asked, and the head of it is what names the call.
+/// the transcript, its continuation rows carrying no mark. The state leads the row, so the
+/// cut loses the command's tail and never the word that tells this row from a settled line,
+/// which ends in its outcome.
 fn running(transcript: &Transcript) -> Option<Paragraph<'static>> {
     let call = transcript.running()?;
 
     Some(Paragraph::new(marked_line(&format!(
-        "sandbx: {call} — running"
+        "sandbx: running {call}"
     ))))
 }
 
