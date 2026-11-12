@@ -5,7 +5,7 @@
 
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_prompt::{ContentBlock, ToolDefinition};
-use sandbx_tools::{BuiltinTool, ExecutionContext};
+use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
 
 use crate::TurnError;
 
@@ -105,21 +105,51 @@ where
                 name: name.to_string(),
             })?;
 
+        // Read after the join, never before the spawn: a call that finished a moment before
+        // the stop is withheld too, which errs toward saying less of what the operator stopped.
+        let stopped = ctx.cancelled();
         results.push(match outcome {
             Ok(output) => {
                 gate.settled(settle(Some(tool), Outcome::Ran));
-                ContentBlock::ToolResult {
-                    tool_use_id: id.clone(),
-                    content: output.into_content(),
-                    is_error: None,
+                if stopped {
+                    refused(id, FINISHED_AFTER_STOP.to_string())
+                } else {
+                    ContentBlock::ToolResult {
+                        tool_use_id: id.clone(),
+                        content: output.into_content(),
+                        is_error: None,
+                    }
                 }
             }
             Err(error) => {
                 gate.settled(settle(Some(tool), Outcome::Errored(&error)));
-                refused(id, error.to_string())
+                match (stopped, &error) {
+                    (false, _) => refused(id, error.to_string()),
+                    (true, ToolError::Cancelled { .. }) => refused(id, CANCELLED.to_string()),
+                    (true, _) => refused(id, FINISHED_AFTER_STOP.to_string()),
+                }
             }
         });
     }
+
+    // A stop ends the loop above early. Answered here, in the order asked, because a
+    // `tool_use` with no `tool_result` is a transcript no provider takes back, and a
+    // stopped round is stored and resumed.
+    // By position and not by id: each call leaves exactly one result, in order, so the
+    // unanswered are the suffix.
+    let behind: Vec<&String> = blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::ToolUse { id, .. } => Some(id),
+            _ => None,
+        })
+        .skip(results.len())
+        .collect();
+    results.extend(
+        behind
+            .into_iter()
+            .map(|id| refused(id, NOT_RUN.to_string())),
+    );
 
     Ok(Answers {
         results,
@@ -135,6 +165,21 @@ pub(crate) struct Answers {
     /// Whether an [`ApprovalDecision::Abort`] stopped the round, so no later round runs.
     pub(crate) aborted: bool,
 }
+
+// What a stopped round stores in place of a call's own result. Fixed text and never a
+// path, a command or a tool's output: a resume sends these to the provider, and the
+// operator stopped before reading any of it.
+
+/// A call behind the one the stop landed on, never put to the gate or run.
+const NOT_RUN: &str = "not run: the turn was stopped";
+
+/// A call the stop killed or interrupted before it could finish.
+const CANCELLED: &str = "cancelled: the turn was stopped before it finished";
+
+/// A call that finished once the stop was raised. Says its effect stands, because a `write`
+/// that landed and was recorded as not run would be done again.
+const FINISHED_AFTER_STOP: &str = "was running when the turn was stopped; it finished, its \
+                                   effect stands, its output was withheld";
 
 fn refused(id: &str, content: String) -> ContentBlock {
     ContentBlock::ToolResult {

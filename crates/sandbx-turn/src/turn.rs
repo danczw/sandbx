@@ -348,13 +348,7 @@ where
             })?
         };
         let Some(round) = unless(stop.as_mut(), streamed).await else {
-            return Ok(outcome(
-                produced,
-                usage,
-                streamed_cut,
-                TurnStop::Interrupted,
-                last_stop,
-            ));
+            return Ok(interrupted(produced, usage, streamed_cut, last_stop));
         };
         let round = round?;
         streamed_cut = cut;
@@ -380,16 +374,20 @@ where
 
         // Before pushing: answering borrows `round.blocks`, pushing moves them.
         let answered = answer_calls(&round.blocks, ctx, turn.tools, &mut gate);
-        let Some(answers) = unless_cancelling(stop.as_mut(), &cancel, answered).await else {
-            return Ok(outcome(
-                produced,
-                usage,
-                streamed_cut,
-                TurnStop::Interrupted,
-                last_stop,
-            ));
+        let (answers, stopped) = unless_cancelling(stop.as_mut(), &cancel, answered).await;
+        let answers = match answers {
+            Ok(answers) => answers,
+            // A panicked tool during a stop: the round has no answers to keep.
+            Err(_) if stopped => return Ok(interrupted(produced, usage, streamed_cut, last_stop)),
+            Err(error) => return Err(error),
         };
-        let Answers { results, aborted } = answers?;
+        let Answers { results, aborted } = answers;
+
+        // No result means no call in the round, so nothing a stop could have left unsaid: it
+        // is dropped as it was before calls were kept, not stored as a bare assistant turn.
+        if stopped && results.is_empty() {
+            return Ok(interrupted(produced, usage, streamed_cut, last_stop));
+        }
 
         produced.push(RequestMessage {
             role: Role::Assistant,
@@ -413,7 +411,12 @@ where
         });
 
         // After the push, so the transcript ends on this round's results, as `RoundLimit`
-        // already hands back.
+        // already hands back. Before `aborted`: a stop that lands in the round the gate
+        // ended is the stop, not the abort.
+        if stopped {
+            return Ok(interrupted(produced, usage, streamed_cut, last_stop));
+        }
+
         if aborted {
             return Ok(outcome(
                 produced,
@@ -453,21 +456,37 @@ async fn unless<T>(
 /// wait for `work` to wind down, rather than drop it with a call still running on a thread
 /// nothing can reach.
 ///
-/// What `work` returns then is discarded, the round it belongs to being dropped whole.
+/// `work`'s output and whether it was stopped. A stopped `work` has answered every call it was
+/// asked, so the round it belongs to is kept.
 async fn unless_cancelling<T>(
     stop: Pin<&mut impl Future<Output = ()>>,
     cancel: &Cancel,
     work: impl Future<Output = T>,
-) -> Option<T> {
+) -> (T, bool) {
     let mut work = pin!(work);
     match select(stop, work.as_mut()).await {
         Either::Left(((), _)) => {
             cancel.raise();
-            work.await;
-            None
+            (work.await, true)
         }
-        Either::Right((done, _)) => Some(done),
+        Either::Right((done, _)) => (done, false),
     }
+}
+
+/// [`TurnStop::Interrupted`], over the rounds kept so far.
+fn interrupted(
+    produced: Vec<RequestMessage>,
+    usage: Option<PromptUsage>,
+    streamed_cut: usize,
+    last_stop: Option<StopReason>,
+) -> TurnOutcome {
+    outcome(
+        produced,
+        usage,
+        streamed_cut,
+        TurnStop::Interrupted,
+        last_stop,
+    )
 }
 
 /// The one exit from [`run_turn_until`], so no path can return reasoning to a caller.

@@ -1,5 +1,6 @@
 //! Public contract of `run_turn_until`: what a stopped turn keeps.
 
+use std::fs;
 use std::future::{self, Future};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,6 +28,20 @@ fn listing(root: &tempfile::TempDir) -> Vec<AgentEvent> {
         ),
         stop(StopReason::ToolUse),
     ]
+}
+
+/// The `(content, is_error)` of each `tool_result` in a user turn.
+fn answers(message: &RequestMessage) -> Vec<(&str, Option<bool>)> {
+    message
+        .content
+        .iter()
+        .map(|block| match block {
+            ContentBlock::ToolResult {
+                content, is_error, ..
+            } => (content.as_str(), *is_error),
+            other => panic!("not a tool_result: {other:?}"),
+        })
+        .collect()
 }
 
 /// A stop raised inside a tool call, landing before that call can finish (#497).
@@ -193,9 +208,14 @@ async fn a_stop_already_resolved_sends_nothing() {
 /// The stop reaches a round that has more calls behind the stopped one: the stopped call
 /// is waited for and settles, and nothing behind it is put to the gate or run (#26). A
 /// `write` behind it, because an `ls` leaves no mark to look for.
+///
+/// The round is kept with every call answered: the one that finished before the stop says
+/// what it found, the stopped one says only that it finished, and the one behind it says it
+/// did not run.
 #[test]
 fn a_stop_mid_call_starts_no_call_behind_it() {
     let root = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("seen.txt"), "").unwrap();
     let behind = root.path().join("behind.txt");
     let ctx = ctx(SandboxPolicy::default()
         .allow_read(vetted(root.path()))
@@ -224,15 +244,75 @@ fn a_stop_mid_call_starts_no_call_behind_it() {
     assert_eq!(stopped.settled, 2, "the stopped call was not waited for");
     assert_eq!(stopped.asked, 2, "a call behind the stop reached the gate");
     assert!(!behind.exists(), "a call behind the stop ran");
+
+    let [assistant, user] = &stopped.outcome.messages[..] else {
+        panic!(
+            "expected the stopped round, got {:?}",
+            stopped.outcome.messages
+        );
+    };
+    assert_eq!(assistant.role, Role::Assistant);
+    let [before, during, after] = &answers(user)[..] else {
+        panic!("a result for each of three calls, got {user:?}");
+    };
+    assert!(before.0.contains("seen.txt"), "got {before:?}");
+    assert_eq!(before.1, None);
+    assert!(during.0.contains("withheld"), "got {during:?}");
     assert!(
-        stopped.outcome.messages.is_empty(),
-        "the stopped round was kept: {:?}",
-        stopped.outcome.messages
+        !during.0.contains("seen.txt"),
+        "the stopped call's output got through"
+    );
+    assert_eq!(during.1, Some(true));
+    assert!(after.0.contains("not run"), "got {after:?}");
+    assert_eq!(after.1, Some(true));
+}
+
+/// A `write` the stop landed on is waited for and lands (#26), and what it says is not
+/// stored: the operator stopped before reading it, and a resume would send it on.
+#[test]
+fn a_stop_mid_write_lets_it_land_and_withholds_what_it_says() {
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("landed.txt");
+    let ctx = ctx(SandboxPolicy::default()
+        .allow_read(vetted(root.path()))
+        .allow_write(vetted(root.path())));
+    let listed = serde_json::json!({ "path": root.path().to_str().unwrap() });
+    let mut script = Script::new([
+        vec![
+            call("ls", listed),
+            call(
+                "write",
+                serde_json::json!({ "path": target.to_str().unwrap(), "content": "landed" }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("never asked"), stop(StopReason::EndTurn)],
+    ]);
+
+    let stopped = stopped_in_second_call_under(
+        &mut script,
+        turn(&[], &[BuiltinTool::Ls, BuiltinTool::Write]),
+        &ctx,
+    );
+
+    assert_eq!(fs::read_to_string(&target).unwrap(), "landed");
+    let [_, user] = &stopped.outcome.messages[..] else {
+        panic!(
+            "expected the stopped round, got {:?}",
+            stopped.outcome.messages
+        );
+    };
+    let [_, write] = &answers(user)[..] else {
+        panic!("a result for each of two calls, got {user:?}");
+    };
+    assert!(write.0.contains("withheld"), "got {write:?}");
+    assert!(
+        !write.0.contains("landed"),
+        "the write's own report got through: {write:?}"
     );
 }
 
-/// Round one alone: the stop drops the stopped round's answers, the call it found running
-/// having been waited for first (#26).
+/// Round one answered, the stop in round two's only call: both rounds are kept (#26).
 #[test]
 fn a_stop_mid_call_keeps_the_rounds_before_it() {
     let root = tempfile::tempdir().unwrap();
@@ -246,15 +326,13 @@ fn a_stop_mid_call_keeps_the_rounds_before_it() {
 
     assert_eq!(outcome.stop, TurnStop::Interrupted);
     let roles: Vec<Role> = outcome.messages.iter().map(|m| m.role).collect();
-    assert_eq!(roles, [Role::Assistant, Role::User], "round one alone");
-    assert!(
-        matches!(
-            outcome.messages[1].content[..],
-            [ContentBlock::ToolResult { .. }]
-        ),
-        "got {:?}",
-        outcome.messages
+    assert_eq!(
+        roles,
+        [Role::Assistant, Role::User, Role::Assistant, Role::User]
     );
+    let last = answers(&outcome.messages[3]);
+    assert_eq!(last.len(), 1, "got {:?}", outcome.messages);
+    assert!(last[0].0.contains("withheld"), "got {last:?}");
     assert_eq!(script.sent.len(), 2, "no third request after the stop");
 }
 
@@ -311,7 +389,7 @@ fn a_stopped_turn_returns_no_reasoning() {
     let outcome = stopped_in_second_call(&mut script, turn(&[], &[BuiltinTool::Ls]), root.path());
 
     assert_eq!(outcome.stop, TurnStop::Interrupted);
-    assert_eq!(outcome.messages.len(), 2, "got {:?}", outcome.messages);
+    assert_eq!(outcome.messages.len(), 4, "got {:?}", outcome.messages);
     assert!(
         !outcome
             .messages

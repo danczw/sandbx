@@ -93,7 +93,8 @@ pub enum TurnStop {
     Summarised,
     /// The gate ended the turn, having lost whatever it decides with.
     GateAborted,
-    /// The operator stopped the turn, and the round it was in is not stored.
+    /// The operator stopped the turn. A round it stopped mid-stream is not stored; one it
+    /// stopped mid-call is, every call answered.
     Interrupted,
     /// The terminal went away, which stopped the turn as [`Interrupted`](Self::Interrupted)
     /// does.
