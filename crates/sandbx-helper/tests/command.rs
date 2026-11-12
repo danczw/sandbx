@@ -468,6 +468,52 @@ fn a_descendant_that_leaves_the_group_is_still_killed() {
     );
 }
 
+/// The same escapee, stopped from outside: `SECURITY.md` claims a cancel kills what a
+/// timeout kills, and it is the shared `kill_group` that makes that true.
+#[test]
+fn a_descendant_that_leaves_the_group_is_still_killed_by_a_cancel() {
+    let dir = scratch();
+    let canary = dir.path().join("canary");
+    let cancel = Cancel::new();
+    let stopper = raise_soon(&cancel);
+    let started = Instant::now();
+
+    let result = SandboxedCommand::new(
+        "/bin/sh",
+        SandboxPolicy::default()
+            .allow_system_executables()
+            .allow_read(vetted("/dev/null"))
+            .allow_write(vetted("/dev/null"))
+            .allow_write(vetted(dir.path())),
+    )
+    .arg("-c")
+    .arg(format!(
+        "setsid sh -c 'sleep 2; echo alive > {}' & sleep 30",
+        canary.display()
+    ))
+    .helper(env!("CARGO_BIN_EXE_sandbx-helper"))
+    .cancel_on(cancel)
+    .output();
+
+    let elapsed = started.elapsed();
+    stopper.join().unwrap();
+
+    assert!(
+        matches!(result, Err(SandboxError::Cancelled)),
+        "expected a cancellation, got: {result:?}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "a setsid escapee held the cancelled call open for {elapsed:?}"
+    );
+
+    thread::sleep(Duration::from_secs(4));
+    assert!(
+        !canary.exists(),
+        "a setsid descendant escaped the cancel and outlived the tool call"
+    );
+}
+
 /// An `exec` from a second thread sheds the parent death signal; the init still dies, timed.
 #[test]
 fn a_command_that_sheds_its_lifetime_still_dies() {
