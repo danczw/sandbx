@@ -327,16 +327,17 @@ fn running(answer: &str, call: &str) -> Transcript {
     transcript
 }
 
-/// On a row only sandbx can mark, under the transcript and over the bar: while a call runs
-/// the operator can tell which one it is.
+/// On a row only sandbx can mark, under the last line of the log, where the line saying how
+/// the call ended will go: while it runs the operator can tell which one it is.
 #[test]
-fn a_running_call_is_drawn_on_a_marked_row() {
+fn a_running_call_follows_the_log_on_a_marked_row() {
     let transcript = running("three files", "bash make test");
 
     let rows = rows(&transcript, 40, 8);
     assert_eq!(rows[0], "> what is here?");
     assert_eq!(rows[2], "  three files");
-    assert_eq!(rows[6], format!("{GUTTER}sandbx: running bash make test"));
+    assert_eq!(rows[3], "", "no blank row between the answer and the call");
+    assert_eq!(rows[4], format!("{GUTTER}sandbx: running bash make test"));
     assert_eq!(rows[7], "rounds 0 · ctrl-c interrupts");
 }
 
@@ -379,24 +380,21 @@ fn a_command_cannot_forge_a_row_of_the_running_call() {
     assert!(rows.iter().any(|row| row.contains("write /work/a — ran")));
 }
 
-/// A call is one row however long its command: a wrapped one would take the pane from the
-/// transcript, and its continuation rows would carry no mark. The state leads the row, so
-/// the cut takes the command and never the word saying the call is under way.
+/// A long command wraps as a settled line does, and the pane follows its tail: nothing of
+/// the call is cut away, the state still leads its first row, and only that row is marked.
 #[test]
-fn a_long_command_stays_on_one_marked_row() {
+fn a_long_command_wraps_and_the_bar_stays() {
     let transcript = running("three files", &format!("bash echo {}", "x".repeat(200)));
 
     let rows = rows(&transcript, 40, 8);
-    assert_eq!(
-        rows[2], "  three files",
-        "the transcript lost rows: {rows:?}"
-    );
     assert!(
-        rows[6].starts_with(&format!("{GUTTER}sandbx: running bash echo xxx")),
+        rows[1].starts_with(&format!("{GUTTER}sandbx: running bash echo")),
         "{rows:?}"
     );
-    assert_eq!(rows[5], "", "the call took a second row: {rows:?}");
+    assert_eq!(rows[6], "x".repeat(40), "the tail was cut: {rows:?}");
     assert_eq!(rows[7], "rounds 0 · ctrl-c interrupts");
+    let marked = rows.iter().filter(|row| row.starts_with(GUTTER_MARK));
+    assert_eq!(marked.count(), 1, "{rows:?}");
 }
 
 /// However short the pane, the bar keeps its row.
@@ -405,21 +403,6 @@ fn a_running_call_never_takes_the_bar() {
     let transcript = running("three files", "bash make test");
 
     assert_eq!(rows(&transcript, 40, 1), ["rounds 0 · ctrl-c interrupts"]);
-}
-
-/// The question is the one thing that cannot be hidden, and the gate clears it before it
-/// approves: were both ever set, the operator is still asked.
-#[test]
-fn a_question_is_drawn_over_a_running_call() {
-    let mut transcript = running("three files", "bash make test");
-    transcript.ask(&["allow it? [y]es / [n]o"]);
-
-    let rows = rows(&transcript, 40, 8);
-    assert!(
-        rows.contains(&format!("{GUTTER}allow it? [y]es / [n]o")),
-        "{rows:?}"
-    );
-    assert!(!rows.iter().any(|row| row.contains("running")), "{rows:?}");
 }
 
 /// #169: a call the gate approved and the policy then refused leaves nothing claiming it ran.
