@@ -352,7 +352,7 @@ fn a_settled_call_leaves_the_screen_as_it_was() {
 }
 
 /// The command can carry the mark's confusables and a break, and the row is the one that
-/// says sandbx ran it.
+/// says sandbx is running it.
 #[test]
 fn a_command_cannot_forge_a_row_of_the_running_call() {
     let transcript = running(
