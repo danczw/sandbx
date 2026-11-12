@@ -81,8 +81,10 @@ block, whichever of the five outcomes it reached.
 
 Under `tui` an allowed call is also named on a row of its own while it runs, and
 its `settled` line replaces that row. The row can say "running" where a line
-cannot, because nothing of it outlives the call: it is not in the reprint, so a
-refusal after approval is never left beside a claim that the call ran (#517).
+cannot, because nothing of it outlives the call's settling: it is not in the
+reprint, so a refusal after approval is never left beside a claim that the call
+ran (#517). A read-only call a stop abandons settles as cancelled while its
+thread may still run, so the row ends with the settling and not the thread.
 
 **It goes where the question went.** stderr by default; the terminal under
 `--approve call`, which is the same reason the question is not on stderr either;
