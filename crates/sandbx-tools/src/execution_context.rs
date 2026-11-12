@@ -100,8 +100,8 @@ impl ExecutionContext {
     /// Stop what this context spawns once `cancel` is raised, instead of a token nobody holds.
     ///
     /// Every clone shares the token, so one raised stops a command started through any of
-    /// them. Only a spawned command can be stopped: the in-process tools are bounded by
-    /// work and finish what they started.
+    /// them. A spawned command is killed, and `grep` stops between files; the other
+    /// in-process tools are bounded by work and finish what they started (#26).
     #[must_use]
     pub fn with_cancel(mut self, cancel: Cancel) -> Self {
         self.cancel = cancel;
