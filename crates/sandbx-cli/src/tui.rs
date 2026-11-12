@@ -203,8 +203,9 @@ impl Tui {
             matches!(self.run.approve, Approve::Call).then(|| Modal::new(&pane, keys.answers()));
 
         // Inside the loop rather than raced against it, so the rounds before the stop come
-        // back to be stored. The stop kills a running `bash` and waits for an in-process
-        // tool, so the call it stood on settles, and is drawn, before the turn returns (#26).
+        // back to be stored. The stop kills a running `bash`, stops a `grep` and waits for
+        // another in-process tool, so the call it stood on settles, and is drawn, before the
+        // turn returns (#26).
         let mut seen = None;
         let first = run_turn_until(
             &mut open,
@@ -336,7 +337,7 @@ fn held(stderr: Device) -> Option<sandbx_logging::Held> {
 /// What the turn's futures came to, before any of it is accounted for.
 enum Driven {
     /// Stopped before the turn had finished, which keeps the rounds before the one it
-    /// stopped in.
+    /// stopped in, and that one too if it was running tools.
     Stopped(Stopped, TurnOutcome),
     /// Stopped in the wrap-up round of a turn that ran out after `usize` rounds, which is
     /// kept as the cap left it.
@@ -404,7 +405,7 @@ fn stored(stopped: Stopped) -> StoredStop {
 
 /// The code a stop exits with, and its line. `wrapping` is whether it found the turn in
 /// its wrap-up round, which keeps every round before it, where any other stop loses the
-/// round it lands in.
+/// round it lands in if the model was still writing it.
 ///
 /// A hangup has its own line and not the interrupt's: the operator did not stop this turn,
 /// and telling them they did is the one reading of a hangup that is certainly wrong (#264).
@@ -427,9 +428,10 @@ fn stop(stopped: Stopped, wrapping: bool) -> Ending {
         )
     } else {
         format!(
-            "{how}. Under `--session` the rounds it finished are kept and the one it stopped \
-             in is lost. A `bash` command already running is killed; any other tool call \
-             already running finishes first, and what it did stays (#26)"
+            "{how}. Under `--session` the rounds it finished are kept, and the one it stopped \
+             in is kept if it was running tools and is lost if the model was still writing. A \
+             `bash` command already running is killed and a `grep` stops before its next file; \
+             any other tool call already running finishes first, and what it did stays (#26)"
         )
     };
 

@@ -371,13 +371,22 @@ fn every_stop_keeps_the_rounds_it_finished() {
         let (_, stop) = turn.expect("the finished rounds are kept");
         assert_eq!(stop, stored, "{stopped:?}");
         assert_eq!(mid_turn, code, "{stopped:?}");
+        // Both stops are named: one in the stream loses its round, one in a tool call keeps it.
         assert!(
-            said[0].contains("the one it stopped in is lost"),
+            said[0].contains("is lost if the model was still writing"),
+            "{said:?}"
+        );
+        assert!(
+            said[0].contains("is kept if it was running tools"),
             "{said:?}"
         );
         // What the operator is told about a call under way: the mechanism's whole claim.
         assert!(
             said[0].contains("`bash` command already running is killed"),
+            "{said:?}"
+        );
+        assert!(
+            said[0].contains("`grep` stops before its next file"),
             "{said:?}"
         );
     }
