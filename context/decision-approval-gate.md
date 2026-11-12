@@ -316,6 +316,7 @@ approve → Modal::ask
   1  draw the question on the screen
   2  Answers::arm  ───────────────────────►   open the question (see below)
   3  Answers::wait  (Condvar, parked)    ◄──   y / n / a · esc / ctrl-c · hangup
+      a resize wakes the wait: back to 1
   4  take the question down, map the reply
 ```
 
@@ -335,17 +336,18 @@ descriptor no task feeds, and nothing else is in flight during `approve`, since
 - **Drawn, then armed.** The other order lets a key pressed before the question
   was visible answer it. A genuine press in the gap between the two is lost, and
   the operator presses again: the wrong way round costs a keystroke, not a
-  consent.
+  consent. A resize is the same gap again: the thread that would repaint is the
+  one parked, so `wait` returns `Reply::Resized` and `ask` draws and arms once
+  more, and a key pressed against the old frame is forgotten with it.
 - **Drawn means drawn.** A question the screen could not take, a draw that has
   failed or a lock a panic poisoned, is not asked: a key pressed meanwhile would
   answer something nobody saw, so the gate aborts instead of waiting.
 - **A short pane cuts the middle.** The rows naming the call and the row saying
   what the keys do are the two a question cannot lose, so a pane too short for
   all of it keeps those and marks the cut with a `…` row. The transcript above
-  it goes first. A pane that cannot keep both is not asked on: `question_fits`
-  says so, and the gate aborts as for a draw that failed. A resize while a
-  question waits is not redrawn (#508): the thread that paints is the one
-  parked.
+  it goes first. A pane that cannot keep both, at the first draw or after a
+  resize, is not asked on: `question_fits` says so, and the gate aborts as for
+  a draw that failed.
 - **The question opens when the reader is quiet.** The reader may already hold
   events it took off the terminal, and those predate the question. `arm` does
   not reach into crossterm for them: it marks the question pending, and the
