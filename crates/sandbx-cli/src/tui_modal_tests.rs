@@ -14,15 +14,17 @@ use super::{ANSWERS, Modal, Replies, Shows};
 /// What happened, in order, across both fakes: the order is half of what is pinned.
 type Log = Rc<RefCell<Vec<String>>>;
 
-/// Whether a question reaches the screen is the second field.
-struct Screen(Log, bool);
+/// How many more draws reach the screen is the second field.
+struct Screen(Log, usize);
 
 impl Shows for Screen {
     fn show(&mut self, lines: &[&str]) -> bool {
         self.0
             .borrow_mut()
             .push(format!("show {}", lines.join(" / ")));
-        self.1
+        let reaches = self.1 > 0;
+        self.1 = self.1.saturating_sub(1);
+        reaches
     }
 
     fn clear(&mut self) {
@@ -61,7 +63,7 @@ impl Replies for Keys {
             .borrow_mut()
             .pop_front()
             .expect("asked more often than the test scripted");
-        if !matches!(reply, Reply::Key(_)) {
+        if matches!(reply, Reply::Interrupted | Reply::Closed) {
             self.stopped.set(Some(reply));
         }
         reply
@@ -81,7 +83,7 @@ fn modal(replies: &[Reply]) -> (Modal<Screen, Keys>, Log) {
         stopped: std::cell::Cell::new(None),
     };
 
-    (Modal::new(Screen(Rc::clone(&log), true), keys), log)
+    (Modal::new(Screen(Rc::clone(&log), usize::MAX), keys), log)
 }
 
 fn ask(
@@ -127,6 +129,57 @@ fn the_question_is_drawn_then_armed_then_waited_on_then_taken_down() {
             "clear",
         ]
     );
+}
+
+/// The frame the operator is looking at is the one they answer: a resize puts the question
+/// up again at the new size, and arms it only after, so a key pressed against the old
+/// frame is not an answer to the new one.
+#[test]
+fn a_resize_redraws_the_question_and_asks_again() {
+    let (mut modal, log) = modal(&[Reply::Resized, Reply::Key('y')]);
+
+    let verdict = ask(&mut modal, BuiltinTool::Write, &write());
+
+    assert_eq!(verdict, ApprovalDecision::Allow);
+    let log = log.borrow();
+    let shown = "show sandbx: write /work/a.rs / sandbx: this call writes a file. allow it? \
+                 [y]es / [n]o / [a]ll `write` calls";
+    assert_eq!(
+        *log,
+        [
+            shown,
+            "arm ['y', 'n', 'a']",
+            "wait",
+            shown,
+            "arm ['y', 'n', 'a']",
+            "wait",
+            "clear",
+        ]
+    );
+}
+
+/// A pane resized too small for the question is one nobody can read it on, and is refused
+/// as a question that could not be drawn at all.
+#[test]
+fn a_resize_that_leaves_no_room_for_the_question_aborts() {
+    let (mut modal, log) = modal(&[Reply::Resized]);
+    modal.screen.1 = 1;
+
+    let verdict = ask(&mut modal, BuiltinTool::Write, &write());
+
+    match verdict {
+        ApprovalDecision::Abort { reason } => {
+            assert!(reason.contains("could not be drawn"), "{reason}");
+        }
+        other => panic!("asked a question nobody could see: {other:?}"),
+    }
+    let log = log.borrow();
+    assert_eq!(
+        log.iter().filter(|event| *event == "wait").count(),
+        1,
+        "waited on a question that was no longer on screen: {log:?}"
+    );
+    assert_eq!(log.last().map(String::as_str), Some("clear"));
 }
 
 #[test]
@@ -296,7 +349,7 @@ fn the_account_of_a_call_goes_where_the_question_was_asked() {
 #[test]
 fn a_question_that_could_not_be_drawn_is_never_asked() {
     let (mut modal, log) = modal(&[]);
-    modal.screen.1 = false;
+    modal.screen.1 = 0;
 
     let verdict = ask(&mut modal, BuiltinTool::Write, &write());
 

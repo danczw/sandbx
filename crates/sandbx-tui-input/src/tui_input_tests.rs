@@ -549,3 +549,78 @@ fn a_hangup_already_seen_is_visible_without_waiting() {
 
     assert_eq!(answers.stopped(), Some(Reply::Closed));
 }
+
+/// What was typed against the old frame is not an answer to the redrawn one, so a resize
+/// ends the wait with the key forgotten, and the next arm starts clean.
+#[test]
+fn a_resize_wakes_a_wait_and_forgets_what_was_typed() {
+    let Pty { master: _m, slave } = pty();
+    let answers = answers(slave);
+    answers.arm(&['y']).expect("armed");
+    quiet(&answers);
+    answers.wire.pressed(typed('y'));
+
+    answers.wire.resized();
+
+    assert_eq!(waited(&answers), Reply::Resized);
+    assert!(
+        answers.wire.slate().keys.is_empty(),
+        "a key typed against the old frame survived the resize"
+    );
+    answers.arm(&['y']).expect("armed again");
+    quiet(&answers);
+    answers.wire.pressed(typed('y'));
+    assert_eq!(waited(&answers), Reply::Key('y'));
+}
+
+#[test]
+fn an_interrupt_outranks_a_resize() {
+    let Pty { master: _m, slave } = pty();
+    let answers = answers(slave);
+    answers.arm(&['y']).expect("armed");
+    quiet(&answers);
+    answers.wire.resized();
+
+    answers
+        .wire
+        .pressed(key(KeyCode::Char('c'), KeyModifiers::CONTROL));
+
+    assert_eq!(waited(&answers), Reply::Interrupted);
+}
+
+/// The window between the draw and the arm: a resize there finds nothing armed, and must
+/// still be waiting for the wait, or the frame it left stale is the one that is answered.
+#[test]
+fn a_resize_before_the_arm_still_wakes_the_wait() {
+    let Pty { master: _m, slave } = pty();
+    let answers = answers(slave);
+    answers.wire.resized();
+    answers.arm(&['y']).expect("armed");
+    quiet(&answers);
+
+    assert_eq!(waited(&answers), Reply::Resized);
+}
+
+/// Through the reader, which is what turns the terminal's resize into the wake.
+#[test]
+fn the_reader_reports_a_resize() {
+    struct Resizes(Vec<io::Result<Option<Event>>>);
+
+    impl Source for Resizes {
+        fn next(&mut self) -> io::Result<Option<Event>> {
+            self.0.remove(0)
+        }
+    }
+
+    let Pty { master: _m, slave } = pty();
+    let answers = answers(slave.try_clone().expect("a second handle"));
+    let _keys = answers.wire.seen.subscribe();
+    let mut source = Resizes(vec![
+        Ok(Some(Event::Resize(80, 24))),
+        Err(io::Error::from(io::ErrorKind::BrokenPipe)),
+    ]);
+
+    read(&answers.wire, slave.as_fd(), slave.as_fd(), &mut source);
+
+    assert!(answers.wire.slate().resized, "the resize was dropped");
+}
