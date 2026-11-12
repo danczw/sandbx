@@ -673,8 +673,7 @@ impl CallGate for Gate<'_> {
     /// two subcommands is the divergence nobody notices until a `bash` runs.
     ///
     /// An allowed call is named on the screen until it settles, and only an allowed one: a
-    /// refusal never ran, and says so as it settles. No `Deny` or `Abort` is ever drawn as
-    /// running (#169).
+    /// refusal never ran, and says so as it settles (#169).
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
         let decision = self.argv.approve(call);
         if decision == ApprovalDecision::Allow {
