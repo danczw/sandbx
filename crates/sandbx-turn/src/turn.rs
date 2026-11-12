@@ -137,12 +137,15 @@ pub enum TurnStop {
     /// `tool_result`.
     GateAborted,
 
-    /// [`run_turn_until`]'s `stop` resolved, and the round it found running was dropped.
+    /// [`run_turn_until`]'s `stop` resolved.
     ///
-    /// The transcript is every round before it, as legal to send again as
-    /// [`RoundLimit`](Self::RoundLimit)'s, or empty. Not in it: anything of the dropped
-    /// round, the calls it had already run included. A `bash` it had started is killed; any
-    /// other call it had started finishes, and its effect stays (#26).
+    /// A stop that lands while the model is streaming drops that round: the transcript is
+    /// every round before it, or empty. One that lands in a round's tool calls keeps the
+    /// round, every call answered, so it ends on a user turn of results, as legal to send
+    /// again as [`RoundLimit`](Self::RoundLimit)'s. A call that finished before the stop
+    /// says what it found; one running at it is waited for, a `bash` killed and any other
+    /// finishing with its effect standing (#26), and says only that its output was
+    /// withheld; one behind it was never put to the gate or run, and says so.
     Interrupted,
 }
 
@@ -217,7 +220,8 @@ impl Default for TurnLimits {
 /// Tools run on `spawn_blocking`, uncancellable: dropping this future still lets the
 /// blocking task finish, so a turn abandoned mid-tool applies the `write` anyway, or lets a
 /// `bash` run out its timeout, recorded only in the audit trail (#26). [`run_turn_until`]
-/// stops a turn instead: it keeps the rounds before the stop and kills a running `bash`.
+/// stops a turn instead: it keeps the rounds before the stop, the one it landed in among
+/// them, and kills a running `bash`.
 ///
 /// Needs a tokio runtime with the time driver enabled: the per-round bound is
 /// `tokio::time::timeout`, which panics with "there is no timer running" otherwise.
@@ -245,8 +249,9 @@ where
 /// the only way to cancel a call from here.
 ///
 /// Raced against each round's request and its tool calls, `stop` first, so a stop that
-/// has already resolved opens no further request. The round it lands in is dropped whole,
-/// calls already answered in it included. A call already running is waited for rather than
+/// has already resolved opens no further request. A round it lands in while streaming is
+/// dropped whole; one it lands in during its calls is kept, [`TurnStop::Interrupted`] says
+/// how. A call already running is waited for rather than
 /// abandoned, and reported to [`CallGate::settled`] as it ends: a `bash` is killed and a
 /// `grep` stops between files, but the other in-process tools cannot be cancelled (#26), so
 /// one finishes and its effect stays. No call behind it is put to the gate or run.

@@ -329,16 +329,19 @@ architecture the filter gates on.
   Whatever a tool read is in it: a token in a config, a `.env` under
   `--allow-read`, a key a `bash` printed. No encryption, no redaction, no expiry,
   no deletion. A turn stopped on `tui`'s screen stores the prompt and every
-  round it finished, under a stop naming an interrupt or a hung-up terminal, and
-  loses the round it stopped in whole: whatever it streamed, including the part
-  of the answer you read, and every tool call it asked for. The calls it had
-  already run did run, and one still running is killed if it is a `bash`,
-  stopped if it is a `grep`, and finishes if it is neither, but the transcript
-  records the effect of none. A
-  stop before the first round finishes stores
-  nothing, the prompt included, and leaves no trace in the session that a call
-  ran ([#271](https://github.com/danczw/sandbx/issues/271)). Where a round was
-  stored, resuming says so on stderr; the model is told nothing of it. What the
+  round it finished, under a stop naming an interrupt or a hung-up terminal. A
+  stop while the model is still writing loses that round whole: whatever it
+  streamed, including the part of the answer you read, and every tool call it
+  asked for. A stop while its tools run keeps the round with every call
+  answered: a call that finished before the stop keeps its output; one running
+  at the stop is killed if it is a `bash`, stopped if it is a `grep` and
+  finishes if it is neither, and is stored with its output withheld, since you
+  stopped before reading it and a resume would send it to the provider; one
+  behind it is stored as not run. What a withheld call did still stands. A stop
+  before the first round finishes streaming stores nothing, the prompt
+  included ([#271](https://github.com/danczw/sandbx/issues/271)). Where a round
+  was stored, resuming says so on stderr, and the model sees those results and
+  nothing more of the stop. What the
   turn showed is printed back to the terminal once the screen is gone, and the
   call a stop stood on is named there as it ended, run or cancelled, but never
   with its output. Where the terminal is

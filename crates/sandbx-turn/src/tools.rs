@@ -18,9 +18,10 @@ use crate::TurnError;
 /// Every answered block reports to [`CallGate::settled`], including the two refusals above
 /// the gate, which the gate's own verdict cannot account for.
 ///
-/// A cancelled `ctx` ends the loop early, leaving a `tool_use` with no `tool_result`: the
-/// caller must drop the round, which `run_turn_until` does and is the only caller to hold
-/// the token.
+/// A cancelled `ctx` ends the loop early. Every call still gets a result, so the round stays
+/// legal to store: a call behind the stop says it did not run, and one that settled once
+/// the token was raised says its output was withheld, whatever it returned. Only
+/// `run_turn_until` holds the token.
 pub(crate) async fn answer_calls<G>(
     blocks: &[ContentBlock],
     ctx: &ExecutionContext,

@@ -202,11 +202,12 @@ case without `--approve call`; with it, a hangup lands on a question and is the
 
 It also keeps less. The abort is a `TurnStop`, so the turn returns and its
 messages, usage and `withheld` are stored. A `tui` stop ends the turn through
-`run_turn_until`, which keeps the rounds before it and drops the one it lands
-in, so the round the operator was watching is stored nowhere, for a hangup as
-for an interrupt (#271). A tool call already running is killed if it is a
-`bash`, stopped if it is a `grep`, and finishes if it is neither (#26), on both
-surfaces alike.
+`run_turn_until`, which keeps the rounds before it, and the one it lands in if
+that was running tools, every call answered and the one under way with its
+output withheld. A round the model was still writing is stored nowhere, for a
+hangup as for an interrupt (#271). A tool call already running is killed if it
+is a `bash`, stopped if it is a `grep`, and finishes if it is neither (#26), on
+both surfaces alike.
 
 ## Deny by default, and the honest claim
 
