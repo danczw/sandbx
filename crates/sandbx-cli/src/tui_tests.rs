@@ -1,14 +1,10 @@
 use super::super::render::Unfinished;
 use super::super::{Device, INCOMPLETE, NO_CONSENT, gate};
-use super::{
-    Accounted, Driven, Ending, Running, Tui, accounted, counted, ending, given_back, held, stop,
-};
+use super::{Accounted, Driven, Ending, Tui, accounted, counted, ending, given_back, held, stop};
 use crate::{AgentError, Cli, Command};
 use clap::Parser;
-use sandbx_approval::{ApprovalDecision, ToolCall};
 use sandbx_event::StopReason;
 use sandbx_session_message::TurnStop as StoredStop;
-use sandbx_tools::BuiltinTool;
 use sandbx_tui_input::Stopped;
 use sandbx_turn::{TurnError, TurnOutcome, TurnStop};
 use std::io;
@@ -340,7 +336,7 @@ fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
 #[test]
 fn every_stop_keeps_the_rounds_it_finished() {
     let capped = TurnStop::RoundLimit { rounds: 4 };
-    let kept = |driven| accounted(driven, Running::default()).expect("not a failure");
+    let kept = |driven| accounted(driven).expect("not a failure");
 
     for (stopped, code, stored) in [
         (Stopped::Pressed, 2, StoredStop::Interrupted),
@@ -379,6 +375,11 @@ fn every_stop_keeps_the_rounds_it_finished() {
             said[0].contains("the one it stopped in is lost"),
             "{said:?}"
         );
+        // What the operator is told about a call under way: the mechanism's whole claim.
+        assert!(
+            said[0].contains("`bash` command already running is killed"),
+            "{said:?}"
+        );
     }
 }
 
@@ -386,17 +387,14 @@ fn every_stop_keeps_the_rounds_it_finished() {
 /// the turn kept being the same one `--no-wrap-up` would have kept.
 #[test]
 fn a_stopped_wrap_up_still_names_a_cut_round() {
-    let said = accounted(
-        Driven::StoppedWrapping(
-            Stopped::Pressed,
-            outcome(
-                TurnStop::RoundLimit { rounds: 2 },
-                Some(StopReason::MaxTokens),
-            ),
-            2,
+    let said = accounted(Driven::StoppedWrapping(
+        Stopped::Pressed,
+        outcome(
+            TurnStop::RoundLimit { rounds: 2 },
+            Some(StopReason::MaxTokens),
         ),
-        Running::default(),
-    )
+        2,
+    ))
     .expect("not a failure")
     .said;
     assert_eq!(said.len(), 3, "{said:?}");
@@ -460,38 +458,4 @@ fn compact_at_is_one_flag_under_both() {
         (run.budget_tokens, run.keep_recent)
     );
     assert_eq!(drawn.budget_tokens, 5000);
-}
-
-/// The call a stop lands on never settles, so the tracker is the only account it gets; one
-/// the gate refused settled before it could be running.
-#[test]
-fn only_a_call_let_through_and_unsettled_is_named_on_a_stop() {
-    let input = serde_json::json!({ "command": "sleep 20" });
-    let call = ToolCall {
-        tool: BuiltinTool::Bash,
-        id: "toolu_1",
-        input: &input,
-    };
-
-    let mut running = Running::default();
-    running.approved(call, &ApprovalDecision::Allow);
-    let named = running.stopped().expect("an approved call is running");
-    assert!(
-        named.starts_with("sandbx: bash sleep 20 — still running"),
-        "{named}"
-    );
-
-    let mut refused = Running::default();
-    refused.approved(
-        call,
-        &ApprovalDecision::Deny {
-            reason: "no".to_string(),
-        },
-    );
-    assert_eq!(refused.stopped(), None);
-
-    let mut finished = Running::default();
-    finished.approved(call, &ApprovalDecision::Allow);
-    finished.settled();
-    assert_eq!(finished.stopped(), None);
 }

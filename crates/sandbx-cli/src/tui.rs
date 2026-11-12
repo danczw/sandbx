@@ -16,7 +16,6 @@
 //! reprint; repainted only on an event, so the screen is still for a tool call.
 
 use std::io::{self, Write};
-use std::mem;
 use std::sync::Mutex;
 
 use sandbx_anthropic::AnthropicClient;
@@ -193,7 +192,6 @@ impl Tui {
                 Device::Terminal => approved.to_vec(),
                 Device::Redirected => Vec::new(),
             },
-            running: Running::default(),
             over: false,
         });
         let mut keys = Keys::listen();
@@ -205,8 +203,8 @@ impl Tui {
             matches!(self.run.approve, Approve::Call).then(|| Modal::new(&pane, keys.answers()));
 
         // Inside the loop rather than raced against it, so the rounds before the stop come
-        // back to be stored. A running tool still finishes, and the process waits on it,
-        // `Runtime::drop` having no timeout (#26).
+        // back to be stored. The stop kills a running `bash` and waits for an in-process
+        // tool, so the call it stood on settles, and is drawn, before the turn returns (#26).
         let mut seen = None;
         let first = run_turn_until(
             &mut open,
@@ -274,7 +272,7 @@ impl Tui {
         // a write that can stall on a paused terminal while the trail is still held.
         pane.over = true;
 
-        let (code, outcome, closing) = match accounted(driven, mem::take(&mut pane.running)) {
+        let (code, outcome, closing) = match accounted(driven) {
             Ok(Accounted { code, kept, said }) => (Ok(code), kept, said),
             Err(error) => {
                 // In the reprint only where stderr went elsewhere: `main` prints the error
@@ -356,20 +354,18 @@ struct Accounted {
     said: Vec<String>,
 }
 
-/// Account for what the turn's futures came to, `running` being the call a stop stood on.
+/// Account for what the turn's futures came to.
 ///
 /// Apart from `drive` so what a stop keeps is an assertion: the screen it is drawn on needs
 /// a terminal, and `SECURITY.md` claims the difference.
-fn accounted(driven: Driven, running: Running) -> Result<Accounted, TurnError> {
+fn accounted(driven: Driven) -> Result<Accounted, TurnError> {
     Ok(match driven {
         Driven::Stopped(stopped, outcome) => {
             let Ending { code, said } = stop(stopped, false);
-            // The call the dropped round stood on never settles, so this is the only line
-            // it gets.
             Accounted {
                 code,
                 kept: Some((outcome, stored(stopped))),
-                said: said.into_iter().chain(running.stopped()).collect(),
+                said,
             }
         }
         // The cap's own lines too, as the same turn stored under `--no-wrap-up` has them. The
@@ -432,8 +428,8 @@ fn stop(stopped: Stopped, wrapping: bool) -> Ending {
     } else {
         format!(
             "{how}. Under `--session` the rounds it finished are kept and the one it stopped \
-             in is lost, and a tool call already running finishes unseen: the process waits \
-             for it before it exits (#26)"
+             in is lost. A `bash` command already running is killed; any other tool call \
+             already running finishes first, and what it did stays (#26)"
         )
     };
 
@@ -592,7 +588,6 @@ struct Pane {
     screen: Screen,
     /// Every line of the account, in order, for a stderr the reprint does not reach.
     said: Vec<String>,
-    running: Running,
     /// Whether the turn is over, after which a line is noted and not drawn.
     over: bool,
 }
@@ -607,32 +602,6 @@ impl Notes for Pane {
             self.screen.paint(change);
         }
         self.said.push(line.to_string());
-    }
-}
-
-/// The call the gate let through and that has not settled yet.
-///
-/// Apart from [`Pane`] so a test can drive it without a screen.
-#[derive(Default)]
-struct Running(Option<String>);
-
-impl Running {
-    /// Set on `Allow` alone: a refused call settles before anything runs.
-    fn approved(&mut self, call: ToolCall<'_>, verdict: &ApprovalDecision) {
-        if matches!(verdict, ApprovalDecision::Allow) {
-            self.0 = Some(gate::describe(call.tool, call.input));
-        }
-    }
-
-    fn settled(&mut self) {
-        self.0 = None;
-    }
-
-    /// The line a stop owes the call it stood on, if one was running.
-    fn stopped(self) -> Option<String> {
-        self.0.map(|call| {
-            format!("sandbx: {call} — still running when the turn stopped, and finishes unseen")
-        })
     }
 }
 
@@ -683,11 +652,7 @@ impl CallGate for Gate<'_> {
     /// Delegated, never re-derived: one `--allow-tool` approving two different sets across
     /// two subcommands is the divergence nobody notices until a `bash` runs.
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
-        let verdict = self.argv.approve(call);
-        if let Ok(mut pane) = self.pane.lock() {
-            pane.running.approved(call, &verdict);
-        }
-        verdict
+        self.argv.approve(call)
     }
 
     /// The same line `agent-run` writes, through the pane: `ArgvGate::settled` puts it on
@@ -695,7 +660,6 @@ impl CallGate for Gate<'_> {
     fn settled(&mut self, call: Settled<'_>) {
         let line = gate::line(call);
         if let Ok(mut pane) = self.pane.lock() {
-            pane.running.settled();
             pane.note(&line);
         }
     }
