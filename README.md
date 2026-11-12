@@ -304,17 +304,17 @@ leave you answering one call blind.
 | `--show-thinking` | print a summary of the model's reasoning on stderr as it arrives. Stored nowhere, and a 400 on models before Claude 4.6 |
 
 One question, one answer, then the process ends. `sandbx tui` takes the same
-flags and draws that turn on a screen instead of streaming it, with the running
-call named on a row above the status bar. Ctrl-c or escape ends it mid-flight —
-`--session` keeping the rounds it finished, and the
-one it stopped in if it was running tools, with the output of the call it
-stopped on withheld, and a running `bash` command killed and a call that only
-reads left running, where a `write` or `edit` finishes first. When the turn
-ends the screen goes and the transcript is printed in its place, so the answer
+flags and draws that turn on a screen instead of streaming it, with the
+running call named on a row above the status bar. Ctrl-c or escape ends it
+mid-flight — `--session` keeping the rounds it finished, and the one it
+stopped in if it was running tools, with the output of the call it stopped
+on withheld, and a running `bash` command killed and a call that only reads
+left running, where a `write` or `edit` finishes first. When the turn ends
+the screen goes and the transcript is printed in its place, so the answer
 stays in your scrollback. It needs a terminal on stdout, so it refuses a
 piped run. `--approve call` asks on the screen, in rows under the transcript,
-and one key answers: `y`, `n` or `a`, escape or ctrl-c refusing the call and
-ending the turn ([#225](https://github.com/danczw/sandbx/issues/225)):
+and one key answers: `y`, `n` or `a`, escape or ctrl-c refusing the call
+and ending the turn ([#225](https://github.com/danczw/sandbx/issues/225)):
 
 ```sh
 sandbx tui --allow-tool bash -- "what is in this directory?"
