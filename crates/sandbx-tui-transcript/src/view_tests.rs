@@ -376,7 +376,26 @@ fn a_command_cannot_forge_a_row_of_the_running_call() {
     assert!(rows.iter().any(|row| row.contains("write /work/a — ran")));
 }
 
-/// A call too long for the pane clips at the bottom and never takes the bar's row.
+/// A call is one row however long its command: a wrapped one would take the pane from the
+/// transcript, and its continuation rows would carry no mark.
+#[test]
+fn a_long_command_stays_on_one_marked_row() {
+    let transcript = running("three files", &format!("bash echo {}", "x".repeat(200)));
+
+    let rows = rows(&transcript, 40, 8);
+    assert_eq!(
+        rows[2], "  three files",
+        "the transcript lost rows: {rows:?}"
+    );
+    assert!(
+        rows[6].starts_with(&format!("{GUTTER}sandbx: bash echo xxx")),
+        "{rows:?}"
+    );
+    assert_eq!(rows[5], "", "the call took a second row: {rows:?}");
+    assert_eq!(rows[7], "rounds 0 · ctrl-c interrupts");
+}
+
+/// However short the pane, the bar keeps its row.
 #[test]
 fn a_running_call_never_takes_the_bar() {
     let transcript = running("three files", "bash make test");
