@@ -26,6 +26,12 @@ const GONE: PollFlags = PollFlags::POLLHUP
     .union(PollFlags::POLLERR)
     .union(PollFlags::POLLNVAL);
 
+/// How long the reader blocks on the terminal before looking at crossterm's own signal source,
+/// in milliseconds. crossterm reports a `SIGWINCH` as `Event::Resize` only from inside
+/// `event::poll`, and a `poll` on the terminal alone is not woken by it: with no key typed
+/// the resize would wait for one. This is the longest an operator waits for the redraw.
+const RESIZE_LOOK: u16 = 100;
+
 /// What the reader has seen so far; `stop` and `gone` are sticky, the channel's one slot
 /// losing either unread otherwise.
 #[derive(Debug, Clone, Copy, Default)]
@@ -412,7 +418,7 @@ fn read(wire: &Wire, tty: BorrowedFd<'_>, out: BorrowedFd<'_>, source: &mut impl
         let wait = if buffered {
             PollTimeout::ZERO
         } else {
-            PollTimeout::NONE
+            PollTimeout::from(RESIZE_LOOK)
         };
 
         // Quiet only across a blocking poll, and only once nothing is buffered: a question

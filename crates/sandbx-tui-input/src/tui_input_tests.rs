@@ -624,3 +624,55 @@ fn the_reader_reports_a_resize() {
 
     assert!(answers.wire.slate().resized, "the resize was dropped");
 }
+
+/// crossterm turns a `SIGWINCH` into an `Event::Resize` only inside `event::poll`, which the
+/// reader calls only after its own poll returns: with no key typed, a reader that blocks on
+/// the terminal for good never hears of the resize.
+#[test]
+fn a_reader_with_nothing_typed_still_looks_for_a_resize() {
+    struct Looks(mpsc::Sender<()>);
+
+    impl Source for Looks {
+        fn next(&mut self) -> io::Result<Option<Event>> {
+            self.0.send(()).expect("the test is listening");
+            Ok(None)
+        }
+    }
+
+    let Pty { master: _m, slave } = pty();
+    let answers = answers(slave.try_clone().expect("a second handle"));
+    let _keys = answers.wire.seen.subscribe();
+    let (looked, looks) = mpsc::channel();
+    let wire = Arc::clone(&answers.wire);
+    thread::spawn(move || read(&wire, slave.as_fd(), slave.as_fd(), &mut Looks(looked)));
+
+    // Twice: the first look is the reader's own, before it first blocks.
+    for _ in 0..2 {
+        looks
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the reader never looked without a key");
+    }
+}
+
+/// The wake itself: a wait already parked is ended by the resize, not only one that starts
+/// after it.
+#[test]
+fn a_resize_wakes_a_wait_already_parked() {
+    let Pty { master: _m, slave } = pty();
+    let answers = answers(slave);
+    answers.arm(&['y']).expect("armed");
+    quiet(&answers);
+    let (sent, received) = mpsc::channel();
+    let waiting = answers.clone();
+    thread::spawn(move || sent.send(waiting.wait()).expect("the test is listening"));
+    thread::sleep(Duration::from_millis(100));
+
+    answers.wire.resized();
+
+    assert_eq!(
+        received
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the wait never returned"),
+        Reply::Resized
+    );
+}
