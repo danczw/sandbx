@@ -14,7 +14,7 @@ use sandbx_core::SandboxPolicy;
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_provider::EventStream;
-use sandbx_tools::BuiltinTool;
+use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{Compaction, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn_until};
 use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
 
@@ -96,13 +96,39 @@ impl CallGate for RaisingOn<'_> {
     }
 }
 
+/// What a stopped turn handed back, and what its gate saw of the calls.
+struct Stopped {
+    outcome: TurnOutcome,
+    asked: usize,
+    settled: usize,
+}
+
 /// `turn` over `script`, with `root` readable, stopped inside its second `ls`.
+///
+/// Asserts the stopped call settled, which is the whole of what the stop owes it: the
+/// call is waited for rather than left to finish unseen (#26).
+fn stopped_in_second_call(script: &mut Script, turn: Turn<'_>, root: &Path) -> TurnOutcome {
+    let stopped = stopped_in_second_call_under(
+        script,
+        turn,
+        &ctx(SandboxPolicy::default().allow_read(vetted(root))),
+    );
+
+    assert_eq!(stopped.settled, 2, "the stopped call was not waited for");
+    stopped.outcome
+}
+
+/// `turn` over `script`, stopped inside the second call its gate is asked about.
 ///
 /// On one blocking thread, which is what the plug holds. Under a timeout, since a stop
 /// that is never polled leaves the plug in place and the call behind it pending forever.
-/// Asserts the first call alone settled: the second finishing would mean the plug did not
-/// hold it, and the race #497 describes is back.
-fn stopped_in_second_call(script: &mut Script, turn: Turn<'_>, root: &Path) -> TurnOutcome {
+/// The plug is what keeps the second call from finishing before the stop lands: without
+/// it the race #497 describes is back, and the call settles on its own.
+fn stopped_in_second_call_under(
+    script: &mut Script,
+    turn: Turn<'_>,
+    ctx: &ExecutionContext,
+) -> Stopped {
     // Declared before `interrupt`, so a panic below drops the plug before the runtime,
     // whose drop waits for every blocking thread, the plugged one included.
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -126,7 +152,7 @@ fn stopped_in_second_call(script: &mut Script, turn: Turn<'_>, root: &Path) -> T
                 run_turn_until(
                     async |r| script.open(r).await,
                     turn,
-                    &ctx(SandboxPolicy::default().allow_read(vetted(root))),
+                    ctx,
                     |_| {},
                     &mut gate,
                     interrupt.raised(),
@@ -137,8 +163,11 @@ fn stopped_in_second_call(script: &mut Script, turn: Turn<'_>, root: &Path) -> T
         .expect("the stop ended the turn")
         .expect("a scripted turn that only reads");
 
-    assert_eq!(gate.settled, 1, "the stopped call finished before the stop");
-    outcome
+    Stopped {
+        outcome,
+        asked: gate.asked,
+        settled: gate.settled,
+    }
 }
 
 #[tokio::test]
@@ -161,8 +190,49 @@ async fn a_stop_already_resolved_sends_nothing() {
     assert!(script.sent.is_empty(), "a request went out after the stop");
 }
 
-/// Round one alone: the stop drops the stopped call's answer, and the call is left to
-/// finish rather than cancelled (#26).
+/// The stop reaches a round that has more calls behind the stopped one: the stopped call
+/// is waited for and settles, and nothing behind it is put to the gate or run (#26). A
+/// `write` behind it, because an `ls` leaves no mark to look for.
+#[test]
+fn a_stop_mid_call_starts_no_call_behind_it() {
+    let root = tempfile::tempdir().unwrap();
+    let behind = root.path().join("behind.txt");
+    let ctx = ctx(SandboxPolicy::default()
+        .allow_read(vetted(root.path()))
+        .allow_write(vetted(root.path())));
+    let listed = serde_json::json!({ "path": root.path().to_str().unwrap() });
+    let mut script = Script::new([
+        vec![
+            call("ls", listed.clone()),
+            call("ls", listed),
+            call(
+                "write",
+                serde_json::json!({ "path": behind.to_str().unwrap(), "content": "behind it" }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("never asked"), stop(StopReason::EndTurn)],
+    ]);
+
+    let stopped = stopped_in_second_call_under(
+        &mut script,
+        turn(&[], &[BuiltinTool::Ls, BuiltinTool::Write]),
+        &ctx,
+    );
+
+    assert_eq!(stopped.outcome.stop, TurnStop::Interrupted);
+    assert_eq!(stopped.settled, 2, "the stopped call was not waited for");
+    assert_eq!(stopped.asked, 2, "a call behind the stop reached the gate");
+    assert!(!behind.exists(), "a call behind the stop ran");
+    assert!(
+        stopped.outcome.messages.is_empty(),
+        "the stopped round was kept: {:?}",
+        stopped.outcome.messages
+    );
+}
+
+/// Round one alone: the stop drops the stopped round's answers, the call it found running
+/// having been waited for first (#26).
 #[test]
 fn a_stop_mid_call_keeps_the_rounds_before_it() {
     let root = tempfile::tempdir().unwrap();
