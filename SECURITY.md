@@ -333,11 +333,13 @@ architecture the filter gates on.
   stop while the model is still writing loses that round whole: whatever it
   streamed, including the part of the answer you read, and every tool call it
   asked for. A stop while its tools run keeps the round with every call
-  answered: a call that finished before the stop keeps its output; one running
-  at the stop is killed if it is a `bash`, left running if it only reads and
-  finishes if it writes, and is stored with its output withheld, since you
-  stopped before reading it and a resume would send it to the provider; one
-  behind it is stored as not run. What a withheld call did still stands. A stop
+  answered: a call that had settled when the stop was raised keeps its output;
+  one still running then, or settling as it was raised, is killed if it is a
+  `bash`, left running if it only reads and finishes if it writes, and is
+  stored with its output withheld, since you stopped before reading it and a
+  resume would send it to the provider; one behind it is stored as not run.
+  What a withheld call did still stands, and a killed or abandoned one is
+  stored as cancelled with anything it had done possibly remaining. A stop
   before the first round finishes streaming stores nothing, the prompt
   included ([#271](https://github.com/danczw/sandbx/issues/271)). Where a round
   was stored, resuming says so on stderr, and the model sees those results and
@@ -380,9 +382,9 @@ architecture the filter gates on.
   ([`ToolLimits`](crates/sandbx-tools/src/tool_limits.rs)) — on a thread that
   cannot be cancelled, so one read on a stalled filesystem hangs indefinitely,
   holding that thread until the process exits; a stop stops waiting for it,
-  below. Nothing else is capped: no CPU bound, no memory bound, no limit on processes
-  spawned. A fork bomb is unbounded while the call lasts; bounded is that it does
-  not outlive it.
+  below. Nothing else is capped: no CPU bound, no memory bound, no limit on
+  processes spawned. A fork bomb is unbounded while the call lasts; bounded is
+  that it does not outlive it.
 - **A `write` or `edit` cannot be interrupted, and a read is abandoned, not
   stopped.** A stop on `tui` (ctrl-c, escape, or a hung-up terminal) kills a
   running `bash` command with the kill a timeout makes, and stops waiting for a
