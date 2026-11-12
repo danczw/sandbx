@@ -26,7 +26,7 @@ const GUTTER: &str = "│ ";
 /// The question takes its rows from the transcript and never the other way round. In a pane
 /// too short for all of it, its middle goes and a marked row stands in: the first rows name
 /// the call and the last say what the keys do, and a question missing either cannot be
-/// answered knowingly. The running call is one row, clipped where the pane is short.
+/// answered knowingly. The running call is one row, cut at the pane's edge.
 pub fn draw(frame: &mut Frame, transcript: &Transcript) {
     let area = frame.area();
 
@@ -158,10 +158,16 @@ fn question(transcript: &Transcript) -> Option<Paragraph<'static>> {
 /// is. The mark is why the command, which is the model's, cannot pass as sandbx's own words.
 /// "Running" is all it claims: the call may still be refused after approval, and the row is
 /// gone by then, so no entry is left to say otherwise.
+///
+/// Not wrapped, so a long command is cut at the pane's edge rather than taking the pane from
+/// the transcript, its continuation rows carrying no mark. The operator was shown the whole
+/// command when asked, and the head of it is what names the call.
 fn running(transcript: &Transcript) -> Option<Paragraph<'static>> {
     let call = transcript.running()?;
 
-    Some(marked(&format!("sandbx: {call} — running")))
+    Some(Paragraph::new(marked_line(&format!(
+        "sandbx: {call} — running"
+    ))))
 }
 
 /// `rows` as marked lines, under a blank row where `spaced`.
