@@ -44,10 +44,11 @@ pub enum ToolError {
         after: Duration,
     },
 
-    /// The operation was killed because the caller stopped waiting for it.
+    /// The operation was stopped because the caller stopped waiting for it: a command is
+    /// killed, a `grep` returns before its next file.
     ///
     /// Separate from [`TimedOut`](Self::TimedOut): no limit was hit, so there is nothing to
-    /// narrow or lengthen, and the operation may have changed state before it died.
+    /// narrow or lengthen, and a command may have changed state before it died.
     Cancelled {
         /// What was attempted.
         subject: String,
@@ -66,7 +67,7 @@ impl fmt::Display for ToolError {
                 write!(f, "{subject} timed out after {after:?} and was killed")
             }
             Self::Cancelled { subject } => {
-                write!(f, "{subject} was cancelled and killed before it finished")
+                write!(f, "{subject} was cancelled before it finished")
             }
         }
     }

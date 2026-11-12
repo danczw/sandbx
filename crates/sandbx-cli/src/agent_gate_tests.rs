@@ -359,17 +359,17 @@ fn a_policy_refusal_is_not_reported_as_a_call_that_ran() {
     );
 }
 
-/// The operator who pressed ctrl-C reads this line, so it must say the command was killed
-/// and not that it ran or that a limit was hit.
+/// The operator who pressed ctrl-C reads this line, so it must say the call was cancelled
+/// and not that it ran or that a limit was hit. Not "killed": a `grep` is stopped, not killed.
 #[test]
-fn a_cancelled_call_is_reported_as_killed() {
+fn a_cancelled_call_is_reported_as_cancelled() {
     let error = ToolError::Cancelled {
         subject: "run `sleep 80`".to_string(),
     };
 
     assert_eq!(
         reported_bash("sleep 80", Outcome::Errored(&error)),
-        "bash sleep 80 — cancelled and killed"
+        "bash sleep 80 — cancelled"
     );
 }
 

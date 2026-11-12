@@ -194,7 +194,7 @@ fn report(call: Settled<'_>) -> String {
             ToolError::TimedOut { after, .. } => {
                 format!("{head} — timed out after {after:?} and was killed")
             }
-            ToolError::Cancelled { .. } => format!("{head} — cancelled and killed"),
+            ToolError::Cancelled { .. } => format!("{head} — cancelled"),
         },
     }
 }
