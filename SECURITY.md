@@ -520,12 +520,16 @@ architecture the filter gates on.
   above — and
   that same reset is why it costs the command nothing: the command's environment
   holds only what `--allow-env` named, plus the constants `imposed_env` sets.
-- **A release archive's provenance says where it was built, not that the source
-  is trustworthy.** The attestation names the workflow run and commit that
-  produced the archive; it does not vouch for that commit, and it protects only
-  a user who runs `gh attestation verify` — sandbx checks nothing on download.
-  The `.sha256` beside each archive detects corruption and nothing more, since
-  whoever can replace the archive can replace it too.
+- **A release archive's provenance says which run published it, not that the
+  source or the build is trustworthy.** The attestation names the release
+  workflow run and commit, and is minted in `publish` over the bytes `build`
+  uploaded: a build that was compromised is attested all the same, and the
+  runner image, the Rust toolchain and the `musl-tools` install are inputs it
+  does not cover. It protects only a user who runs `gh attestation verify`
+  with `--signer-workflow` — sandbx checks nothing on download — and only
+  releases from `v0.1.0-alpha.26` on have one. The `.sha256` beside each archive
+  detects corruption and nothing more, since whoever can replace the archive can
+  replace it too.
 
 ## Known weaknesses
 
