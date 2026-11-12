@@ -1,12 +1,16 @@
 //! Public contract of `run_turn_until`: what a stopped turn keeps.
+// `mkfifo` is spawned to build a fixture: std cannot create a named pipe. Not code
+// escaping the sandbox, which is what the ban on `Command::new` exists to stop.
+#![allow(clippy::disallowed_methods)]
 
-use std::fs;
 use std::future::{self, Future};
 use std::path::Path;
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, mpsc};
 use std::task::Poll;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use std::{fs, thread};
 
 use futures_util::task::AtomicWaker;
 use futures_util::{StreamExt, stream};
@@ -28,6 +32,27 @@ fn listing(root: &tempfile::TempDir) -> Vec<AgentEvent> {
         ),
         stop(StopReason::ToolUse),
     ]
+}
+
+/// Opens `fifo` for writing once `delay` has passed, which wakes a reader parked on it, and
+/// joins that thread when dropped.
+struct Release(Option<thread::JoinHandle<()>>);
+
+impl Release {
+    fn after(delay: Duration, fifo: std::path::PathBuf) -> Self {
+        Self(Some(thread::spawn(move || {
+            thread::sleep(delay);
+            let _ = fs::OpenOptions::new().write(true).open(fifo);
+        })))
+    }
+}
+
+impl Drop for Release {
+    fn drop(&mut self) {
+        if let Some(thread) = self.0.take() {
+            let _ = thread.join();
+        }
+    }
 }
 
 /// The `(content, is_error)` of each `tool_result` in a user turn.
@@ -206,8 +231,9 @@ async fn a_stop_already_resolved_sends_nothing() {
 }
 
 /// The stop reaches a round that has more calls behind the stopped one: the stopped call
-/// is waited for and settles, and nothing behind it is put to the gate or run (#26). A
-/// `write` behind it, because an `ls` leaves no mark to look for.
+/// is waited for and settles, and nothing behind it is put to the gate or run (#26). The
+/// stopped call is a `write`, which is always waited for and lands; a read-only call is
+/// abandoned instead, so it could settle either way.
 ///
 /// The round is kept with every call answered: the one that finished before the stop says
 /// what it found, the stopped one says only that it finished, and the one behind it says it
@@ -216,6 +242,7 @@ async fn a_stop_already_resolved_sends_nothing() {
 fn a_stop_mid_call_starts_no_call_behind_it() {
     let root = tempfile::tempdir().unwrap();
     fs::write(root.path().join("seen.txt"), "").unwrap();
+    let landed = root.path().join("landed.txt");
     let behind = root.path().join("behind.txt");
     let ctx = ctx(SandboxPolicy::default()
         .allow_read(vetted(root.path()))
@@ -223,8 +250,11 @@ fn a_stop_mid_call_starts_no_call_behind_it() {
     let listed = serde_json::json!({ "path": root.path().to_str().unwrap() });
     let mut script = Script::new([
         vec![
-            call("ls", listed.clone()),
             call("ls", listed),
+            call(
+                "write",
+                serde_json::json!({ "path": landed.to_str().unwrap(), "content": "landed" }),
+            ),
             call(
                 "write",
                 serde_json::json!({ "path": behind.to_str().unwrap(), "content": "behind it" }),
@@ -243,6 +273,7 @@ fn a_stop_mid_call_starts_no_call_behind_it() {
     assert_eq!(stopped.outcome.stop, TurnStop::Interrupted);
     assert_eq!(stopped.settled, 2, "the stopped call was not waited for");
     assert_eq!(stopped.asked, 2, "a call behind the stop reached the gate");
+    assert_eq!(fs::read_to_string(&landed).unwrap(), "landed");
     assert!(!behind.exists(), "a call behind the stop ran");
 
     let [assistant, user] = &stopped.outcome.messages[..] else {
@@ -257,59 +288,15 @@ fn a_stop_mid_call_starts_no_call_behind_it() {
     };
     assert!(before.0.contains("seen.txt"), "got {before:?}");
     assert_eq!(before.1, None);
+    // What the operator stopped before reading, and a resume would send on.
     assert!(during.0.contains("withheld"), "got {during:?}");
     assert!(
-        !during.0.contains("seen.txt"),
-        "the stopped call's output got through"
+        !during.0.contains("landed"),
+        "the write's own report got through: {during:?}"
     );
     assert_eq!(during.1, Some(true));
     assert!(after.0.contains("not run"), "got {after:?}");
     assert_eq!(after.1, Some(true));
-}
-
-/// A `write` the stop landed on is waited for and lands (#26), and what it says is not
-/// stored: the operator stopped before reading it, and a resume would send it on.
-#[test]
-fn a_stop_mid_write_lets_it_land_and_withholds_what_it_says() {
-    let root = tempfile::tempdir().unwrap();
-    let target = root.path().join("landed.txt");
-    let ctx = ctx(SandboxPolicy::default()
-        .allow_read(vetted(root.path()))
-        .allow_write(vetted(root.path())));
-    let listed = serde_json::json!({ "path": root.path().to_str().unwrap() });
-    let mut script = Script::new([
-        vec![
-            call("ls", listed),
-            call(
-                "write",
-                serde_json::json!({ "path": target.to_str().unwrap(), "content": "landed" }),
-            ),
-            stop(StopReason::ToolUse),
-        ],
-        vec![text("never asked"), stop(StopReason::EndTurn)],
-    ]);
-
-    let stopped = stopped_in_second_call_under(
-        &mut script,
-        turn(&[], &[BuiltinTool::Ls, BuiltinTool::Write]),
-        &ctx,
-    );
-
-    assert_eq!(fs::read_to_string(&target).unwrap(), "landed");
-    let [_, user] = &stopped.outcome.messages[..] else {
-        panic!(
-            "expected the stopped round, got {:?}",
-            stopped.outcome.messages
-        );
-    };
-    let [_, write] = &answers(user)[..] else {
-        panic!("a result for each of two calls, got {user:?}");
-    };
-    assert!(write.0.contains("withheld"), "got {write:?}");
-    assert!(
-        !write.0.contains("landed"),
-        "the write's own report got through: {write:?}"
-    );
 }
 
 /// Round one answered, the stop in round two's only call: both rounds are kept (#26).
@@ -330,10 +317,76 @@ fn a_stop_mid_call_keeps_the_rounds_before_it() {
         roles,
         [Role::Assistant, Role::User, Role::Assistant, Role::User]
     );
+    // An `ls` is abandoned or finished, whichever the poll finds first: either says nothing of
+    // what it listed.
     let last = answers(&outcome.messages[3]);
     assert_eq!(last.len(), 1, "got {:?}", outcome.messages);
-    assert!(last[0].0.contains("withheld"), "got {last:?}");
+    assert_eq!(last[0].1, Some(true), "got {last:?}");
+    assert!(
+        last[0].0.contains("withheld") || last[0].0.contains("cancelled"),
+        "got {last:?}"
+    );
     assert_eq!(script.sent.len(), 2, "no third request after the stop");
+}
+
+/// A `read` of a FIFO with no writer waits in `open` for as long as it takes someone to
+/// write, which no stop can interrupt. It is read-only and writes nothing, so the stop
+/// abandons it instead of waiting (#26).
+#[tokio::test]
+async fn a_stop_does_not_wait_for_a_read_that_cannot_finish() {
+    let root = tempfile::tempdir().unwrap();
+    let fifo = root.path().join("pipe");
+    let made = Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("mkfifo should run");
+    assert!(made.success());
+    let mut script = Script::new([
+        vec![
+            call(
+                "read",
+                serde_json::json!({ "path": fifo.to_str().unwrap() }),
+            ),
+            stop(StopReason::ToolUse),
+        ],
+        vec![text("never asked"), stop(StopReason::EndTurn)],
+    ]);
+    // Frees the thread the read is parked on after two seconds, a stop that waits for it
+    // then failing the bound below instead of hanging the runtime's drop. Declared after
+    // `root`, so it is joined before the directory goes: with the FIFO unlinked the open
+    // fails, and the read stays parked.
+    let _release = Release::after(Duration::from_secs(2), fifo.clone());
+    let started = Instant::now();
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(10),
+        run_turn_until(
+            async |r| script.open(r).await,
+            turn(&[], &[BuiltinTool::Read]),
+            &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
+            |_| {},
+            AllowAll,
+            tokio::time::sleep(Duration::from_millis(200)),
+        ),
+    )
+    .await
+    .expect("the stop ended the turn")
+    .unwrap();
+    let elapsed = started.elapsed();
+
+    assert_eq!(outcome.stop, TurnStop::Interrupted);
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "the stop waited {elapsed:?} for a read"
+    );
+    let [_, user] = &outcome.messages[..] else {
+        panic!("expected the stopped round, got {:?}", outcome.messages);
+    };
+    let [result] = &answers(user)[..] else {
+        panic!("a result for the one call, got {user:?}");
+    };
+    assert!(result.0.contains("cancelled"), "got {result:?}");
+    assert_eq!(result.1, Some(true));
 }
 
 /// A round that streams forever: only the stop can end it under a 300-second bound.

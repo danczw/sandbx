@@ -3,9 +3,13 @@
 //! The crate's only `spawn_blocking` site. Tools are synchronous, so the sync/async
 //! boundary lives here rather than spread through seven tool bodies.
 
+use futures_util::future::{Either, select};
 use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
 use sandbx_prompt::{ContentBlock, ToolDefinition};
-use sandbx_tools::{BuiltinTool, ExecutionContext, ToolError};
+use sandbx_tools::{BuiltinTool, ExecutionContext, RiskLevel, ToolError};
+use std::pin::pin;
+use std::time::Duration;
+use tokio::task::{JoinError, JoinHandle};
 
 use crate::TurnError;
 
@@ -100,11 +104,22 @@ where
         // consumes it; an `Arc` would only pay off past a few path lists.
         let arguments = input.clone();
         let context = ctx.clone();
-        let outcome = tokio::task::spawn_blocking(move || tool.execute(arguments, &context))
-            .await
-            .map_err(|_| TurnError::ToolPanicked {
+        let mut running = tokio::task::spawn_blocking(move || tool.execute(arguments, &context));
+        let joined = match tool.risk() {
+            RiskLevel::ReadOnly => unless_stopped(&mut running, ctx).await,
+            RiskLevel::Writes | RiskLevel::Executes => Some(running.await),
+        };
+        let outcome = match joined {
+            Some(joined) => joined.map_err(|_| TurnError::ToolPanicked {
                 name: name.to_string(),
-            })?;
+            })?,
+            // Left running on its blocking thread, its result never read. Safe only because it
+            // is read-only: abandoning a `write` is what the gate's position ahead of the
+            // spawn exists to rule out. Exhaustive above, so a fourth level must pick a side.
+            None => Err(ToolError::Cancelled {
+                subject: name.to_string(),
+            }),
+        };
 
         // Read after the join, never before the spawn: a call that finished a moment before
         // the stop is withheld too, which errs toward saying less of what the operator stopped.
@@ -156,6 +171,29 @@ where
         results,
         aborted: aborted.is_some(),
     })
+}
+
+/// How often a running read-only call is checked for a stop.
+///
+/// A poll and not a wake-up because [`Cancel`](sandbx_tools::Cancel) is a polled flag by
+/// design. Bounds how long a stop waits on a call that cannot finish.
+const STOP_POLL: Duration = Duration::from_millis(50);
+
+/// `call`'s result, or `None` once `ctx` is cancelled while it is still running.
+///
+/// `call` is borrowed and so left running, not aborted: nothing can interrupt a blocking
+/// thread, only stop waiting for it.
+async fn unless_stopped<T>(
+    call: &mut JoinHandle<T>,
+    ctx: &ExecutionContext,
+) -> Option<Result<T, JoinError>> {
+    loop {
+        match select(&mut *call, pin!(tokio::time::sleep(STOP_POLL))).await {
+            Either::Left((joined, _)) => return Some(joined),
+            Either::Right(((), _)) if ctx.cancelled() => return None,
+            Either::Right(((), _)) => {}
+        }
+    }
 }
 
 /// One round's answers, and whether the gate ended the turn giving them.
