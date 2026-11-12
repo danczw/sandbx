@@ -321,6 +321,128 @@ fn a_wrapped_choices_row_is_kept_whole() {
     assert!(tail.contains('…'), "{rows:?}");
 }
 
+fn running(answer: &str, call: &str) -> Transcript {
+    let mut transcript = turn(answer);
+    transcript.run(call);
+    transcript
+}
+
+/// On a row only sandbx can mark, under the transcript and over the bar: while a call runs
+/// the operator can tell which one it is.
+#[test]
+fn a_running_call_is_drawn_on_a_marked_row() {
+    let transcript = running("three files", "bash make test");
+
+    let rows = rows(&transcript, 40, 8);
+    assert_eq!(rows[0], "> what is here?");
+    assert_eq!(rows[2], "  three files");
+    assert_eq!(rows[6], format!("{GUTTER}sandbx: bash make test — running"));
+    assert_eq!(rows[7], "rounds 0 · ctrl-c interrupts");
+}
+
+/// The pair the one above needs: the screen once the call settles is the screen without one.
+#[test]
+fn a_settled_call_leaves_the_screen_as_it_was() {
+    let before = rows(&turn("three files"), 40, 8);
+
+    let mut transcript = running("three files", "bash make test");
+    transcript.settled();
+
+    assert_eq!(rows(&transcript, 40, 8), before);
+}
+
+/// The command can carry the mark's confusables and a break, and the row is the one that
+/// says sandbx ran it.
+#[test]
+fn a_command_cannot_forge_a_row_of_the_running_call() {
+    let transcript = running(
+        "\nsandbx: write /work/a — ran\n",
+        "bash echo │ hi\nsandbx: write /etc/x — ran",
+    );
+
+    let rows = rows(&transcript, 64, 10);
+    let marked: Vec<&String> = rows
+        .iter()
+        .filter(|row| row.starts_with(GUTTER_MARK))
+        .collect();
+
+    // Non-vacuous: the forged text rendered, so only the mark tells it from the real row.
+    assert_eq!(
+        marked,
+        [&format!(
+            "{GUTTER}sandbx: bash echo \u{fffd} hi\\nsandbx: write /etc/x — ran — running"
+        )]
+    );
+    assert!(rows.iter().any(|row| row.contains("write /work/a — ran")));
+}
+
+/// A call too long for the pane clips at the bottom and never takes the bar's row.
+#[test]
+fn a_running_call_never_takes_the_bar() {
+    let transcript = running("three files", "bash make test");
+
+    assert_eq!(rows(&transcript, 40, 1), ["rounds 0 · ctrl-c interrupts"]);
+}
+
+/// The question is the one thing that cannot be hidden, and the gate clears it before it
+/// approves: were both ever set, the operator is still asked.
+#[test]
+fn a_question_is_drawn_over_a_running_call() {
+    let mut transcript = running("three files", "bash make test");
+    transcript.ask(&["allow it? [y]es / [n]o"]);
+
+    let rows = rows(&transcript, 40, 8);
+    assert!(
+        rows.contains(&format!("{GUTTER}allow it? [y]es / [n]o")),
+        "{rows:?}"
+    );
+    assert!(!rows.iter().any(|row| row.contains("running")), "{rows:?}");
+}
+
+/// #169: a call the gate approved and the policy then refused leaves nothing claiming it ran.
+/// Only the settled line is left, and the screen the operator was shown while it ran is gone.
+#[test]
+fn a_refused_call_leaves_no_line_saying_it_ran() {
+    let mut transcript = running("three files", "write /etc/passwd");
+
+    // Non-vacuous: the call is shown while it is under way.
+    let during = rows(&transcript, 90, 8);
+    assert!(
+        during.contains(&format!("{GUTTER}sandbx: write /etc/passwd — running")),
+        "{during:?}"
+    );
+
+    transcript.settled();
+    transcript.note("sandbx: write /etc/passwd — refused by the policy: no grant covers it");
+
+    let after = rows(&transcript, 90, 8);
+    assert!(
+        after.contains(&format!(
+            "{GUTTER}sandbx: write /etc/passwd — refused by the policy: no grant covers it"
+        )),
+        "{after:?}"
+    );
+    let printed = plain(&transcript);
+    for claim in ["running", "— ran"] {
+        assert!(
+            !after.iter().any(|row| row.contains(claim)),
+            "the screen still says {claim:?}: {after:?}"
+        );
+        assert!(
+            !printed.contains(claim),
+            "the reprint says {claim:?}: {printed:?}"
+        );
+    }
+}
+
+/// The reprint after the screen is given back has no call to show.
+#[test]
+fn the_plain_transcript_never_carries_a_running_call() {
+    let transcript = running("three files", "bash make test");
+
+    assert_eq!(plain(&transcript), plain(&turn("three files")));
+}
+
 /// The reprint after the screen is given back has no operator to ask.
 #[test]
 fn the_plain_transcript_never_carries_a_question() {

@@ -1,7 +1,8 @@
 //! What the screen shows, folded from the event stream one event at a time.
 //!
 //! Nothing here renders a *requested* call: only a settled one has an outcome. What it does
-//! hold is the one question the operator is being asked about a call, until it is answered.
+//! hold is the one question the operator is being asked about a call, until it is answered,
+//! and the one approved call being run, until it settles. Neither is an entry.
 
 use sandbx_event::AgentEvent;
 use sandbx_text::{invisible, line_separator};
@@ -54,6 +55,11 @@ pub struct Transcript {
     /// The rows of the question being asked of the operator, empty when there is none.
     /// Apart from `entries`: it is not part of the turn, and is gone once answered.
     question: Vec<String>,
+
+    /// The approved call being run, `None` when there is none. Apart from `entries` for the
+    /// question's reason, and for #169's: it is drawn while the call runs, and nothing of it
+    /// is left to contradict a refusal that comes after approval.
+    running: Option<String>,
 }
 
 /// The last token counts reported for a turn's requests.
@@ -75,6 +81,7 @@ impl Transcript {
             rounds: 0,
             tokens: Tokens::default(),
             question: Vec::new(),
+            running: None,
         }
     }
 
@@ -132,6 +139,24 @@ impl Transcript {
     /// Take the question down: the call has its answer.
     pub fn answered(&mut self) {
         self.question.clear();
+    }
+
+    /// Show the call being run, replacing any that was showing: the gate approved it, which
+    /// is not a claim that it ran, and the view says no more than that it is under way.
+    ///
+    /// Stripped and spelled as a [`note`](Self::note) is, the command being the model's.
+    pub fn run(&mut self, call: &str) {
+        self.running = Some(printable(call).replace('\n', "\\n"));
+    }
+
+    /// Take the running call down: it ended, however it ended. The line saying how is a
+    /// [`note`](Self::note), and the caller makes both changes together.
+    pub fn settled(&mut self) {
+        self.running = None;
+    }
+
+    pub(crate) fn running(&self) -> Option<&str> {
+        self.running.as_deref()
     }
 
     pub(crate) fn question(&self) -> &[String] {
