@@ -143,9 +143,10 @@ pub enum TurnStop {
     /// every round before it, or empty. One that lands in a round's tool calls keeps the
     /// round, every call answered, so it ends on a user turn of results, as legal to send
     /// again as [`RoundLimit`](Self::RoundLimit)'s. A call that finished before the stop
-    /// says what it found; one running at it is waited for, a `bash` killed and any other
-    /// finishing with its effect standing (#26), and says only that its output was
-    /// withheld; one behind it was never put to the gate or run, and says so.
+    /// says what it found; one running at it is killed if it is a `bash`, left running if it
+    /// only reads, and waited for if it writes, its effect standing (#26), and says only
+    /// that its output was withheld or that it was cancelled; one behind it was never put to
+    /// the gate or run, and says so.
     Interrupted,
 }
 
@@ -153,7 +154,7 @@ pub enum TurnStop {
 ///
 /// None of them bounds a turn's total wall-clock time, and no product of them does: the
 /// in-process tools are bounded by work, not time, so a single `read` on a stalled filesystem
-/// is bounded by nothing here.
+/// is bounded by nothing here, though a stop no longer waits for it.
 #[derive(Debug, Clone, Copy)]
 pub struct TurnLimits {
     /// How many times the model may be asked within one turn.
@@ -251,10 +252,11 @@ where
 /// Raced against each round's request and its tool calls, `stop` first, so a stop that
 /// has already resolved opens no further request. A round it lands in while streaming is
 /// dropped whole; one it lands in during its calls is kept, [`TurnStop::Interrupted`] says
-/// how. A call already running is waited for rather than
-/// abandoned, and reported to [`CallGate::settled`] as it ends: a `bash` is killed and a
-/// `grep` stops between files, but the other in-process tools cannot be cancelled (#26), so
-/// one finishes and its effect stays. No call behind it is put to the gate or run.
+/// how. A call already running is reported to [`CallGate::settled`] as it ends: a `bash` is
+/// killed, and a read-only call (`read`, `ls`, `grep`, `find`) is abandoned on its blocking
+/// thread with its result unread, a `grep` also stopping at its next file. A `write` or
+/// `edit` cannot be cancelled (#26), so it is waited for and its effect stays. No call
+/// behind it is put to the gate or run.
 ///
 /// [`TurnOutcome::usage`] keeps the dropped round's figure when it reported one, its request
 /// being exactly the messages kept. [`TurnOutcome::withheld`] is the cut of the last request

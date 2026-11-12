@@ -334,8 +334,8 @@ architecture the filter gates on.
   streamed, including the part of the answer you read, and every tool call it
   asked for. A stop while its tools run keeps the round with every call
   answered: a call that finished before the stop keeps its output; one running
-  at the stop is killed if it is a `bash`, stopped if it is a `grep` and
-  finishes if it is neither, and is stored with its output withheld, since you
+  at the stop is killed if it is a `bash`, left running if it only reads and
+  finishes if it writes, and is stored with its output withheld, since you
   stopped before reading it and a resume would send it to the provider; one
   behind it is stored as not run. What a withheld call did still stands. A stop
   before the first round finishes streaming stores nothing, the prompt
@@ -378,19 +378,23 @@ architecture the filter gates on.
   instead — a cap on files visited and bytes read for `grep` and `find`, the
   single file or directory for the rest
   ([`ToolLimits`](crates/sandbx-tools/src/tool_limits.rs)) — on a thread that
-  cannot be cancelled, so one read on a stalled filesystem hangs indefinitely.
-  Nothing else is capped: no CPU bound, no memory bound, no limit on processes
+  cannot be cancelled, so one read on a stalled filesystem hangs indefinitely,
+  holding that thread until the process exits; a stop stops waiting for it,
+  below. Nothing else is capped: no CPU bound, no memory bound, no limit on processes
   spawned. A fork bomb is unbounded while the call lasts; bounded is that it does
   not outlive it.
-- **Only a spawned command and a `grep` can be interrupted.** A stop on `tui`
-  (ctrl-c, escape, or a hung-up terminal) kills a running `bash` command with
-  the kill a timeout makes, stops a `grep` before its next file (not during the
-  directory walk before it), and starts no call behind either. The other five
-  in-process tools cannot be cancelled: one already running finishes, so a
-  `write` under way lands, and the stop waits for it — for as long as a stalled
-  filesystem takes, and a `grep` is held the same way inside the file it is
-  reading. Nothing a killed command had already done is undone
-  ([#26](https://github.com/danczw/sandbx/issues/26)).
+- **A `write` or `edit` cannot be interrupted, and a read is abandoned, not
+  stopped.** A stop on `tui` (ctrl-c, escape, or a hung-up terminal) kills a
+  running `bash` command with the kill a timeout makes, and stops waiting for a
+  running `read`, `ls`, `grep` or `find`: the call is left on its blocking
+  thread with its result unread, a `grep` also stopping before its next file
+  (not during the directory walk before it). It starts no call behind either. A
+  `write` or `edit` already running finishes, so a `write` under way lands, and
+  the stop waits for it. An abandoned read goes on until it finishes or the
+  process exits, so a stop is not a promise that nothing is still reading: its
+  access was recorded in the audit trail before it began, and a stalled one
+  holds a blocking thread until exit. Nothing a killed command had already done
+  is undone ([#26](https://github.com/danczw/sandbx/issues/26)).
 - **A bound on the harness's own loop is not a containment claim.** A turn is
   bounded — `TurnLimits::max_rounds` caps the requests one turn may make of the
   model, `TurnLimits::stream_timeout` how long one of them may spend streaming

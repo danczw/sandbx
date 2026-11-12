@@ -74,7 +74,7 @@ impl<S: Shows, R: Replies> Operator for Modal<S, R> {
     fn ask(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
         // Before the `a` that covers a tool: that was the operator's word about the tool,
         // not a way past a stop they gave since, or a terminal that has gone. A covered
-        // call would otherwise run, and an in-process call cannot be cancelled (#26).
+        // call would otherwise run, and a `write` or `edit` cannot be cancelled (#26).
         match self.replies.stopped() {
             Some(Reply::Interrupted) => return deny(INTERRUPTED),
             Some(Reply::Closed) => return abort(CLOSED),

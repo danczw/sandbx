@@ -101,7 +101,9 @@ impl ExecutionContext {
     ///
     /// Every clone shares the token, so one raised stops a command started through any of
     /// them. A spawned command is killed, and `grep` stops between files; the other
-    /// in-process tools are bounded by work and finish what they started (#26).
+    /// in-process tools never read the token, and `write` and `edit` finish what they
+    /// started (#26). A caller may stop waiting for a read-only one instead, as
+    /// `sandbx-turn` does.
     #[must_use]
     pub fn with_cancel(mut self, cancel: Cancel) -> Self {
         self.cancel = cancel;
