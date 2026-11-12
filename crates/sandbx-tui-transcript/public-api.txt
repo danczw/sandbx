@@ -22,9 +22,11 @@ pub struct sandbx_tui_transcript::Transcript
 impl sandbx_tui_transcript::Transcript
 pub fn sandbx_tui_transcript::Transcript::answered(&mut self)
 pub fn sandbx_tui_transcript::Transcript::ask(&mut self, &[&str])
+pub fn sandbx_tui_transcript::Transcript::ended(&mut self)
 pub fn sandbx_tui_transcript::Transcript::event(&mut self, &sandbx_event::AgentEvent)
 pub fn sandbx_tui_transcript::Transcript::new(&str, sandbx_tui_transcript::Reasoning) -> Self
 pub fn sandbx_tui_transcript::Transcript::note(&mut self, &str)
+pub fn sandbx_tui_transcript::Transcript::run(&mut self, &str)
 impl core::marker::Freeze for sandbx_tui_transcript::Transcript
 impl core::marker::Send for sandbx_tui_transcript::Transcript
 impl core::marker::Sync for sandbx_tui_transcript::Transcript
