@@ -122,13 +122,19 @@ fn report(result: Result<i32, impl Error>, failure: u8) -> ExitCode {
 fn block_on(
     future: impl Future<Output = Result<i32, sandbx_cli::AgentError>>,
 ) -> Result<i32, sandbx_cli::AgentError> {
-    tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         // Named at the one call site that can produce it rather than by a blanket
         // `From`, which would label any later io error as this one.
-        .map_err(sandbx_cli::AgentError::Runtime)?
-        .block_on(future)
+        .map_err(sandbx_cli::AgentError::Runtime)?;
+    let result = runtime.block_on(future);
+
+    // Dropping a runtime waits for every blocking task, and a read-only tool call a stop
+    // abandoned may be parked in one for as long as a stalled filesystem takes (#26). Only
+    // those are left by now, every other call having been awaited.
+    runtime.shutdown_background();
+    result
 }
 
 #[cfg(test)]

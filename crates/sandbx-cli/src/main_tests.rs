@@ -49,3 +49,22 @@ fn an_argv_sandbx_accepts_is_not_a_usage_error() {
     Cli::try_parse_from(["sandbx", "sandbox-run", "--", "true"])
         .expect("a well-formed sandbox-run");
 }
+
+/// A read abandoned on a stop is still parked on its blocking thread, and dropping the
+/// runtime waits for every such thread. The process must not (#26).
+#[test]
+fn the_runtime_does_not_wait_for_a_blocking_task_left_running() {
+    let started = std::time::Instant::now();
+
+    let result = super::block_on(async {
+        tokio::task::spawn_blocking(|| std::thread::sleep(std::time::Duration::from_secs(3)));
+        Ok(0)
+    });
+
+    assert!(matches!(result, Ok(0)));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "the runtime waited {:?} for a task nobody awaits",
+        started.elapsed()
+    );
+}
