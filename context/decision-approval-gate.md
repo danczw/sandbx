@@ -16,10 +16,10 @@ that ask it and implement it.
 In `answer_calls`, between resolving the name and `spawn_blocking`.
 
 A blocking task cannot be cancelled (#26): dropping the `JoinHandle` leaves the
-task running to completion. So a gate consulted *concurrently* with the call —
-`select!` on a decision and a `JoinHandle` — would answer "denied" about a `write`
-that had already landed. Before the spawn is the only position where a refusal
-means anything.
+task running to completion, and only a `bash` has a kill to reach for besides.
+So a gate consulted *concurrently* with the call — `select!` on a decision and a
+`JoinHandle` — would answer "denied" about a `write` that had already landed.
+Before the spawn is the only position where a refusal means anything.
 
 Two refusals sit *above* the gate, so a caller's closure never sees either and
 never has to invent a verdict for one:
@@ -203,8 +203,8 @@ It also keeps less. The abort is a `TurnStop`, so the turn returns and its
 messages, usage and `withheld` are stored. A `tui` stop ends the turn through
 `run_turn_until`, which keeps the rounds before it and drops the one it lands
 in, so the round the operator was watching is stored nowhere, for a hangup as
-for an interrupt (#271). A tool call already running finishes unseen (#26) on
-both surfaces alike.
+for an interrupt (#271). A tool call already running is killed if it is a `bash`
+and finishes if it is not (#26), on both surfaces alike.
 
 ## Deny by default, and the honest claim
 
@@ -364,8 +364,8 @@ descriptor no task feeds, and nothing else is in flight during `approve`, since
 - **A stop given earlier outranks an `a`.** Before the blanket is read, the gate
   asks whether the turn was interrupted or the terminal has gone, and refuses or
   aborts at once. An `a` was the operator's word about a tool, not a way past a
-  stop they gave since: a covered call would otherwise run, and a running call
-  cannot be cancelled (#26).
+  stop they gave since: a covered call would otherwise run, and an in-process
+  call cannot be cancelled (#26).
 - **Refusal outranks an answer already pressed.** An interrupt beats a queued
   `y`, and a hangup beats both. Each leaves the call refused, the direction a
   doubtful reading must lean.
