@@ -75,6 +75,10 @@ struct Slate {
     idle: bool,
     accepts: &'static [char],
     keys: VecDeque<char>,
+    /// The terminal changed size since a wait last returned. Kept whether or not a question
+    /// is armed: one resized between its draw and its arm would otherwise leave the frame
+    /// it made stale on screen, and a spare redraw costs nothing.
+    resized: bool,
     /// The reader has exited, for whatever reason: nobody is left to answer.
     done: bool,
 }
@@ -104,6 +108,11 @@ impl Wire {
     fn gone(&self) {
         self.seen.send_modify(|seen| seen.gone = true);
         self.wake();
+    }
+
+    fn resized(&self) {
+        self.slate().resized = true;
+        self.wake.notify_all();
     }
 
     fn pressed(&self, key: KeyEvent) {
@@ -151,6 +160,10 @@ impl Wire {
 pub enum Reply {
     /// The operator pressed one of the keys asked for.
     Key(char),
+    /// The terminal changed size, so the question is no longer on screen as it was drawn.
+    /// Nothing typed so far is kept: it was an answer to the old frame. The caller is to
+    /// draw it again and [`Answers::arm`] again, in that order.
+    Resized,
     /// ctrl-c or escape, already latched for [`Keys::stop`].
     Interrupted,
     /// Nobody can answer: the terminal hung up, or the reader stopped.
@@ -227,7 +240,8 @@ impl Answers {
     ///
     /// No timeout, as a prompt on a terminal has none. An interrupt outranks an answer
     /// already pressed, and a hangup outranks both: both leave the call refused, which is
-    /// the direction a doubtful reading must lean.
+    /// the direction a doubtful reading must lean. A resize outranks an answer too, the
+    /// key having been pressed against a frame that is gone, and yields to both.
     #[must_use]
     pub fn wait(&self) -> Reply {
         let mut slate = self.wire.slate();
@@ -238,6 +252,9 @@ impl Answers {
             }
             if seen.gone || slate.done {
                 break Reply::Closed;
+            }
+            if slate.resized {
+                break Reply::Resized;
             }
             if let Some(answer) = slate.keys.pop_front() {
                 break Reply::Key(answer);
@@ -252,6 +269,7 @@ impl Answers {
 
         slate.armed = false;
         slate.pending = false;
+        slate.resized = false;
         slate.keys.clear();
 
         reply
@@ -432,7 +450,11 @@ fn read(wire: &Wire, tty: BorrowedFd<'_>, out: BorrowedFd<'_>, source: &mut impl
                     return;
                 }
             }
-            // Resize, mouse, paste, focus: ignored; a redraw is driven by the event stream.
+            Ok(Some(Event::Resize(..))) => {
+                buffered = true;
+                wire.resized();
+            }
+            // Mouse, paste, focus: ignored.
             Ok(Some(_)) => buffered = true,
             Ok(None) => buffered = false,
             Err(_) => return,

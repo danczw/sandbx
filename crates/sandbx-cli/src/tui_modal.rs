@@ -78,27 +78,32 @@ impl<S: Shows, R: Replies> Operator for Modal<S, R> {
         match self.replies.stopped() {
             Some(Reply::Interrupted) => return deny(INTERRUPTED),
             Some(Reply::Closed) => return abort(CLOSED),
-            Some(Reply::Key(_)) | None => {}
+            Some(Reply::Key(_) | Reply::Resized) | None => {}
         }
         if self.consent.covers(call.tool) {
             return ApprovalDecision::Allow;
         }
 
         let [head, tail] = question(call);
-        // Not asked over a question nobody saw: a key pressed meanwhile would answer it.
-        if !self.screen.show(&[&head, &tail]) {
-            self.screen.clear();
-            return abort(UNDRAWN);
-        }
+        // Again after a resize, which leaves the first draw clipped or garbled at the new
+        // size: the thread that would repaint it is the one parked in `wait`.
+        let reply = loop {
+            // Not asked over a question nobody saw: a key pressed meanwhile would answer it.
+            if !self.screen.show(&[&head, &tail]) {
+                self.screen.clear();
+                return abort(UNDRAWN);
+            }
 
-        // After the draw and never before: a key pressed while nothing was on screen to
-        // answer must not be taken for an answer to it, and `arm` is what forgets those.
-        let reply = match self.replies.arm(ANSWERS) {
-            Ok(()) => self.replies.wait(),
-            Err(_) => {
+            // After the draw and never before: a key pressed while nothing was on screen to
+            // answer must not be taken for an answer to it, and `arm` is what forgets those.
+            if self.replies.arm(ANSWERS).is_err() {
                 self.screen.clear();
                 // Refused rather than asked anyway: the queue may already hold its answer.
                 return abort(UNCLEARED);
+            }
+            match self.replies.wait() {
+                Reply::Resized => {}
+                reply => break reply,
             }
         };
         self.screen.clear();
@@ -113,6 +118,8 @@ impl<S: Shows, R: Replies> Operator for Modal<S, R> {
                     .unwrap_or_else(|| deny(REFUSED))
             }
             Reply::Interrupted => deny(INTERRUPTED),
+            // Unreachable, the loop above taking it for a redraw; and not consent if reached.
+            Reply::Resized => deny(REFUSED),
             Reply::Closed => abort(CLOSED),
         }
     }
