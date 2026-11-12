@@ -13,8 +13,8 @@
 //!
 //! Light by intent, each a limit an operator meets: single-shot, the prompt from argv;
 //! auto-follow with no scroll keys, so a line that scrolled off is back only in the
-//! reprint; repainted only on an event, a line or a call starting, so the screen is still
-//! while a call runs, apart from the one row naming it.
+//! reprint; repainted only when an event arrives, a line is noted or a call starts, so the
+//! screen does not move while a call runs.
 
 use std::io::{self, Write};
 use std::sync::Mutex;
