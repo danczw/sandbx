@@ -13,7 +13,8 @@
 //!
 //! Light by intent, each a limit an operator meets: single-shot, the prompt from argv;
 //! auto-follow with no scroll keys, so a line that scrolled off is back only in the
-//! reprint; repainted only on an event, so the screen is still for a tool call.
+//! reprint; repainted only on an event, a line or a call starting, so the screen is still
+//! while a call runs, apart from the one row naming it.
 
 use std::io::{self, Write};
 use std::sync::Mutex;
@@ -595,15 +596,31 @@ struct Pane {
     over: bool,
 }
 
-impl Notes for Pane {
-    /// Into the transcript, and kept: the screen takes the line with it when it goes.
-    fn note(&mut self, line: &str) {
-        let change = |transcript: &mut Transcript| transcript.note(line);
+impl Pane {
+    /// Change the transcript: drawn while the turn runs, and only recorded once it is over.
+    fn apply(&mut self, change: impl FnOnce(&mut Transcript)) {
         if self.over {
             self.screen.amend(change);
         } else {
             self.screen.paint(change);
         }
+    }
+
+    /// A call ended: its line replaces the row naming it, in one frame, so no frame shows
+    /// the call both running and settled. Kept as [`Notes::note`] keeps a line.
+    fn settle(&mut self, line: &str) {
+        self.apply(|transcript| {
+            transcript.settled();
+            transcript.note(line);
+        });
+        self.said.push(line.to_string());
+    }
+}
+
+impl Notes for Pane {
+    /// Into the transcript, and kept: the screen takes the line with it when it goes.
+    fn note(&mut self, line: &str) {
+        self.apply(|transcript| transcript.note(line));
         self.said.push(line.to_string());
     }
 }
@@ -654,16 +671,27 @@ struct Gate<'a> {
 impl CallGate for Gate<'_> {
     /// Delegated, never re-derived: one `--allow-tool` approving two different sets across
     /// two subcommands is the divergence nobody notices until a `bash` runs.
+    ///
+    /// An allowed call is named on the screen until it settles, and only an allowed one: a
+    /// refusal never ran, and says so as it settles. No `Deny` or `Abort` is ever drawn as
+    /// running (#169).
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision {
-        self.argv.approve(call)
+        let decision = self.argv.approve(call);
+        if decision == ApprovalDecision::Allow {
+            paint(self.pane, |transcript| {
+                transcript.run(&gate::describe(call.tool, call.input));
+            });
+        }
+        decision
     }
 
     /// The same line `agent-run` writes, through the pane: `ArgvGate::settled` puts it on
-    /// stderr, which the alternate screen neither redirects nor gives back.
+    /// stderr, which the alternate screen neither redirects nor gives back. It replaces the
+    /// row naming the call, which a call that never reached `approve` never had.
     fn settled(&mut self, call: Settled<'_>) {
         let line = gate::line(call);
         if let Ok(mut pane) = self.pane.lock() {
-            pane.note(&line);
+            pane.settle(&line);
         }
     }
 }
