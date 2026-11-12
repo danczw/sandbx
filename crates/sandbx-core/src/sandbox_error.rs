@@ -239,6 +239,15 @@ pub enum SandboxError {
         after: Duration,
     },
 
+    /// The [`Cancel`](crate::Cancel) handed to [`SandboxedCommand::cancel_on`] was raised, so
+    /// the command was killed — or never started, where it was raised beforehand.
+    ///
+    /// Not [`TimedOut`](Self::TimedOut): the caller chose this, and a retry with the same
+    /// token can only be refused again.
+    ///
+    /// [`SandboxedCommand::cancel_on`]: crate::SandboxedCommand::cancel_on
+    Cancelled,
+
     /// This kernel cannot enforce a sandbox, returned instead of running unsandboxed. A
     /// kernel and not a platform — the crate refuses to build for non-Linux at all — so: too
     /// old for the Landlock baseline, Landlock disabled at boot, or a ruleset accepted and
@@ -288,6 +297,7 @@ impl fmt::Display for SandboxError {
             Self::TimedOut { after } => {
                 write!(f, "command exceeded its {after:?} limit and was killed")
             }
+            Self::Cancelled => f.write_str("command was cancelled and killed"),
             Self::Unsupported { detail } => write!(f, "sandboxing is not available here: {detail}"),
             Self::UnboundedResolution { detail } => {
                 write!(f, "a name allowlist would bound nothing here: {detail}")
@@ -426,6 +436,7 @@ impl std::error::Error for SandboxError {
             | Self::ProcessHardening { .. }
             | Self::ProcessConcealment { .. }
             | Self::TimedOut { .. }
+            | Self::Cancelled
             | Self::PinMismatch { .. }
             | Self::PinnedScript { .. }
             | Self::HelperRefused { .. }

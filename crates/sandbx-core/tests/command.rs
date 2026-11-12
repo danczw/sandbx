@@ -3,7 +3,9 @@
 //! The half that spawns the real helper is `sandbx-helper`'s `tests/command.rs`, where
 //! `CARGO_BIN_EXE_sandbx-helper` resolves (#347).
 
-use sandbx_core::{CommandLine, HELPER_FLAG, SandboxPolicy, SandboxedCommand};
+use sandbx_core::{
+    Cancel, CommandLine, HELPER_FLAG, SandboxError, SandboxPolicy, SandboxedCommand,
+};
 use std::ffi::OsString;
 use std::path::Path;
 use std::process::ExitCode;
@@ -219,5 +221,23 @@ fn a_policy_granting_a_file_its_own_resolver_replaces_cannot_be_turned_into_an_a
     assert!(
         message.contains("/etc/hosts") && message.contains("directory"),
         "the refusal names no path to go and look at, or no way forward: {message}"
+    );
+}
+
+/// Refused ahead of the spawn: a helper that does not exist would otherwise come back as
+/// `SpawnFailed`, so the variant is the proof nothing was started.
+#[test]
+fn a_cancel_already_raised_starts_nothing() {
+    let cancel = Cancel::new();
+    cancel.raise();
+
+    let result = SandboxedCommand::new("/bin/true", SandboxPolicy::default())
+        .helper("/nonexistent/helper")
+        .cancel_on(cancel)
+        .output();
+
+    assert!(
+        matches!(result, Err(SandboxError::Cancelled)),
+        "expected a refusal before the spawn, got: {result:?}"
     );
 }

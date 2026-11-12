@@ -212,6 +212,7 @@ impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Pinning
 pub enum sandbx_core::SandboxError
 pub sandbx_core::SandboxError::BadHelperArgs
 pub sandbx_core::SandboxError::BadHelperArgs::detail: &'static str
+pub sandbx_core::SandboxError::Cancelled
 pub sandbx_core::SandboxError::ExecFailed
 pub sandbx_core::SandboxError::ExecFailed::source: core::io::error::Error
 pub sandbx_core::SandboxError::GrantBoundByResolver
@@ -288,6 +289,24 @@ impl core::marker::Unpin for sandbx_core::SandboxError
 impl core::marker::UnsafeUnpin for sandbx_core::SandboxError
 impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_core::SandboxError
 impl !core::panic::unwind_safe::UnwindSafe for sandbx_core::SandboxError
+pub struct sandbx_core::Cancel(_)
+impl sandbx_core::Cancel
+pub fn sandbx_core::Cancel::is_raised(&self) -> bool
+pub fn sandbx_core::Cancel::new() -> Self
+pub fn sandbx_core::Cancel::raise(&self)
+impl core::clone::Clone for sandbx_core::Cancel
+pub fn sandbx_core::Cancel::clone(&self) -> sandbx_core::Cancel
+impl core::default::Default for sandbx_core::Cancel
+pub fn sandbx_core::Cancel::default() -> sandbx_core::Cancel
+impl core::fmt::Debug for sandbx_core::Cancel
+pub fn sandbx_core::Cancel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for sandbx_core::Cancel
+impl core::marker::Send for sandbx_core::Cancel
+impl core::marker::Sync for sandbx_core::Cancel
+impl core::marker::Unpin for sandbx_core::Cancel
+impl core::marker::UnsafeUnpin for sandbx_core::Cancel
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_core::Cancel
+impl core::panic::unwind_safe::UnwindSafe for sandbx_core::Cancel
 pub struct sandbx_core::CommandLine
 pub sandbx_core::CommandLine::argv: alloc::vec::Vec<std::ffi::os_str::OsString>
 pub sandbx_core::CommandLine::helper: std::path::PathBuf
@@ -513,6 +532,7 @@ pub struct sandbx_core::SandboxedCommand
 impl sandbx_core::SandboxedCommand
 pub fn sandbx_core::SandboxedCommand::arg(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn sandbx_core::SandboxedCommand::args<I, S>(self, I) -> Self where I: core::iter::traits::collect::IntoIterator<Item = S>, S: core::convert::Into<alloc::string::String>
+pub fn sandbx_core::SandboxedCommand::cancel_on(self, sandbx_core::Cancel) -> Self
 pub fn sandbx_core::SandboxedCommand::command_line(&self) -> core::result::Result<sandbx_core::CommandLine, sandbx_core::SandboxError>
 pub fn sandbx_core::SandboxedCommand::helper(self, impl core::convert::AsRef<std::path::Path>) -> Self
 pub fn sandbx_core::SandboxedCommand::new(impl core::convert::Into<alloc::string::String>, sandbx_core::SandboxPolicy) -> Self

@@ -523,7 +523,7 @@ program that checks.
 ### Narrow by construction, at one site
 
 Three `Command`s are built on the spawn path — the harness's spawn of the helper
-(`helper_command`, shared by `run_to_completion` and `run_with_deadline`), the
+(`helper_command`, shared by `run_to_completion` and `run_supervised`), the
 supervisor's spawn of stage 2, and stage 2's spawn of the real program. None of
 them calls `Command::new`: all go through `spawn::command`, which clears and
 re-adds as it builds, so a narrowed environment is a property of every `Command`
