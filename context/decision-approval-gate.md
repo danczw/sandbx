@@ -50,14 +50,13 @@ needed. `ArgvGate` writes its report with `eprintln!`, as `Render` already write
 stdout from `observe`, and under `--approve call` it reads the operator's answer
 from `/dev/tty` inside `approve` — unbounded in time, bounded in scheduling.
 During that read nothing else is in flight in `agent-run`: the round's stream has
-ended, its timeout is dropped, and `answer_calls` spawns nothing until every call
-of a batch has been asked about, and runs a call that writes alone, after the
-reads before it have settled (#242). Staying sync is what keeps
-`run_turn`'s future `Send` (`documented_call_shape_stays_spawnable`) and keeps
-RPITIT off the trait. The limit is a precondition on the caller, not something
-a second front end inherits: `tui` drives a UI from the same runtime, and meets
-it by waiting on the key thread rather than on anything a task feeds (#225, last
-section).
+ended, its timeout is dropped, and `answer_calls` spawns no call of a batch of
+reads until each has been asked about, and runs any other call alone, once the
+reads before it have settled (#242). Staying sync is what keeps `run_turn`'s
+future `Send` (`documented_call_shape_stays_spawnable`) and keeps RPITIT off the
+trait. The limit is a precondition on the caller, not something a second front
+end inherits: `tui` drives a UI from the same runtime, and meets it by waiting
+on the key thread rather than on anything a task feeds (#225, last section).
 
 ## A refusal is a `tool_result`, not a `TurnError`
 
