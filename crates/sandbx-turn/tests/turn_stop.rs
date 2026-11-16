@@ -1,11 +1,6 @@
 //! Public contract of `run_turn_until`: what a stopped turn keeps.
-// `mkfifo` is spawned to build a fixture: std cannot create a named pipe. Not code
-// escaping the sandbox, which is what the ban on `Command::new` exists to stop.
-#![allow(clippy::disallowed_methods)]
-
 use std::future::{self, Future};
 use std::path::Path;
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, mpsc};
 use std::task::Poll;
@@ -21,7 +16,7 @@ use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_provider::EventStream;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{Compaction, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn_until};
-use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
+use sandbx_turn_fixture::{AllowAll, Script, call, ctx, mkfifo, stop, text, turn, vetted};
 
 /// A round asking for one `ls` of `root`.
 fn listing(root: &tempfile::TempDir) -> Vec<AgentEvent> {
@@ -380,11 +375,7 @@ fn a_stop_mid_call_keeps_the_rounds_before_it() {
 async fn a_stop_does_not_wait_for_a_read_that_cannot_finish() {
     let root = tempfile::tempdir().unwrap();
     let fifo = root.path().join("pipe");
-    let made = Command::new("mkfifo")
-        .arg(&fifo)
-        .status()
-        .expect("mkfifo should run");
-    assert!(made.success());
+    mkfifo(&fifo);
     let mut script = Script::new([
         vec![
             call(
