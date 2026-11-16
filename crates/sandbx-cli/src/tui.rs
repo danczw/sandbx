@@ -20,7 +20,7 @@ use std::io::{self, Write};
 use std::sync::Mutex;
 
 use sandbx_anthropic::AnthropicClient;
-use sandbx_approval::{ApprovalDecision, CallGate, Outcome, Settled, ToolCall};
+use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_screen::{Screen, Transcript};
@@ -608,8 +608,8 @@ impl Pane {
 
     /// A call ended: its line replaces the row naming it, in one frame, so no frame shows
     /// the call both running and settled. Kept as [`Notes::note`] keeps a line.
-    fn settle(&mut self, call: Option<&str>, line: &str) {
-        self.apply(|transcript| transcript.settle(call, line));
+    fn settle(&mut self, id: &str, line: &str) {
+        self.apply(|transcript| transcript.settle(id, line));
         self.said.push(line.to_string());
     }
 }
@@ -675,7 +675,7 @@ impl CallGate for Gate<'_> {
         let decision = self.argv.approve(call);
         if decision == ApprovalDecision::Allow {
             paint(self.pane, |transcript| {
-                transcript.run(&gate::describe(call.tool, call.input));
+                transcript.run(call.id, &gate::describe(call.tool, call.input));
             });
         }
         decision
@@ -685,16 +685,9 @@ impl CallGate for Gate<'_> {
     /// stderr, which the alternate screen neither redirects nor gives back. It replaces the
     /// row naming the call, which a call refused before it ran never had.
     fn settled(&mut self, call: Settled<'_>) {
-        // Not a refusal's: its text can match the row of another call still running.
-        let row = match (call.tool, call.outcome) {
-            (Some(tool), Outcome::Ran | Outcome::Errored(_)) => {
-                Some(gate::describe(tool, call.input))
-            }
-            _ => None,
-        };
         let line = gate::line(call);
         if let Ok(mut pane) = self.pane.lock() {
-            pane.settle(row.as_deref(), &line);
+            pane.settle(call.id, &line);
         }
     }
 }

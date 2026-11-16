@@ -434,11 +434,11 @@ fn an_answered_question_is_gone_and_leaves_the_entries_alone() {
 fn a_running_call_is_not_an_entry() {
     let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     let before = transcript.entries().to_vec();
-    assert!(transcript.running().is_empty(), "a call ran at the start");
+    assert_eq!(transcript.running().count(), 0, "a call ran at the start");
 
-    transcript.run("bash make test");
+    transcript.run("call_1", "bash make test");
     assert_eq!(
-        transcript.running(),
+        transcript.running().collect::<Vec<_>>(),
         ["bash make test"],
         "the call was not kept"
     );
@@ -455,13 +455,13 @@ fn a_running_call_is_not_an_entry() {
 fn a_settled_call_is_gone_and_its_line_is_noted() {
     let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     transcript.event(&text("three files"));
-    transcript.run("bash make test");
+    transcript.run("call_1", "bash make test");
     let mut expected = transcript.entries().to_vec();
     expected.push(entry(Kind::Note, "sandbx: bash make test — ran"));
 
-    transcript.settle(Some("bash make test"), "sandbx: bash make test — ran");
+    transcript.settle("call_1", "sandbx: bash make test — ran");
 
-    assert!(transcript.running().is_empty(), "the running call stayed");
+    assert_eq!(transcript.running().count(), 0, "the running call stayed");
     assert_eq!(transcript.entries(), expected, "the line was not noted");
 }
 
@@ -469,13 +469,13 @@ fn a_settled_call_is_gone_and_its_line_is_noted() {
 #[test]
 fn a_settled_call_leaves_the_others_running() {
     let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
-    transcript.run("read /work/a");
-    transcript.run("read /work/b");
+    transcript.run("a", "read /work/a");
+    transcript.run("b", "read /work/b");
 
-    transcript.settle(Some("read /work/b"), "sandbx: read /work/b — ran");
+    transcript.settle("b", "sandbx: read /work/b — ran");
 
     assert_eq!(
-        transcript.running(),
+        transcript.running().collect::<Vec<_>>(),
         ["read /work/a"],
         "settling `b` took down the wrong row"
     );
@@ -486,12 +486,12 @@ fn a_settled_call_leaves_the_others_running() {
 #[test]
 fn a_call_with_no_row_takes_none_down() {
     let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
-    transcript.run("read /work/a");
+    transcript.run("ran", "read /work/a");
 
-    transcript.settle(None, "sandbx: read /work/a — denied");
+    transcript.settle("denied", "sandbx: read /work/a — denied");
 
     assert_eq!(
-        transcript.running(),
+        transcript.running().collect::<Vec<_>>(),
         ["read /work/a"],
         "a refusal took down a running call's row"
     );
@@ -501,10 +501,10 @@ fn a_call_with_no_row_takes_none_down() {
 #[test]
 fn a_running_call_is_stripped_and_spelled_like_a_note() {
     let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
-    transcript.run("bash echo \x1b[8m│ hi\nsandbx: allowed");
+    transcript.run("call_1", "bash echo \x1b[8m│ hi\nsandbx: allowed");
 
     assert_eq!(
-        transcript.running(),
+        transcript.running().collect::<Vec<_>>(),
         ["bash echo \u{fffd}[8m\u{fffd} hi\\nsandbx: allowed"]
     );
 }
