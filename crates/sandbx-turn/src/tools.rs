@@ -280,10 +280,15 @@ async fn unless_stopped<T>(
     ctx: &ExecutionContext,
 ) -> Option<Result<T, JoinError>> {
     loop {
-        match select(&mut *call, pin!(tokio::time::sleep(STOP_POLL))).await {
-            Either::Left((joined, _)) => return Some(joined),
-            Either::Right(((), _)) if ctx.cancelled() => return None,
-            Either::Right(((), _)) => {}
+        // Checked before the first sleep: a batch's later calls are reached after the stop,
+        // and a poll each would add up.
+        if ctx.cancelled() && !call.is_finished() {
+            return None;
+        }
+        if let Either::Left((joined, _)) =
+            select(&mut *call, pin!(tokio::time::sleep(STOP_POLL))).await
+        {
+            return Some(joined);
         }
     }
 }
