@@ -189,8 +189,8 @@ async fn run<G: CallGate>(
         })
         .collect();
 
-    // The first panic, returned once the rest of the batch is settled: every call in it was
-    // put to the gate, and a gate is owed a settling for each one it approved.
+    // The first panic, returned once the rest of the batch is settled: each was put to the
+    // gate and owes it a settling. The panicking call owes none (`CallGate::settled`).
     let mut panicked = None;
 
     for (decided, running) in batch.drain(..).zip(running) {
