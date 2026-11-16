@@ -168,12 +168,37 @@ a wider sandbox:
 "sandbx keeps the credential out of the tool's memory by granting the tool a
 network it did not previously have" refutes itself.
 
+### An in-harness built-in would work, and none is built
+
 A built-in whose body performs the operation in-harness needs no channel, the
-tool-call protocol being one already. It is not ruled out here — it is #186. An
-authenticated call is the case where per-call consent matters most, and
-`--approve call` (#219) is that consent, except that it never asks about a
-`RiskLevel::ReadOnly` call and no current `RiskLevel` fits a credentialed
-request.
+tool-call protocol being one already: the model sends arguments, the harness
+holds the secret and makes the request, and the child never has the value. The
+enforcement is positional, the same kind as the `ANTHROPIC_API_KEY` refusal.
+
+None is built (#186), because no caller names the operation. A general
+"make an authenticated request" tool is the declined proxy again, with an
+unbounded destination. A narrow one (one host, one credential, a fixed set of
+operations) is a capability rather than a hole, but only a real caller can say
+which host and which operations. And each one is egress the model steers from
+the harness, the one process sandbx does not sandbox.
+
+A proposal for one has to bring all of these, or it reopens #186 rather than
+closing it:
+
+- **A `RiskLevel` that `--approve call` always asks about.** `ReadOnly`,
+  `Writes` and `Executes` each describe the filesystem or a spawn; an
+  authenticated request is none of them, and per-call consent matters most here.
+- **A stop that reaches it.** An abandoned call runs to completion on its
+  blocking thread (`run_turn`'s doc), so a request could leave after the
+  operator stopped the turn. The tool is one a stop kills, or one that waits like
+  `write` and `edit` and says so.
+- **A credential source of its own.** Tier 1 is sandbx's provider key; a second
+  credential is not obviously the same store or the same lifetime.
+- **An audit record that counts.** A request made on the model's behalf is a
+  decision, and `AuditEvent` records metadata, never output.
+- **A prompt that fits `CallGate`.** Neither method may wait on anything the
+  runtime drives, and the question renders in two places: the controlling
+  terminal under `agent-run`, the `tui` screen under `tui`.
 
 ### What is left is a refusal, and it is one
 
