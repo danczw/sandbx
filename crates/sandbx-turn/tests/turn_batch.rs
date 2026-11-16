@@ -1,11 +1,7 @@
 //! Public contract of `run_turn` for a round of several calls: which run together, and
 //! in what order the gate and the model hear about them (#242).
-// `mkfifo` is spawned to build a fixture: std cannot create a named pipe. Not code
-// escaping the sandbox, which is what the ban on `Command::new` exists to stop.
-#![allow(clippy::disallowed_methods)]
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{Duration, Instant};
 use std::{fs, thread};
 
@@ -15,7 +11,7 @@ use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{ContentBlock, RequestMessage};
 use sandbx_tools::BuiltinTool;
 use sandbx_turn::{TurnStop, run_turn, run_turn_until};
-use sandbx_turn_fixture::{AllowAll, Script, ctx, stop, text, turn, vetted};
+use sandbx_turn_fixture::{AllowAll, Script, call_id, ctx, mkfifo, stop, text, turn, vetted};
 
 /// A gate that allows everything and logs `ask:{name}` and `settle:{name}` as they happen,
 /// so the interleaving of the two is the assertion.
@@ -33,25 +29,8 @@ impl CallGate for Logged {
     }
 }
 
-/// A scripted call with an explicit id, for a round that makes more than one.
-fn call_id(id: &str, name: &str, input: serde_json::Value) -> AgentEvent {
-    AgentEvent::ToolCallRequested {
-        id: id.to_string(),
-        name: name.to_string(),
-        input,
-    }
-}
-
 fn path_of(path: &Path) -> serde_json::Value {
     serde_json::json!({ "path": path.to_str().expect("a temp path is UTF-8") })
-}
-
-fn mkfifo(path: &Path) {
-    let made = Command::new("mkfifo")
-        .arg(path)
-        .status()
-        .expect("mkfifo should run");
-    assert!(made.success(), "the fixture needs a named pipe at {path:?}");
 }
 
 /// The `(tool_use_id, content)` of each `tool_result` in a user turn, in order.

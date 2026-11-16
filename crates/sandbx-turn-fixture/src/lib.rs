@@ -134,9 +134,27 @@ const CALL_ID: &str = "call_1";
 
 /// A requested call on `name` with `input`, under the one shared id.
 pub fn call(name: &str, input: serde_json::Value) -> AgentEvent {
+    call_id(CALL_ID, name, input)
+}
+
+/// [`call`] with an explicit id, for a round that makes more than one.
+pub fn call_id(id: &str, name: &str, input: serde_json::Value) -> AgentEvent {
     AgentEvent::ToolCallRequested {
-        id: CALL_ID.to_string(),
+        id: id.to_string(),
         name: name.to_string(),
         input,
     }
+}
+
+/// Make a named pipe at `path`: a `read` of it parks in `open` until a writer arrives.
+///
+/// Spawns `mkfifo` because std cannot create one. Not code escaping the sandbox, which is
+/// what the ban on `Command::new` exists to stop.
+#[allow(clippy::disallowed_methods)]
+pub fn mkfifo(path: &Path) {
+    let made = std::process::Command::new("mkfifo")
+        .arg(path)
+        .status()
+        .expect("mkfifo should run");
+    assert!(made.success(), "the fixture needs a named pipe at {path:?}");
 }

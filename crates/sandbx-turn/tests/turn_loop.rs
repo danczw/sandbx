@@ -14,7 +14,7 @@ use sandbx_prompt::{ContentBlock, RequestMessage, Role};
 use sandbx_provider::EventStream;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{TurnError, TurnLimits, TurnStop, run_turn};
-use sandbx_turn_fixture::{AllowAll, Script, call, ctx, stop, text, turn, vetted};
+use sandbx_turn_fixture::{AllowAll, Script, call, call_id, ctx, stop, text, turn, vetted};
 
 /// An assistant turn of prose, the shape most of these end on.
 fn replied(text: &str) -> RequestMessage {
@@ -996,15 +996,6 @@ async fn the_calls_after_an_abort_are_answered_not_run() {
     assert_eq!(result_of(&results[0]).is_error, None);
     for behind in &results[1..] {
         assert_eq!(result_of(behind).is_error, Some(true));
-    }
-}
-
-/// A scripted call with an explicit id, for a round that makes more than one.
-fn call_id(id: &str, name: &str, input: serde_json::Value) -> AgentEvent {
-    AgentEvent::ToolCallRequested {
-        id: id.to_string(),
-        name: name.to_string(),
-        input,
     }
 }
 
