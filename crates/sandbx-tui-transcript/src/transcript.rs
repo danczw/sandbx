@@ -56,10 +56,10 @@ pub struct Transcript {
     /// Apart from `entries`: it is not part of the turn, and is gone once answered.
     question: Vec<String>,
 
-    /// The approved call being run, `None` when there is none. Apart from `entries`, so it is
-    /// never reprinted: a refusal after approval leaves its own line and no row claiming a
-    /// run (#169).
-    running: Option<String>,
+    /// The approved calls being run, in the order approved: several when a round's reads run
+    /// together (#242). Apart from `entries`, so they are never reprinted: a refusal after
+    /// approval leaves its own line and no row claiming a run (#169).
+    running: Vec<String>,
 }
 
 /// The last token counts reported for a turn's requests.
@@ -81,7 +81,7 @@ impl Transcript {
             rounds: 0,
             tokens: Tokens::default(),
             question: Vec::new(),
-            running: None,
+            running: Vec::new(),
         }
     }
 
@@ -138,26 +138,32 @@ impl Transcript {
         self.question.clear();
     }
 
-    /// Show the call being run, replacing any that was showing: the gate approved it, which
-    /// is not a claim that it ran, and the view says no more than that it is under way.
+    /// Show a call being run, beside any already running: the gate approved it, which is not
+    /// a claim that it ran, and the view says no more than that it is under way.
     ///
     /// Stripped and spelled as a [`note`](Self::note) is, the command being the model's.
     pub fn run(&mut self, call: &str) {
-        self.running = Some(spelled(call));
+        self.running.push(spelled(call));
     }
 
-    /// A call ended, however it ended: take the running call down and show `line`, which
-    /// says how, as [`note`](Self::note) does.
+    /// A call ended, however it ended: take down the row `run` showed for `call`, if it had
+    /// one, and show `line`, which says how, as [`note`](Self::note) does.
     ///
-    /// One change, so no caller can note the line and leave the row beside it, or take the
-    /// row down and lose the line. Harmless where no call was running.
-    pub fn settle(&mut self, line: &str) {
-        self.running = None;
+    /// `None` for a call that never ran, whose row would be another call's with the same
+    /// text. One change, so no caller can note the line and leave the row beside it, or take
+    /// the row down and lose the line.
+    pub fn settle(&mut self, call: Option<&str>, line: &str) {
+        if let Some(call) = call {
+            let call = spelled(call);
+            if let Some(at) = self.running.iter().position(|row| *row == call) {
+                self.running.remove(at);
+            }
+        }
         self.note(line);
     }
 
-    pub(crate) fn running(&self) -> Option<&str> {
-        self.running.as_deref()
+    pub(crate) fn running(&self) -> &[String] {
+        &self.running
     }
 
     pub(crate) fn question(&self) -> &[String] {

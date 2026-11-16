@@ -166,7 +166,7 @@ fn marked_line(row: &str) -> Line<'static> {
     ))
 }
 
-/// The transcript as rows, one blank row between entries, and the call being run after the
+/// The transcript as rows, one blank row between entries, and each call being run after the
 /// last of them.
 ///
 /// The call is a row here and not an entry, which is why [`plain`] never has it: it is drawn
@@ -183,7 +183,7 @@ fn text(transcript: &Transcript) -> Text<'static> {
         })
         .collect();
 
-    if let Some(call) = transcript.running() {
+    for call in transcript.running() {
         lines.push(Line::default());
         lines.push(marked_line(&format!("sandbx: running {call}")));
     }

@@ -434,12 +434,12 @@ fn an_answered_question_is_gone_and_leaves_the_entries_alone() {
 fn a_running_call_is_not_an_entry() {
     let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
     let before = transcript.entries().to_vec();
-    assert_eq!(transcript.running(), None, "a call ran at the start");
+    assert!(transcript.running().is_empty(), "a call ran at the start");
 
     transcript.run("bash make test");
     assert_eq!(
         transcript.running(),
-        Some("bash make test"),
+        ["bash make test"],
         "the call was not kept"
     );
     assert_eq!(
@@ -459,10 +459,42 @@ fn a_settled_call_is_gone_and_its_line_is_noted() {
     let mut expected = transcript.entries().to_vec();
     expected.push(entry(Kind::Note, "sandbx: bash make test — ran"));
 
-    transcript.settle("sandbx: bash make test — ran");
+    transcript.settle(Some("bash make test"), "sandbx: bash make test — ran");
 
-    assert_eq!(transcript.running(), None, "the running call stayed");
+    assert!(transcript.running().is_empty(), "the running call stayed");
     assert_eq!(transcript.entries(), expected, "the line was not noted");
+}
+
+/// Reads in one round run together (#242): each settles off its own row, leaving the others.
+#[test]
+fn a_settled_call_leaves_the_others_running() {
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
+    transcript.run("read /work/a");
+    transcript.run("read /work/b");
+
+    transcript.settle(Some("read /work/b"), "sandbx: read /work/b — ran");
+
+    assert_eq!(
+        transcript.running(),
+        ["read /work/a"],
+        "settling `b` took down the wrong row"
+    );
+}
+
+/// A call refused before it ran never had a row, so its line takes none down: not even one
+/// that reads the same, which belongs to a call still running.
+#[test]
+fn a_call_with_no_row_takes_none_down() {
+    let mut transcript = Transcript::new(PROMPT, Reasoning::Hidden);
+    transcript.run("read /work/a");
+
+    transcript.settle(None, "sandbx: read /work/a — denied");
+
+    assert_eq!(
+        transcript.running(),
+        ["read /work/a"],
+        "a refusal took down a running call's row"
+    );
 }
 
 /// The command is the model's text in part, and gets a note's treatment.
@@ -473,6 +505,6 @@ fn a_running_call_is_stripped_and_spelled_like_a_note() {
 
     assert_eq!(
         transcript.running(),
-        Some("bash echo \u{fffd}[8m\u{fffd} hi\\nsandbx: allowed")
+        ["bash echo \u{fffd}[8m\u{fffd} hi\\nsandbx: allowed"]
     );
 }

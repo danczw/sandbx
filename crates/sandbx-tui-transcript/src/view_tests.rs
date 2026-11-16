@@ -350,7 +350,7 @@ fn a_settled_call_leaves_only_its_line() {
     expected.note(line);
 
     let mut transcript = running("three files", "bash make test");
-    transcript.settle(line);
+    transcript.settle(Some("bash make test"), line);
 
     assert_eq!(rows(&transcript, 40, 8), rows(&expected, 40, 8));
 }
@@ -397,6 +397,28 @@ fn a_long_command_wraps_and_the_bar_stays() {
     assert_eq!(marked.count(), 1, "{rows:?}");
 }
 
+/// Reads in one round run together (#242), and the screen names each of them, not only the
+/// last one approved.
+#[test]
+fn every_call_in_flight_has_its_row() {
+    let mut transcript = running("three files", "read /work/a");
+    transcript.run("read /work/b");
+
+    let rows = rows(&transcript, 40, 10);
+    let marked: Vec<&String> = rows
+        .iter()
+        .filter(|row| row.starts_with(GUTTER_MARK))
+        .collect();
+    assert_eq!(
+        marked,
+        [
+            &format!("{GUTTER}sandbx: running read /work/a"),
+            &format!("{GUTTER}sandbx: running read /work/b"),
+        ],
+        "in the order approved"
+    );
+}
+
 /// However short the pane, the bar keeps its row.
 #[test]
 fn a_running_call_never_takes_the_bar() {
@@ -418,7 +440,10 @@ fn a_refused_call_leaves_no_line_saying_it_ran() {
         "{during:?}"
     );
 
-    transcript.settle("sandbx: write /etc/passwd — refused by the policy: no grant covers it");
+    transcript.settle(
+        Some("write /etc/passwd"),
+        "sandbx: write /etc/passwd — refused by the policy: no grant covers it",
+    );
 
     let after = rows(&transcript, 90, 8);
     assert!(
