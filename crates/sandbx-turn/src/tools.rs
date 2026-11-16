@@ -62,7 +62,9 @@ where
             // Lookup is exact by design: a miss is a prompt or schema bug, not a near-miss
             // to normalise. Nothing runs; the model is told which name.
             batch.push(Decided {
-                block,
+                id,
+                name,
+                input,
                 verdict: Verdict::Unknown,
             });
             continue;
@@ -72,7 +74,9 @@ where
             // `from_name` resolves against every built-in, so resolving alone would hand the
             // gate a call the caller never offered — which an allow-all gate then runs.
             batch.push(Decided {
-                block,
+                id,
+                name,
+                input,
                 verdict: Verdict::NotOffered(tool),
             });
             continue;
@@ -107,7 +111,12 @@ where
                 Verdict::Denied(tool, reason)
             }
         };
-        batch.push(Decided { block, verdict });
+        batch.push(Decided {
+            id,
+            name,
+            input,
+            verdict,
+        });
 
         if alone {
             run(&mut batch, ctx, gate, &mut results).await?;
@@ -142,8 +151,9 @@ where
 
 /// A `tool_use` block and what was decided about it, waiting for its batch to run.
 struct Decided<'a> {
-    /// Always a `ContentBlock::ToolUse`.
-    block: &'a ContentBlock,
+    id: &'a str,
+    name: &'a str,
+    input: &'a serde_json::Value,
     verdict: Verdict,
 }
 
@@ -166,11 +176,11 @@ async fn run<G: CallGate>(
     // Not spawned once the token is raised: the call is answered as cancelled, unstarted.
     let running: Vec<_> = batch
         .iter()
-        .map(|decided| match (&decided.verdict, decided.block) {
-            (Verdict::Run(tool), ContentBlock::ToolUse { input, .. }) if !ctx.cancelled() => {
+        .map(|decided| match decided.verdict {
+            Verdict::Run(tool) if !ctx.cancelled() => {
                 // Cloned because `spawn_blocking` needs `'static`, once per call since the
                 // closure consumes it; an `Arc` would only pay off past a few path lists.
-                let (tool, arguments, context) = (*tool, input.clone(), ctx.clone());
+                let (arguments, context) = (decided.input.clone(), ctx.clone());
                 Some(tokio::task::spawn_blocking(move || {
                     tool.execute(arguments, &context)
                 }))
@@ -180,9 +190,12 @@ async fn run<G: CallGate>(
         .collect();
 
     for (decided, running) in batch.drain(..).zip(running) {
-        let ContentBlock::ToolUse { id, name, input } = decided.block else {
-            continue;
-        };
+        let Decided {
+            id,
+            name,
+            input,
+            verdict,
+        } = decided;
         let settle = |tool, outcome| Settled {
             name,
             id,
@@ -191,7 +204,7 @@ async fn run<G: CallGate>(
             outcome,
         };
 
-        let tool = match decided.verdict {
+        let tool = match verdict {
             Verdict::Unknown => {
                 gate.settled(settle(None, Outcome::Unknown));
                 results.push(refused(id, format!("unknown tool: {name}")));
@@ -246,7 +259,7 @@ async fn run<G: CallGate>(
                     refused(id, FINISHED_AFTER_STOP.to_string())
                 } else {
                     ContentBlock::ToolResult {
-                        tool_use_id: id.clone(),
+                        tool_use_id: id.to_string(),
                         content: output.into_content(),
                         is_error: None,
                     }
