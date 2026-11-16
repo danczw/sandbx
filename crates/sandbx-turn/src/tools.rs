@@ -15,11 +15,16 @@ use crate::TurnError;
 
 /// Ask `gate`, then run and answer every tool call in `blocks`, in the order the model asked.
 ///
-/// Sequential: concurrency would need the ordering semantics of two tools sharing one
-/// `ExecutionContext` settled first (#242). `BuiltinTool::execute` may sit in a `write`, a
-/// directory walk or a 90-second command, which on a current-thread runtime would freeze
-/// every other task — hence `spawn_blocking`, whose uncancellability `run_turn` documents.
-/// A stop abandons a read-only call there and still waits for a `write` or `edit`.
+/// Consecutive read-only calls run together; a `write`, `edit` or `bash` runs alone, after
+/// the batch before it has settled. No writer is ever in flight beside another call, so two
+/// calls touching one path have no ordering to specify (#242). Every call in a batch is put
+/// to the gate before any of them is spawned, so nothing is running while the gate decides.
+/// Results and settlings follow the order asked, never the order finished.
+///
+/// `BuiltinTool::execute` may sit in a `write`, a directory walk or a 90-second command,
+/// which on a current-thread runtime would freeze every other task — hence
+/// `spawn_blocking`, whose uncancellability `run_turn` documents. A stop abandons a
+/// read-only call there and still waits for a `write` or `edit`.
 /// Every call that was put to the gate, or refused above it, reports to
 /// [`CallGate::settled`]. A call behind a stop is answered as not run and reports nothing:
 /// it never reached the gate, so there is no verdict for the account to close.
@@ -41,6 +46,7 @@ where
     // Set by the first `Abort`: the gate can no longer decide, so a later call isn't a
     // later decision to ask for.
     let mut aborted: Option<String> = None;
+    let mut batch: Vec<Decided<'_>> = Vec::new();
 
     for block in blocks {
         // Nothing behind a stopped call is asked about or run.
@@ -51,28 +57,34 @@ where
         let ContentBlock::ToolUse { id, name, input } = block else {
             continue;
         };
-        let settle = |tool, outcome| Settled {
-            name,
-            id,
-            tool,
-            input,
-            outcome,
-        };
 
         let Some(tool) = BuiltinTool::from_name(name) else {
             // Lookup is exact by design: a miss is a prompt or schema bug, not a near-miss
             // to normalise. Nothing runs; the model is told which name.
-            gate.settled(settle(None, Outcome::Unknown));
-            results.push(refused(id, format!("unknown tool: {name}")));
+            batch.push(Decided {
+                block,
+                verdict: Verdict::Unknown,
+            });
             continue;
         };
 
         if !offered.contains(&tool) {
             // `from_name` resolves against every built-in, so resolving alone would hand the
             // gate a call the caller never offered — which an allow-all gate then runs.
-            gate.settled(settle(Some(tool), Outcome::NotOffered));
-            results.push(refused(id, format!("tool not offered this turn: {name}")));
+            batch.push(Decided {
+                block,
+                verdict: Verdict::NotOffered(tool),
+            });
             continue;
+        }
+
+        let alone = tool.risk() != RiskLevel::ReadOnly;
+        if alone {
+            run(&mut batch, ctx, gate, &mut results).await?;
+            // The loop's own check ran before those reads; a stop during them is caught here.
+            if ctx.cancelled() {
+                break;
+            }
         }
 
         // Before `spawn_blocking`, never racing it: a `write` or `edit` cannot be cancelled,
@@ -85,31 +97,123 @@ where
         };
 
         // Exhaustive rather than `if let`, so a fourth verdict is a compile error, not approval.
-        match verdict {
-            ApprovalDecision::Allow => {}
-            ApprovalDecision::Deny { reason } => {
+        let verdict = match verdict {
+            ApprovalDecision::Allow => Verdict::Run(tool),
+            ApprovalDecision::Deny { reason } => Verdict::Denied(tool, reason),
+            // Answered, not skipped: a `tool_use` with no `tool_result` is a transcript no
+            // provider takes back, and this one is stored and resumed.
+            ApprovalDecision::Abort { reason } => {
+                aborted = Some(reason.clone());
+                Verdict::Denied(tool, reason)
+            }
+        };
+        batch.push(Decided { block, verdict });
+
+        if alone {
+            run(&mut batch, ctx, gate, &mut results).await?;
+        }
+    }
+    run(&mut batch, ctx, gate, &mut results).await?;
+
+    // A stop ends the loop above early. Answered here, in the order asked, because a
+    // `tool_use` with no `tool_result` is a transcript no provider takes back, and a
+    // stopped round is stored and resumed.
+    // By position and not by id: each call leaves exactly one result, in order, so the
+    // unanswered are the suffix.
+    let behind: Vec<&String> = blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::ToolUse { id, .. } => Some(id),
+            _ => None,
+        })
+        .skip(results.len())
+        .collect();
+    results.extend(
+        behind
+            .into_iter()
+            .map(|id| refused(id, NOT_RUN.to_string())),
+    );
+
+    Ok(Answers {
+        results,
+        aborted: aborted.is_some(),
+    })
+}
+
+/// A `tool_use` block and what was decided about it, waiting for its batch to run.
+struct Decided<'a> {
+    /// Always a `ContentBlock::ToolUse`.
+    block: &'a ContentBlock,
+    verdict: Verdict,
+}
+
+enum Verdict {
+    Unknown,
+    NotOffered(BuiltinTool),
+    /// The gate's reason, or the abort's for a call behind it.
+    Denied(BuiltinTool, String),
+    Run(BuiltinTool),
+}
+
+/// Run `batch`, then answer and settle each of its calls in the order asked, emptying it.
+async fn run<G: CallGate>(
+    batch: &mut Vec<Decided<'_>>,
+    ctx: &ExecutionContext,
+    gate: &mut G,
+    results: &mut Vec<ContentBlock>,
+) -> Result<(), TurnError> {
+    // Every call spawned before the first is awaited, which is all that makes them overlap.
+    // Not spawned once the token is raised: the call is answered as cancelled, unstarted.
+    let running: Vec<_> = batch
+        .iter()
+        .map(|decided| match (&decided.verdict, decided.block) {
+            (Verdict::Run(tool), ContentBlock::ToolUse { input, .. }) if !ctx.cancelled() => {
+                // Cloned because `spawn_blocking` needs `'static`, once per call since the
+                // closure consumes it; an `Arc` would only pay off past a few path lists.
+                let (tool, arguments, context) = (*tool, input.clone(), ctx.clone());
+                Some(tokio::task::spawn_blocking(move || {
+                    tool.execute(arguments, &context)
+                }))
+            }
+            _ => None,
+        })
+        .collect();
+
+    for (decided, running) in batch.drain(..).zip(running) {
+        let ContentBlock::ToolUse { id, name, input } = decided.block else {
+            continue;
+        };
+        let settle = |tool, outcome| Settled {
+            name,
+            id,
+            tool,
+            input,
+            outcome,
+        };
+
+        let tool = match decided.verdict {
+            Verdict::Unknown => {
+                gate.settled(settle(None, Outcome::Unknown));
+                results.push(refused(id, format!("unknown tool: {name}")));
+                continue;
+            }
+            Verdict::NotOffered(tool) => {
+                gate.settled(settle(Some(tool), Outcome::NotOffered));
+                results.push(refused(id, format!("tool not offered this turn: {name}")));
+                continue;
+            }
+            Verdict::Denied(tool, reason) => {
                 gate.settled(settle(Some(tool), Outcome::Denied { reason: &reason }));
                 results.push(refused(id, reason));
                 continue;
             }
-            // Answered, not skipped: a `tool_use` with no `tool_result` is a transcript no
-            // provider takes back, and this one is stored and resumed.
-            ApprovalDecision::Abort { reason } => {
-                gate.settled(settle(Some(tool), Outcome::Denied { reason: &reason }));
-                results.push(refused(id, reason.clone()));
-                aborted = Some(reason);
-                continue;
-            }
-        }
+            Verdict::Run(tool) => tool,
+        };
 
-        // Cloned because `spawn_blocking` needs `'static`, once per call since the closure
-        // consumes it; an `Arc` would only pay off past a few path lists.
-        let arguments = input.clone();
-        let context = ctx.clone();
-        let mut running = tokio::task::spawn_blocking(move || tool.execute(arguments, &context));
-        let joined = match tool.risk() {
-            RiskLevel::ReadOnly => unless_stopped(&mut running, ctx).await,
-            RiskLevel::Writes | RiskLevel::Executes => Some(running.await),
+        let joined = match (running, tool.risk()) {
+            (None, _) => None,
+            (Some(mut running), RiskLevel::ReadOnly) => unless_stopped(&mut running, ctx).await,
+            (Some(running), RiskLevel::Writes | RiskLevel::Executes) => Some(running.await),
         };
         let outcome = match joined {
             Some(Ok(outcome)) => outcome,
@@ -158,30 +262,7 @@ where
             }
         });
     }
-
-    // A stop ends the loop above early. Answered here, in the order asked, because a
-    // `tool_use` with no `tool_result` is a transcript no provider takes back, and a
-    // stopped round is stored and resumed.
-    // By position and not by id: each call leaves exactly one result, in order, so the
-    // unanswered are the suffix.
-    let behind: Vec<&String> = blocks
-        .iter()
-        .filter_map(|block| match block {
-            ContentBlock::ToolUse { id, .. } => Some(id),
-            _ => None,
-        })
-        .skip(results.len())
-        .collect();
-    results.extend(
-        behind
-            .into_iter()
-            .map(|id| refused(id, NOT_RUN.to_string())),
-    );
-
-    Ok(Answers {
-        results,
-        aborted: aborted.is_some(),
-    })
+    Ok(())
 }
 
 /// How often a running read-only call is checked for a stop.
