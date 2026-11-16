@@ -189,6 +189,10 @@ async fn run<G: CallGate>(
         })
         .collect();
 
+    // The first panic, returned once the rest of the batch is settled: every call in it was
+    // put to the gate, and a gate is owed a settling for each one it approved.
+    let mut panicked = None;
+
     for (decided, running) in batch.drain(..).zip(running) {
         let Decided {
             id,
@@ -237,9 +241,8 @@ async fn run<G: CallGate>(
                 detail: "the tool panicked".to_string(),
             }),
             Some(Err(_)) => {
-                return Err(TurnError::ToolPanicked {
-                    name: name.to_string(),
-                });
+                panicked.get_or_insert_with(|| name.to_string());
+                continue;
             }
             // Left running on its blocking thread, its result never read. Safe only because it
             // is read-only: abandoning a `write` is what the gate's position ahead of the
@@ -275,7 +278,11 @@ async fn run<G: CallGate>(
             }
         });
     }
-    Ok(())
+
+    match panicked {
+        Some(name) => Err(TurnError::ToolPanicked { name }),
+        None => Ok(()),
+    }
 }
 
 /// How often a running read-only call is checked for a stop.
