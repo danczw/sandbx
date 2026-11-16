@@ -413,11 +413,15 @@ architecture the filter gates on.
   limitation, not a claim about the boundary.
 - **A port allowlist is not a destination allowlist.** `--allow-network 443`
   bounds egress to port 443 — on *every* routable host. Landlock's network rules
-  match the port only, and seccomp cannot read the address behind `connect`'s
-  pointer. Per-host would need a userspace proxy terminating every connection,
-  priced and declined — interception is cooperation, not enforcement. And
-  `--allow-dns NAME` bounds which *names* resolve, not a destination either: an IP
-  literal walks straight past it
+  match the port only, and seccomp's filter cannot read the address behind
+  `connect`'s pointer. A seccomp notifier could read it and connect on the
+  command's behalf, but it bounds addresses, not hosts, so an allowlisted API on
+  a shared CDN edge admits every site on that edge; priced and declined
+  ([#512](https://github.com/danczw/sandbx/issues/512)). Per-host would need a
+  userspace proxy terminating every connection, priced and declined:
+  interception is cooperation, not enforcement. And `--allow-dns NAME` bounds
+  which *names* resolve, not a destination either: an IP literal walks straight
+  past it
   ([#145](https://github.com/danczw/sandbx/issues/145);
   [context/decision-port-allowlist.md](context/decision-port-allowlist.md) prices each
   piece). Blast-radius reduction: it stops a command reaching an SSH port or a

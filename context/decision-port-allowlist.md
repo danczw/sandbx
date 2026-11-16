@@ -245,7 +245,8 @@ depend on Landlock's net handling having succeeded.
 ## What a per-host egress allowlist would cost
 
 `--allow-network 443` bounds egress to a port and not to a host. The only thing
-that could bound it to a host is a userspace proxy, and this is what each piece
+that could bound it to a host is a userspace proxy; a seccomp notifier could
+bound it to an address, and is priced on its own below. This is what each piece
 of one would be worth — which of them is a kernel refusal, which is a program's
 cooperation, and which widens the boundary it is meant to narrow. What the port
 allowlist does claim is everything above; what `SECURITY.md` may say is the test
@@ -265,10 +266,12 @@ and there is no address in that shape. seccomp compares register values, and the
 is why narrowing the check buys nothing (*What was rejected*, for the port
 allowlist, above).
 
-So a destination becomes a *value* in exactly one place: after a connection has
-been terminated and re-originated by something that reads the address itself.
-That is the proxy, and it is why this question cannot be answered with a smaller
-mechanism.
+So a destination becomes a *value* in two places: after a connection has been
+terminated and re-originated by something that reads the address itself, which
+is the proxy; and in a supervisor the filter hands the call to, which reads the
+`sockaddr` out of the command's memory (*seccomp user notification bounds
+addresses, not hosts*, below). The first sees a name only if the client sends
+one, and the second never sees a name at all.
 
 The practical reading of the gap: a port allowlist stops a command reaching an
 SSH port or a database. It does not stop one exfiltrating over HTTPS, which is
@@ -324,6 +327,45 @@ Encrypted ClientHello, reaches the address it dialled regardless: the `connect`
 named an address, the proxy matched a string, and the two were never required to
 agree. Filtering on it bounds a cooperating client's *stated intent*, which is
 not a destination control and must not be written as one.
+
+### seccomp user notification bounds addresses, not hosts
+
+The one mechanism that reads the destination without the command's cooperation
+(#512). The filter returns `SECCOMP_RET_USER_NOTIF` for `connect`, and the
+harness, holding the listener, copies the `sockaddr` out of the command's memory,
+checks `SECCOMP_IOCTL_NOTIF_ID_VALID` before using the bytes, makes the
+connection on a socket of its own, and installs that socket in the command with
+`SECCOMP_IOCTL_NOTIF_ADDFD` (Linux 5.9; atomic with the reply from 5.14 via
+`SECCOMP_ADDFD_FLAG_SEND`). It never lets the call continue in the command:
+seccomp_unotify(2) says `SECCOMP_USER_NOTIF_FLAG_CONTINUE` "must not be used to
+make security policy decisions about the system call", because the command can
+rewrite the address between the check and the use. Acting on its own copy closes
+that race, so this is enforcement, and the command could keep the empty netns a
+port allowlist gives up. rootless-containers' bypass4netns is the same pattern,
+built to switch a container's sockets into the host netns.
+
+Four costs decline it:
+
+- **It bounds an address, not a host.** The allowlist is whatever
+  `--allow-dns NAME` resolved before the spawn. A CDN edge address serves every
+  tenant behind it, so an allowlisted API on a shared edge admits an attacker's
+  site on the same edge, and the TLS name inside the connection is the client's
+  to choose (*SNI without termination*, above). HTTPS exfiltration, the threat
+  the README puts first, passes whenever the destination shares an edge.
+- **It needs `unsafe` or a C library.** The workspace sets
+  `unsafe_code = "forbid"`, and `seccompiler` 0.5 has no notification API, so
+  the ioctls come from hand-written `unsafe` or from libseccomp's bindings.
+- **It puts a parser of hostile memory in the unsandboxed harness.** Every
+  `connect` the command makes becomes bytes the harness reads from the command's
+  address space and acts on with its own privileges, for the whole run.
+- **The injected socket is not the one the command configured.** `ADDFD`
+  replaces the descriptor, so `O_NONBLOCK` and its `EINPROGRESS`, and every
+  option set before `connect`, must be replicated on the harness's socket or the
+  command sees a socket it did not ask for.
+
+A narrower bound than a port, bought with the project's first `unsafe` and a
+second network-facing component, while still failing on the one threat that
+motivates a host allowlist.
 
 ### Why the resolver is the exception
 
@@ -499,6 +541,11 @@ allowlist gives up because a port rule inside an empty one has nothing to permit
 — and privileges to write rules that sandbx does not hold and should not
 acquire.
 
+**A cgroup BPF program on `connect4` and `connect6`.** It sees the destination
+in the kernel, which seccomp cannot. Loading one needs `CAP_BPF` and
+`CAP_NET_ADMIN` in the initial user namespace, which an unprivileged sandbx
+does not hold; the same reason as `nftables`.
+
 **Shipping the proxy with the claim scoped to cooperating clients.** Honest as a
 sentence and wrong as a product: it is a new network-facing service with a new
 trust boundary, and no crate depends on a server-side HTTP stack today, in a
@@ -511,5 +558,5 @@ Nothing stops working: a run that passes no `--allow-dns` resolves exactly what
 it resolved before, unshares no mount namespace, and reads the host's own `/etc`.
 What the decision buys is that the next reader of `--allow-network <port>` finds
 the proxy already priced: four of its five pieces decided against, the fifth
-built, and the `SECURITY.md` non-claim saying which is which rather than
-recording an absence.
+built, the seccomp notifier priced beside it, and the `SECURITY.md` non-claim
+saying which is which rather than recording an absence.
