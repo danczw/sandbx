@@ -99,6 +99,9 @@ pub enum Outcome<'a> {
 pub trait CallGate {
     /// Whether this call may run, asked before the tool is spawned and never racing it.
     ///
+    /// Never asked while a call is in flight: consecutive read-only calls are each asked
+    /// before any of them runs, then run together; any other call runs alone (#242).
+    ///
     /// Not asked for calls after an [`ApprovalDecision::Abort`]: refused for its reason,
     /// still reported to [`settled`](Self::settled).
     fn approve(&mut self, call: ToolCall<'_>) -> ApprovalDecision;
