@@ -323,7 +323,7 @@ fn a_wrapped_choices_row_is_kept_whole() {
 
 fn running(answer: &str, call: &str) -> Transcript {
     let mut transcript = turn(answer);
-    transcript.run(call);
+    transcript.run(call, call);
     transcript
 }
 
@@ -350,7 +350,7 @@ fn a_settled_call_leaves_only_its_line() {
     expected.note(line);
 
     let mut transcript = running("three files", "bash make test");
-    transcript.settle(Some("bash make test"), line);
+    transcript.settle("bash make test", line);
 
     assert_eq!(rows(&transcript, 40, 8), rows(&expected, 40, 8));
 }
@@ -402,7 +402,7 @@ fn a_long_command_wraps_and_the_bar_stays() {
 #[test]
 fn every_call_in_flight_has_its_row() {
     let mut transcript = running("three files", "read /work/a");
-    transcript.run("read /work/b");
+    transcript.run("b", "read /work/b");
 
     let rows = rows(&transcript, 40, 10);
     let marked: Vec<&String> = rows
@@ -441,7 +441,7 @@ fn a_refused_call_leaves_no_line_saying_it_ran() {
     );
 
     transcript.settle(
-        Some("write /etc/passwd"),
+        "write /etc/passwd",
         "sandbx: write /etc/passwd — refused by the policy: no grant covers it",
     );
 
