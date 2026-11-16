@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{fs, thread};
 
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
@@ -319,5 +319,64 @@ async fn a_stop_during_the_reads_skips_the_write() {
     assert!(
         results[1].1.starts_with("not run"),
         "the write is answered as never run, got {results:?}"
+    );
+}
+
+/// Opens every FIFO read-write when dropped, which gives each parked `read` the writer it
+/// waits on: the runtime's drop then has no blocking thread left to wait for.
+struct Unpark(Vec<PathBuf>);
+
+impl Drop for Unpark {
+    fn drop(&mut self) {
+        for fifo in &self.0 {
+            let _ = fs::OpenOptions::new().read(true).write(true).open(fifo);
+        }
+    }
+}
+
+/// A stop abandons a batch's reads together, not one `STOP_POLL` after another: the round
+/// is answered in about one poll however many reads were in flight.
+#[tokio::test]
+async fn a_stop_abandons_a_batch_at_once() {
+    const READS: usize = 20;
+    let root = tempfile::tempdir().unwrap();
+    let fifos: Vec<PathBuf> = (0..READS)
+        .map(|n| root.path().join(format!("pipe{n}")))
+        .collect();
+    let mut round: Vec<AgentEvent> = fifos
+        .iter()
+        .enumerate()
+        .map(|(n, fifo)| {
+            mkfifo(fifo);
+            call_id(&format!("call{n}"), "read", path_of(fifo))
+        })
+        .collect();
+    round.push(stop(StopReason::ToolUse));
+    let mut script = Script::new([round, vec![text("never asked"), stop(StopReason::EndTurn)]]);
+    let _unpark = Unpark(fifos);
+    let stop_after = Duration::from_millis(200);
+    let started = Instant::now();
+
+    let outcome = run_turn_until(
+        async |r| script.open(r).await,
+        turn(&[], &[BuiltinTool::Read]),
+        &ctx(SandboxPolicy::default().allow_read(vetted(root.path()))),
+        |_| {},
+        AllowAll,
+        tokio::time::sleep(stop_after),
+    )
+    .await
+    .unwrap();
+    let waited = started.elapsed() - stop_after;
+
+    assert_eq!(outcome.stop, TurnStop::Interrupted);
+    assert_eq!(
+        answers(&outcome.messages[1]).len(),
+        READS,
+        "every parked read is answered"
+    );
+    assert!(
+        waited < Duration::from_millis(400),
+        "the stop waited {waited:?} on {READS} reads: a poll each, not one for the batch"
     );
 }
