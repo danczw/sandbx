@@ -50,8 +50,9 @@ needed. `ArgvGate` writes its report with `eprintln!`, as `Render` already write
 stdout from `observe`, and under `--approve call` it reads the operator's answer
 from `/dev/tty` inside `approve` — unbounded in time, bounded in scheduling.
 During that read nothing else is in flight in `agent-run`: the round's stream has
-ended, its timeout is dropped, and `answer_calls` is sequential, which #242
-records as a constraint rather than a design choice. Staying sync is what keeps
+ended, its timeout is dropped, and `answer_calls` spawns nothing until every call
+of a batch has been asked about, and runs a call that writes alone, after the
+reads before it have settled (#242). Staying sync is what keeps
 `run_turn`'s future `Send` (`documented_call_shape_stays_spawnable`) and keeps
 RPITIT off the trait. The limit is a precondition on the caller, not something
 a second front end inherits: `tui` drives a UI from the same runtime, and meets
@@ -333,7 +334,7 @@ approve → Modal::ask
 
 Blocking in step 3 is the class the first section allows: the key thread is a
 descriptor no task feeds, and nothing else is in flight during `approve`, since
-`answer_calls` is sequential (#242).
+`answer_calls` asks before it spawns (#242).
 
 | reply | verdict |
 |---|---|
