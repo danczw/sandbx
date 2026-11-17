@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Architecture Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<p class="kicker">Lesson 2 of 8 · about 25 minutes</p>
+<h1>The architecture map</h1>
+<p class="lede">By the end you can trace one <code>bash</code> call from the model's request to your shell and back, naming the crate that handles each step.</p>
+
+<h2>Six layers in one binary</h2>
+
+<p>sandbx ships as one binary built from 28 small crates. They sort into six layers. You do not need all 28 names for an interview. You need the layers, and one crate per layer to point at.</p>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Layer</th><th>Crate to name</th><th>Its job</th></tr></thead>
+<tbody>
+<tr><td>Front end</td><td><code>sandbx-cli</code></td><td>The subcommands (<code>sandbox-run</code>, <code>agent-run</code>, <code>tui</code>, <code>auth</code>, <code>hash</code>). Four more crates run the terminal screen. One of them, <code>sandbx-text</code>, strips control characters from the model's text so it can't take over your terminal.</td></tr>
+<tr><td>Turn loop</td><td><code>sandbx-turn</code></td><td>Rounds of "ask the model, run what it asked for". <code>sandbx-approval</code> defines the gate it asks first.</td></tr>
+<tr><td>Model</td><td><code>sandbx-anthropic</code></td><td>A hand-written streaming HTTP client. Four small crates hold the request and response vocabulary around it.</td></tr>
+<tr><td>Tools</td><td><code>sandbx-tools</code></td><td>The seven tools, as a closed list: nothing can add a tool at runtime.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/crates/sandbx-tools/src/lib.rs#L5-L7">tools/lib.rs:5</a></td></tr>
+<tr><td>Sandbox</td><td><code>sandbx-core</code></td><td>The enforcement. <code>sandbx-grants</code> turns flags into a policy first.</td></tr>
+<tr><td>State</td><td><code>sandbx-session-store</code></td><td>Saved conversations (six crates), the stored API key (<code>sandbx-auth</code>), and the audit trail (<code>sandbx-logging</code>).</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Three more crates are test fixtures that never ship. The full list is on the <a href="../reference/architecture.html">architecture cheat sheet</a>.</p>
+
+<h2>Two roads to your files</h2>
+
+<p>This is the most important picture in the codebase. The tools split into two groups, and each group passes a different check.</p>
+
+<figure>
+<svg viewBox="0 0 600 450" role="img" aria-label="sandbx-cli feeds sandbx-turn, which talks to the model through sandbx-anthropic and asks the approval gate. sandbx-tools then splits: six tools go to FsGuard, an in-process check; bash goes to the helper, which the kernel locks before it runs /bin/sh.">
+  <rect class="dg-box" x="200" y="10" width="200" height="46" rx="4"/>
+  <text class="dg-text" x="300" y="30" text-anchor="middle">sandbx-cli</text>
+  <text class="dg-small" x="300" y="47" text-anchor="middle">flags → policy (sandbx-grants)</text>
+
+  <line class="dg-line" x1="300" y1="56" x2="300" y2="74"/>
+  <polygon class="dg-arrow" points="300,80 296,72 304,72"/>
+
+  <rect class="dg-box" x="200" y="80" width="200" height="46" rx="4"/>
+  <text class="dg-text" x="300" y="100" text-anchor="middle">sandbx-turn</text>
+  <text class="dg-small" x="300" y="117" text-anchor="middle">the round loop</text>
+
+  <rect class="dg-box" x="10" y="80" width="160" height="46" rx="4"/>
+  <text class="dg-text" x="90" y="100" text-anchor="middle">sandbx-approval</text>
+  <text class="dg-small" x="90" y="117" text-anchor="middle">gate: may this call run?</text>
+  <line class="dg-line" x1="170" y1="103" x2="200" y2="103"/>
+
+  <rect class="dg-box" x="430" y="80" width="160" height="46" rx="4"/>
+  <text class="dg-text" x="510" y="100" text-anchor="middle">sandbx-anthropic</text>
+  <text class="dg-small" x="510" y="117" text-anchor="middle">↔ the model's API</text>
+  <line class="dg-line" x1="400" y1="103" x2="430" y2="103"/>
+
+  <line class="dg-line" x1="300" y1="126" x2="300" y2="144"/>
+  <polygon class="dg-arrow" points="300,150 296,142 304,142"/>
+
+  <rect class="dg-box" x="200" y="150" width="200" height="46" rx="4"/>
+  <text class="dg-text" x="300" y="170" text-anchor="middle">sandbx-tools</text>
+  <text class="dg-small" x="300" y="187" text-anchor="middle">seven tools, closed list</text>
+
+  <path class="dg-line" d="M260,196 L150,232"/>
+  <polygon class="dg-arrow" points="145,236 150,228 155,236"/>
+  <path class="dg-line" d="M340,196 L450,232"/>
+  <polygon class="dg-arrow" points="455,236 445,236 450,228"/>
+
+  <rect class="dg-box" x="30" y="240" width="240" height="62" rx="4"/>
+  <text class="dg-text" x="150" y="261" text-anchor="middle">FsGuard</text>
+  <text class="dg-small" x="150" y="277" text-anchor="middle">read · write · edit · ls · grep · find</text>
+  <text class="dg-small" x="150" y="293" text-anchor="middle">checked inside sandbx itself</text>
+
+  <rect class="dg-hot" x="330" y="240" width="240" height="62" rx="4"/>
+  <text class="dg-text" x="450" y="261" text-anchor="middle">the helper</text>
+  <text class="dg-small" x="450" y="277" text-anchor="middle">bash only</text>
+  <text class="dg-small" x="450" y="293" text-anchor="middle">a fresh copy of the sandbx binary</text>
+
+  <text class="dg-small" x="300" y="324" text-anchor="middle">both read the same policy table</text>
+  <line class="dg-bad" x1="150" y1="302" x2="150" y2="318" style="stroke:var(--muted)"/>
+  <line class="dg-bad" x1="450" y1="302" x2="450" y2="318" style="stroke:var(--muted)"/>
+  <line class="dg-bad" x1="150" y1="318" x2="205" y2="318" style="stroke:var(--muted)"/>
+  <line class="dg-bad" x1="395" y1="318" x2="450" y2="318" style="stroke:var(--muted)"/>
+
+  <line class="dg-line" x1="450" y1="330" x2="450" y2="344"/>
+  <polygon class="dg-arrow" points="450,350 446,342 454,342"/>
+  <rect class="dg-hot" x="330" y="350" width="240" height="46" rx="4"/>
+  <text class="dg-text" x="450" y="370" text-anchor="middle">Landlock · seccomp · namespaces</text>
+  <text class="dg-small" x="450" y="387" text-anchor="middle">enforced by the Linux kernel</text>
+
+  <line class="dg-line" x1="450" y1="396" x2="450" y2="408"/>
+  <polygon class="dg-arrow" points="450,414 446,406 454,406"/>
+  <rect class="dg-box" x="330" y="414" width="240" height="32" rx="4"/>
+  <text class="dg-text" x="450" y="435" text-anchor="middle">/bin/sh -c "…"</text>
+
+  <line class="dg-line" x1="150" y1="330" x2="150" y2="408"/>
+  <polygon class="dg-arrow" points="150,414 146,406 154,406"/>
+  <rect class="dg-box" x="30" y="414" width="240" height="32" rx="4"/>
+  <text class="dg-text" x="150" y="435" text-anchor="middle">your files</text>
+</svg>
+<figcaption>Six tools never start a process, so the kernel never sees them. They get FsGuard. Only <code>bash</code> goes through the kernel's locks.</figcaption>
+</figure>
+
+<p><strong>The left road.</strong> <code>read</code>, <code>write</code>, <code>edit</code>, <code>ls</code>, <code>grep</code> and <code>find</code> are Rust functions running inside sandbx. The kernel's sandbox features only restrict a process that has been locked, and sandbx itself is not locked. So these six get a check written in sandbx's own code, <code>FsGuard</code>. It is their <em>only</em> filesystem protection.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/context/guide-sandboxing.md?plain=1#L36-L50">guide-sandboxing:36</a></p>
+
+<p><strong>The right road.</strong> <code>bash</code> runs an arbitrary shell command, so it gets the strong walls: the kernel's. sandbx starts a fresh copy of its own binary, the <strong>helper</strong>. The helper locks itself and then runs the command.</p>
+
+<p><strong>Why the two roads can't disagree.</strong> Both read their answers from one table in <code>sandbox_policy.rs</code>. Add a kind of grant and the compiler points at every place that must handle it.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/context/guide-sandboxing.md?plain=1#L15-L19">guide-sandboxing:15</a></p>
+
+<div class="box analogy">
+<span class="label">Analogy: why a copy locks itself</span>
+<p>Picture a hotel safe that locks only from the inside, and once locked never opens again. You can't climb in yourself, because you still have work to do outside: talk to the model's API and save the conversation. So you send in a copy of yourself, and it locks the door behind it.</p>
+<p>That is the helper. The kernel's locks are one-way: once a process applies them, it can never remove them, and every process it starts inherits them. sandbx's own header says it in one clause: the locks are <q>applied by a re-exec'd helper to itself so sandbx is not.</q><a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/crates/sandbx-core/src/lib.rs#L1-L5">core/lib.rs:5</a> ("Re-exec" means a program starting a new copy of itself.)</p>
+</div>
+
+<p>The copy is the <em>same binary</em>. The first thing <code>main</code> does is check whether it was started as the helper, before it even parses flags.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/crates/sandbx-cli/src/main.rs#L23-L26">main.rs:23</a> Lesson 4 opens the helper up.</p>
+
+<h2>The checks before any road</h2>
+
+<p>The turn loop runs two checks before a call reaches the tools. The first: is the requested tool one this turn actually offered? If not, it is refused before the gate is even asked. Otherwise an allow-everything gate could run a <code>bash</code> the operator never offered.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/context/decision-approval-gate.md?plain=1#L25-L37">approval-gate:25</a> The second is the gate itself, <code>CallGate::approve</code>. The front end supplies it: <code>agent-run</code> and <code>tui</code> each have their own.</p>
+
+<p>The gate is asked <em>before</em> the tool starts, never while it runs. A <code>write</code> can't be stopped halfway, so a "no" given while it runs would arrive after the file had already changed.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/context/decision-approval-gate.md?plain=1#L14-L23">approval-gate:14</a></p>
+
+<div class="box interview">
+<span class="label">Likely question: "Why 28 crates for one binary?"</span>
+<p>Because which crate depends on which is a security property here, and the build checks it:</p>
+<ul>
+<li><code>deny.toml</code> lists which crate may depend on which. Only <code>sandbx-anthropic</code>, the one crate that talks to the model over the network, may use the HTTP library.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/deny.toml#L35-L42">deny.toml:35</a></li>
+<li>Starting a process is a lint error everywhere except <code>sandbx-core</code>, so a new spawn site that skips the sandbox fails the build.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/clippy.toml#L8">clippy.toml:8</a></li>
+</ul>
+<p>Then add the honest limit, which SECURITY.md states itself: this is <em>convention plus tooling</em>, not a hard guarantee. It only sees sandbx's own code, so a dependency that starts a process does it unseen.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/SECURITY.md?plain=1#L270-L278">SECURITY:270</a></p>
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz">
+  <fieldset class="q">
+    <legend>The <code>grep</code> tool reads a file. What checks that the path is allowed?</legend>
+    <label class="opt" data-correct><input type="radio"> FsGuard, inside the sandbx process itself</label>
+    <label class="opt"><input type="radio"> Landlock, inside the Linux kernel itself</label>
+    <label class="opt"><input type="radio"> seccomp, by filtering the read syscall</label>
+    <label class="opt"><input type="radio"> The approval gate, before every read</label>
+    <div class="why"><code>grep</code> is a Rust function and starts no process, so the kernel's locks never see it. FsGuard is its only filesystem check.</div>
+  </fieldset>
+
+  <fieldset class="q">
+    <legend>In shipped code, which crate is allowed to start a subprocess?</legend>
+    <label class="opt"><input type="radio"> sandbx-cli, from its main function</label>
+    <label class="opt"><input type="radio"> sandbx-turn, from its round loop</label>
+    <label class="opt" data-correct><input type="radio"> sandbx-core, through spawn::command</label>
+    <label class="opt"><input type="radio"> sandbx-tools, from the bash tool</label>
+    <div class="why"><code>clippy.toml</code> bans <code>Command::new</code> everywhere. <code>spawn::command</code> in sandbx-core holds the only exception in code that ships. The bash tool asks sandbx-core to spawn for it.</div>
+  </fieldset>
+
+  <fieldset class="q">
+    <legend>Why does a helper copy apply the kernel locks, rather than sandbx itself?</legend>
+    <label class="opt"><input type="radio"> The kernel only lets parents lock their children</label>
+    <label class="opt" data-correct><input type="radio"> Locks applied to a process cannot be removed</label>
+    <label class="opt"><input type="radio"> A separate helper process starts up much faster</label>
+    <label class="opt"><input type="radio"> Rust code cannot call those kernel features directly</label>
+    <div class="why">The locks are one-way and inherited. sandbx still needs to reach the model's API and save sessions, so it sends a copy in to lock itself.</div>
+  </fieldset>
+
+  <fieldset class="q">
+    <legend>The model asks for <code>bash</code>, but this turn only offered <code>read</code> and <code>ls</code>. What happens?</legend>
+    <label class="opt"><input type="radio"> The gate asks the operator to decide</label>
+    <label class="opt"><input type="radio"> It runs, since the model requested it</label>
+    <label class="opt"><input type="radio"> The kernel's sandbox blocks it at runtime</label>
+    <label class="opt" data-correct><input type="radio"> Refused before the gate is ever asked</label>
+    <div class="why">The turn loop checks the call against the offered tools first. The gate only ever sees calls that were on the table.</div>
+  </fieldset>
+
+  <fieldset class="q">
+    <legend>From lesson 1: approval decides which tools run. The sandbox decides…</legend>
+    <label class="opt"><input type="radio"> how often the approved tools run</label>
+    <label class="opt"><input type="radio"> which model may call the tools</label>
+    <label class="opt" data-correct><input type="radio"> where the approved tools can reach</label>
+    <label class="opt"><input type="radio"> when the operator must answer prompts</label>
+    <div class="why"><em>Which</em> versus <em>where</em>. If that took effort to recall, good: the effort is what makes it stick.</div>
+  </fieldset>
+  <p class="score"></p>
+</div>
+
+<h2>Your win: trace one <code>bash</code> call</h2>
+
+<p>Without scrolling up, click the steps in the order they happen. A wrong pick flashes red and stays put.</p>
+
+<div class="order">
+  <ol class="pool">
+    <li>The CLI parses the flags, and <code>sandbx-grants</code> turns them into a policy</li>
+    <li><code>sandbx-turn</code> sends the prompt via <code>sandbx-anthropic</code> and streams the reply</li>
+    <li>The reply asks for <code>bash</code>; the loop checks this turn offered it</li>
+    <li>The gate's <code>approve</code> decides whether this one call may run</li>
+    <li><code>sandbx-tools</code> builds <code>/bin/sh -c "…"</code> as a sandboxed command</li>
+    <li><code>sandbx-core</code> starts a fresh copy of the sandbx binary as the helper</li>
+    <li>The helper locks itself with the kernel's features, then runs the shell</li>
+    <li>The output goes back to the model; audit records go to stderr</li>
+  </ol>
+  <ol class="placed"></ol>
+  <p class="verdict"></p>
+</div>
+
+<p>Then the harder version: close the page and draw the two-roads diagram on paper. If you can draw it, you can explain it on a whiteboard.</p>
+
+<h2>Read next</h2>
+
+<p><strong>Primary source:</strong> run <code>cargo doc --open</code> and read the top paragraph of <code>sandbx_core</code>, <code>sandbx_tools</code> and <code>sandbx_turn</code>. The README calls these headers <q>the on-ramp for a new engineer</q>, and that is the role you are playing tomorrow. Then read <a href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/context/guide-sandboxing.md?plain=1#L15-L57">guide-sandboxing.md, "Two layers, one table"</a> (about 40 lines).</p>
+
+<p class="meta">Anything unclear? Ask me in the terminal. "What does stderr mean?" is a fine question too.</p>
+
+<nav class="next">
+  <a href="0001-why-sandbx-exists.html">← Lesson 1: Why sandbx exists</a>
+  <a href="../reference/architecture.html">Cheat sheet: architecture</a>
+  <a href="0003-the-three-kernel-locks.html">Next: Lesson 3 →</a>
+</nav>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

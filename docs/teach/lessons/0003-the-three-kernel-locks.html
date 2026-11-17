@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Three Kernel Locks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<p class="kicker">Lesson 3 of 8 · about 15 minutes · mostly recall</p>
+<h1>The three kernel locks</h1>
+<p class="lede">You met all three in the walkthrough. This lesson adds one idea, that the locks guard <em>each other</em>, and then drills you on telling them apart. By the end you can answer "why do you need all three?"</p>
+
+<h2>The three, in one table</h2>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Lock</th><th>Picture</th><th>Job</th><th>sandbx example</th></tr></thead>
+<tbody>
+<tr><td><strong>Namespaces</strong></td><td>a private copy</td><td>give the command its own copy of something the machine shares</td><td>empty network, own process numbering</td></tr>
+<tr><td><strong>seccomp</strong></td><td>the doorway</td><td>remove whole <em>kinds</em> of kernel request</td><td><code>mount</code>, <code>io_uring</code>, UDP in port mode</td></tr>
+<tr><td><strong>Landlock</strong></td><td>the shelves</td><td>judge which file or TCP port a request touches</td><td><code>cat /etc/shadow</code> refused</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>One namespace you haven't met: the user namespace</h3>
+
+<p>Making namespaces normally needs root. A <strong>user namespace</strong> is the exception: an ordinary user may create one, and inside it the process counts as privileged for that namespace only.</p>
+
+<blockquote>
+the process has full privileges for operations inside the user namespace, but is unprivileged for operations outside the namespace.
+<cite><a href="https://man7.org/linux/man-pages/man7/user_namespaces.7.html">user_namespaces(7)</a></cite>
+</blockquote>
+
+<p>That is what lets sandbx create the others without being root, and it is why the README requires "unprivileged user namespaces". Which namespaces a command gets:<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/context/guide-sandboxing.md?plain=1#L395">guide-sandboxing:395</a></p>
+
+<ul>
+<li><strong>user</strong> and <strong>PID</strong>: always, whatever the policy;</li>
+<li><strong>network</strong>: unless network is granted in any form;</li>
+<li><strong>mount</strong>: only with <code>--allow-dns</code>, for the private <code>/etc</code> files.</li>
+</ul>
+
+<p>The capability sets from row 8 are emptied so that "privileged inside its own namespace" does not turn into real powers.</p>
+
+<h2>The new idea: the locks guard each other</h2>
+
+<p>Each lock has a blind spot, and in every case another lock covers it. This is the answer to "why three?":</p>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Weakness</th><th>Covered by</th></tr></thead>
+<tbody>
+<tr><td>Landlock's rules are tied to the file tree, and a <code>mount</code> or <code>pivot_root</code> could move the tree out from under them</td><td>seccomp blocks every mount route<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/SECURITY.md?plain=1#L81-L85">SECURITY:81</a></td></tr>
+<tr><td>Landlock matches on paths, and <code>memfd_create</code> makes a file that has no path</td><td>seccomp blocks <code>memfd_create</code><a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/SECURITY.md?plain=1#L528-L532">SECURITY:528</a></td></tr>
+<tr><td>Landlock's network rules cover TCP only</td><td>seccomp blocks UDP, raw sockets and the rest in port mode<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/SECURITY.md?plain=1#L430-L433">SECURITY:430</a></td></tr>
+<tr><td>seccomp can't read paths or addresses</td><td>Landlock judges the actual file or port</td></tr>
+<tr><td>seccomp only sees syscalls, and <code>io_uring</code> does its work without them</td><td>seccomp blocks <code>io_uring</code> itself<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/SECURITY.md?plain=1#L88">SECURITY:88</a></td></tr>
+<tr><td>A command could build itself new namespaces to escape the ones it is in</td><td>seccomp blocks namespace creation on every route<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/SECURITY.md?plain=1#L79-L80">SECURITY:79</a></td></tr>
+</tbody>
+</table>
+</div>
+
+<p>And one prerequisite under both: <code>no_new_privs</code>. A process without admin rights can install neither seccomp nor Landlock until that flag is set, so it comes first in the setup.<a class="cite" href="https://github.com/danczw/sandbx/blob/3addcf57dcffb5de57db354d21b69887f70f5648/context/guide-sandboxing.md?plain=1#L151-L156">guide-sandboxing:151</a></p>
+
+<div class="box analogy">
+<span class="label">Analogy</span>
+<p>A bank vault has a door, a guard and cameras. The guard stops anyone from unscrewing the door. The cameras catch whatever the guard cannot see. Take any one of them away and the other two each gain a hole.</p>
+</div>
+
+<p>The environment is a fourth bound that none of the three can reach: the kernel hands it over when a program starts, before any lock applies. So it is enforced by <em>not passing it</em>.</p>
+
+<h2>Drill 1: which lock did that?</h2>
+
+<p>Each line is something you would see from inside the sandbox. Pick the lock responsible. "Other" covers anything none of the three does.</p>
+
+<div class="classify" data-cats="Landlock|seccomp|Namespace|Other">
+  <ol>
+    <li data-answer="Landlock" data-why="A file outside every grant. Landlock judges the actual file.">With default flags, <code>cat /etc/shadow</code> gets "permission denied".</li>
+    <li data-answer="seccomp" data-why="Mounting is removed as a kind of request, whatever its arguments.">The command runs <code>mount -t tmpfs none /tmp/x</code> and gets <code>EPERM</code>.</li>
+    <li data-answer="Namespace" data-why="An empty network namespace: nothing is blocked, there is simply nothing to dial.">With no network flag, <code>curl https://example.com</code> can't connect to anything.</li>
+    <li data-answer="Namespace" data-why="The PID namespace: init exits, and the kernel kills everything inside.">A background <code>sleep 1000 &amp;</code> is gone the moment the call ends.</li>
+    <li data-answer="seccomp" data-why="Landlock can't police UDP, so seccomp removes UDP sockets in port mode.">Under <code>--allow-network 443</code>, creating a UDP socket fails.</li>
+    <li data-answer="Landlock" data-why="Landlock's TCP port rules: 22 isn't on the list.">Under <code>--allow-network 443</code>, connecting to port 22 fails.</li>
+    <li data-answer="Other" data-why="The environment is cleared at every process start. No kernel lock is involved.">Your shell's <code>GITHUB_TOKEN</code> doesn't appear in <code>env</code>.</li>
+    <li data-answer="seccomp" data-why="It would do work behind the syscall doorway, so the doorway removes it.">Calling <code>io_uring_setup</code> returns <code>EPERM</code>.</li>
+    <li data-answer="Landlock" data-why="Read doesn't confer execute, and the execute right is Landlock's.">A program under an <code>--allow-read</code> path refuses to start.</li>
+    <li data-answer="seccomp" data-why="A foreign syscall set means different numbers, so the filter kills rather than judging.">A 32-bit syscall from a 64-bit program kills the process.</li>
+    <li data-answer="Namespace" data-why="A mount namespace holds the private /etc files bound over the real ones.">Under <code>--allow-dns example.com</code>, <code>github.com</code> doesn't resolve.</li>
+    <li data-answer="Other" data-why="no_new_privs: a process flag, not one of the three locks.">Setuid <code>sudo</code> starts but never becomes root.</li>
+    <li data-answer="Namespace" data-why="The PID namespace: outside processes have no number the command can aim at.">The command can't send a signal to your editor.</li>
+  </ol>
+  <p class="score"></p>
+</div>
+
+<h2>Drill 2: what would break?</h2>
+
+<div class="quiz">
+  <fieldset class="q">
+    <legend>seccomp blocks <code>mount</code>. What would a mount let a command do to Landlock's rules?</legend>
+    <label class="opt" data-correct><input type="radio"> Move the file tree out from under them</label>
+    <label class="opt"><input type="radio"> Switch Landlock off with a single extra syscall</label>
+    <label class="opt"><input type="radio"> Read the ruleset and copy out its paths</label>
+    <label class="opt"><input type="radio"> Make every rule apply to the parent instead</label>
+    <div class="why">Landlock can't be switched off. Its rules are tied to places in the file tree, so the danger is rearranging that tree.</div>
+  </fieldset>
+
+  <fieldset class="q">
+    <legend>Why does <code>no_new_privs</code> come before both installs?</legend>
+    <label class="opt"><input type="radio"> It makes both locks run noticeably faster afterwards</label>
+    <label class="opt"><input type="radio"> It hides the ruleset from the sandboxed command</label>
+    <label class="opt" data-correct><input type="radio"> Neither installs for a process lacking admin rights</label>
+    <label class="opt"><input type="radio"> It stops the command from reading its environment</label>
+    <div class="why">Without it (or root's <code>CAP_SYS_ADMIN</code>), the kernel refuses both seccomp and Landlock. sandbx sets it first so the error is reported clearly.</div>
+  </fieldset>
+
+  <fieldset class="q">
+    <legend>Why is <code>memfd_create</code> on seccomp's list?</legend>
+    <label class="opt"><input type="radio"> It lets a process read another's open memory</label>
+    <label class="opt"><input type="radio"> It creates a new namespace without any checks</label>
+    <label class="opt"><input type="radio"> It mounts a filesystem over the granted paths</label>
+    <label class="opt" data-correct><input type="radio"> Its in-memory file has no path for Landlock</label>
+    <div class="why">Landlock matches on paths. A file that lives only in memory gives it nothing to match.</div>
+  </fieldset>
+
+  <fieldset class="q">
+    <legend><code>io_uring</code> would slip past which lock, and why?</legend>
+    <label class="opt"><input type="radio"> Landlock, because its file accesses skip the kernel</label>
+    <label class="opt" data-correct><input type="radio"> seccomp, because its work skips the syscall doorway</label>
+    <label class="opt"><input type="radio"> The namespaces, because it runs in the host</label>
+    <label class="opt"><input type="radio"> None, because the kernel rejects it by default</label>
+    <div class="why">The trap from the walkthrough. Landlock still checks the file, wherever the request came from. seccomp is the one that never sees the work.</div>
+  </fieldset>
+
+  <fieldset class="q">
+    <legend>Which namespaces does every sandboxed command get, whatever the policy?</legend>
+    <label class="opt"><input type="radio"> Network and mount, for sockets and /etc files</label>
+    <label class="opt"><input type="radio"> Only network, unless a port allowlist is given</label>
+    <label class="opt" data-correct><input type="radio"> User and PID, for identity and process lifetime</label>
+    <label class="opt"><input type="radio"> None, unless the operator passes a namespace flag</label>
+    <div class="why">User lets sandbx create the others without root, and PID gives lifetime and signalling. Network is dropped when network is granted; mount appears only with <code>--allow-dns</code>.</div>
+  </fieldset>
+  <p class="score"></p>
+</div>
+
+<h2>Your win: "why do you need all three?"</h2>
+
+<p>Answer it out loud first, in four sentences or fewer. Then type it and check it.</p>
+
+<div class="recall" data-key="0003-why-three">
+  <textarea placeholder="Each lock covers what the others can't…"></textarea>
+  <button data-reveal>Check against the checklist</button>
+  <div class="checklist">
+    <h3>Did your answer…</h3>
+    <label><input type="checkbox"> give each lock its job in a phrase (private copy, kinds of request, which object)?</label>
+    <label><input type="checkbox"> name at least one blind spot one lock covers for another (mount, memfd, UDP, io_uring)?</label>
+    <label><input type="checkbox"> mention <code>no_new_privs</code> as the prerequisite for both installs?</label>
+  </div>
+  <div class="box model">
+    <span class="label">One version</span>
+    <p>They cover each other's blind spots. Namespaces give the command a private copy of the network and process table, so there's nothing to connect to and nothing outside to signal. Landlock decides which files and TCP ports it may touch, but its rules hang off the file tree and only cover TCP. seccomp removes whole kinds of request: mounts that would rearrange that tree, path-less memory files, UDP, <code>io_uring</code>, which would do work behind seccomp's own back, and creating new namespaces. Neither of the last two installs without <code>no_new_privs</code>, so that's set first.</p>
+  </div>
+</div>
+
+<h2>Read next</h2>
+
+<p><strong>Primary source:</strong> LWN's <a href="https://lwn.net/Articles/859908/">"Landlock (finally) sets sail"</a> (Jonathan Corbet, 2021), about 10 minutes. It is the clearest plain-language account of what Landlock is and why it is unprivileged. It predates network rules, which you already know from row 3. Its line to remember: <q>Like seccomp(), Landlock is an unprivileged sandboxing mechanism; it allows a process to confine itself.</q></p>
+
+<p>If you have time for a video, the <a href="https://youtu.be/d85TDpv8L9U">OSS 2024 talk by Landlock's author, Mickaël Salaün</a>.</p>
+
+<p class="meta">Anything unclear? Ask me in the terminal.</p>
+
+<nav class="next">
+  <a href="0002-the-architecture-map.html">← Lesson 2</a>
+  <a href="../reference/security-claims.html">Cheat sheet: security claims</a>
+  <span>Next: <em>Inside the helper</em></span>
+</nav>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

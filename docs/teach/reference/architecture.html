@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture Cheat Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="wide">
+
+<p class="kicker">Reference · from lesson 2</p>
+<h1>Architecture cheat sheet</h1>
+<p class="lede">28 crates, six layers, two roads to the filesystem. As of <code>0.1.0-alpha.27</code>.</p>
+
+<h2>The one-sentence version</h2>
+<p>A CLI drives a turn loop that streams from the model's API; each tool call passes an offered-tools check and an approval gate, then either runs in-process under <strong>FsGuard</strong> (six tools) or, for <code>bash</code>, in a re-exec'd <strong>helper</strong> that locks itself with Landlock, seccomp and namespaces before running the command.</p>
+
+<h2>Crates by layer</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Layer</th><th>Crates</th><th>Remember</th></tr></thead>
+<tbody>
+<tr><td>Front end</td><td><code>sandbx-cli</code>, <code>sandbx-screen</code>, <code>sandbx-tui-input</code>, <code>sandbx-tui-transcript</code>, <code>sandbx-text</code></td><td>Subcommands: <code>sandbox-run</code>, <code>agent-run</code>, <code>tui</code>, <code>auth</code>, <code>hash</code>. <code>sandbx-text</code> strips terminal-hijacking characters from model text, shared by both screens.</td></tr>
+<tr><td>Turn loop</td><td><code>sandbx-turn</code>, <code>sandbx-approval</code>, <code>sandbx-compact</code></td><td><code>run_turn</code>; the <code>CallGate</code> trait (<code>approve</code>, <code>settled</code>); dropping the oldest history past a token budget.</td></tr>
+<tr><td>Model</td><td><code>sandbx-anthropic</code>, <code>sandbx-provider</code>, <code>sandbx-prompt</code>, <code>sandbx-event</code>, <code>sandbx-sse</code></td><td>Hand-rolled <code>reqwest</code> + <code>rustls</code>, no SDK. The seam is the <code>EventStream</code> return type, not a provider trait.</td></tr>
+<tr><td>Tools</td><td><code>sandbx-tools</code></td><td>Closed enum of seven: <code>read write edit ls grep find bash</code>. Only <code>bash</code> spawns.</td></tr>
+<tr><td>Sandbox</td><td><code>sandbx-grants</code>, <code>sandbx-core</code>, <code>sandbx-helper</code></td><td>Flags → <code>SandboxPolicy</code>; <code>FsGuard</code>; <code>SandboxedCommand</code>; the helper's two stages. <code>sandbx-helper</code> is a standalone binary for the enforcement tests.</td></tr>
+<tr><td>State</td><td><code>sandbx-session-store</code>, <code>-bridge</code>, <code>-message</code>, <code>-id</code>, <code>-paths</code>, <code>-error</code>, <code>sandbx-auth</code>, <code>sandbx-logging</code></td><td>JSONL transcripts at <code>0600</code>; API key file at <code>0600</code>; the audit-trail subscriber (not optional).</td></tr>
+<tr><td>Test only</td><td><code>sandbx-helper-fixture</code>, <code>sandbx-pty-fixture</code>, <code>sandbx-turn-fixture</code></td><td>Dev-dependencies; never ship.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>Two roads</h2>
+<pre><code>read/write/edit/ls/grep/find ──► FsGuard (in-process) ──► never reaches Landlock
+bash                         ──► helper re-exec       ──► Landlock + seccomp + netns</code></pre>
+<p>Both derive from one table, <code>Axis::grants()</code> in <code>sandbox_policy.rs</code>, so they cannot answer one policy differently.</p>
+
+<h2>Path of a <code>bash</code> call</h2>
+<ol>
+<li><code>main</code> → <code>with_helper_dispatch</code>: am I the helper? (before flag parsing)</li>
+<li><code>sandbx-cli</code> parses flags; <code>sandbx-grants</code> builds the policy</li>
+<li><code>sandbx-turn</code> streams a round from <code>sandbx-anthropic</code></li>
+<li>Tool call: known name? offered this turn? → else refused before the gate</li>
+<li><code>CallGate::approve</code> (<code>ArgvGate</code> for <code>agent-run</code>, <code>Gate</code> in <code>tui.rs</code>)</li>
+<li><code>sandbx-tools</code>: <code>/bin/sh -c CMD</code> as a <code>SandboxedCommand</code></li>
+<li><code>sandbx-core</code> re-execs <code>/proc/self/exe --sandbx-core-exec …</code></li>
+<li>Helper locks itself, runs the shell; output capped and returned; audit on stderr</li>
+</ol>
+
+<h2>Enforced by the build</h2>
+<ul>
+<li><code>unsafe</code> forbidden in every crate.</li>
+<li><code>Command::new</code> banned by <code>clippy.toml</code>; only <code>sandbx-core</code>'s <code>spawn::command</code> may spawn.</li>
+<li><code>deny.toml</code>: which crate may depend on which; only <code>sandbx-anthropic</code> may use <code>reqwest</code>; nothing may depend on <code>sandbx-cli</code>.</li>
+<li>Limit: convention plus tooling. Sees only sandbx's own code, not its dependencies.</li>
+</ul>
+
+<nav class="next">
+  <a href="../lessons/0002-the-architecture-map.html">← Lesson 2</a>
+</nav>
+</main>
+</body>
+</html>

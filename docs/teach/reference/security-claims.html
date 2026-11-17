@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security Claims Cheat Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="wide">
+
+<p class="kicker">Reference · SECURITY.md lines 27–43, in plain terms</p>
+<h1>What sandbx claims to enforce</h1>
+<p class="lede">Ten controls, on Linux 6.10+ with unprivileged user namespaces, for any command run through <code>SandboxedCommand</code>. Default-deny, fail-closed.</p>
+
+<h2>The split to keep straight</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th></th><th>seccomp: the doorway</th><th>Landlock: the shelves</th></tr></thead>
+<tbody>
+<tr><td>Sees</td><td>which syscall, and its plain-number arguments</td><td>which file, or which TCP port, is actually accessed</td></tr>
+<tr><td>Can't</td><td>read a path or address behind a pointer</td><td>police mounting, UDP, kernel code, …</td></tr>
+<tr><td>Job</td><td>removes whole <em>kinds</em> of request</td><td>judges the ordinary ones case by case</td></tr>
+<tr><td>Example</td><td><code>mount</code> → blocked; <code>open</code> → passes</td><td><code>open("file.txt")</code> → under a grant?</td></tr>
+</tbody>
+</table>
+</div>
+<p class="meta">Namespaces are the third tool: a private copy of something the machine normally shares (network, process numbers, file-tree view).</p>
+
+<h2>The ten rows</h2>
+
+<div class="card">
+<h3><span class="n">1</span>Filesystem <span class="mech">Landlock</span></h3>
+<dl>
+<dt>What</dt><dd>Which paths the command may read, write, run. Granted separately: read ≠ write ≠ execute; <code>--allow-exec</code> = read + execute; nothing else confers execute. (CLI <code>--allow-write</code> also grants read.)</dd>
+<dt>Detail</dt><dd>ABI 5 minimum (Linux 6.10); uses the newest level the kernel enforces <em>in full</em>; partial enforcement → refuse.</dd>
+<dt>Say</dt><dd class="say">"Landlock in the kernel, three separate rights, and it runs only if the whole ruleset is enforced."</dd>
+</dl>
+</div>
+
+<div class="card">
+<h3><span class="n">2</span>Entry point <span class="mech">SHA-256 over an open file handle</span></h3>
+<dl>
+<dt>What</dt><dd><code>--pin-sha256</code>: the one program launched must match a fingerprint of its bytes.</dd>
+<dt>Detail</dt><dd>Hashed through a file descriptor, then run through <em>that same</em> descriptor: no re-lookup of the name, so no swap between check and run (TOCTOU). Refuses <code>#!</code> scripts and unreadable programs.</dd>
+<dt>Limit</dt><dd>Covers the entry point only. Pinned <code>python3</code> still runs any script.</dd>
+<dt>Say</dt><dd class="say">"<code>--allow-exec</code> names a path; the pin names the bytes."</dd>
+</dl>
+</div>
+
+<div class="card">
+<h3><span class="n">3</span>Network <span class="mech">empty netns · or Landlock ports + seccomp</span></h3>
+<dl>
+<dt>What</dt><dd>Default: empty network namespace, nothing to connect to. <code>--allow-network PORT</code>: TCP to that port only.</dd>
+<dt>Detail</dt><dd>Port mode shares the host network; seccomp blocks what Landlock can't police: UDP, raw sockets, other protocols, IP tunnels, <code>TCP_ULP</code>, TCP Fast Open.</dd>
+<dt>Limit</dt><dd><strong>Port ≠ host</strong>: 443 is open to every host. Stops SSH/database access, not HTTPS exfiltration. DNS, QUIC, HTTP/3 break; localhost reachable.</dd>
+<dt>Say</dt><dd class="say">"A port allowlist, not a destination allowlist, and documented as such."</dd>
+</dl>
+</div>
+
+<div class="card">
+<h3><span class="n">4</span>Name resolution <span class="mech">private <code>/etc</code> via mount namespace</span></h3>
+<dl>
+<dt>What</dt><dd><code>--allow-dns NAME</code>: only listed names resolve; others fail at once.</dd>
+<dt>Detail</dt><dd>sandbx resolves the names first, then bind-mounts read-only <code>hosts</code> (just those), <code>nsswitch.conf</code> (no DNS), <code>resolv.conf</code> (no server) over <code>/etc</code>, in the command's view only. Grants no path.</dd>
+<dt>Limit</dt><dd>Names, not destinations: a bare IP bypasses it. Refuses combos leaving a DNS server reachable. Ubuntu's AppArmor restriction → run refused.</dd>
+</dl>
+</div>
+
+<div class="card">
+<h3><span class="n">5</span>Unix sockets <span class="mech">seccomp · Landlock ABI 9</span></h3>
+<dl>
+<dt>What</dt><dd>Local mailboxes to other programs (<code>docker.sock</code>, ssh-agent, session bus). Denied by default.</dd>
+<dt>Detail</dt><dd>seccomp blocks <code>socket(AF_UNIX)</code> and connectionless <code>socketpair</code> (could be re-aimed outside); connected pairs allowed (both ends inside).</dd>
+<dt>Limit</dt><dd><code>--allow-unix-sockets</code> is all or nothing below ABI 9 (Linux 7.1): <code>/run/docker.sock</code> reachable with no grant naming it. No kernel shipping today is at ABI 9.</dd>
+</dl>
+</div>
+
+<div class="card">
+<h3><span class="n">6</span>Environment <span class="mech">cleared at every process start</span></h3>
+<dl>
+<dt>What</dt><dd>Only named variables cross. CLI default seven: <code>PATH HOME TERM LANG LC_ALL LC_CTYPE TZ</code>, plus <code>--allow-env NAME</code>, plus constants sandbx sets.</dd>
+<dt>Detail</dt><dd>The kernel hands the environment over before any lock applies, so it's enforced by <em>not passing it</em>. All three spawns go through <code>spawn::command</code>; stage 2 refuses an unexpected variable.</dd>
+<dt>Limit</dt><dd>An allowed name passes its full value. <code>ANTHROPIC_API_KEY</code> refused on agent subcommands.</dd>
+</dl>
+</div>
+
+<div class="card">
+<h3><span class="n">7</span>Syscalls <span class="mech">seccomp denylist</span></h3>
+<dl>
+<dt>What</dt><dd>Process inspection, namespace creation, mounting, loading kernel code, keyring, <code>io_uring</code>, <code>userfaultfd</code>, <code>memfd_create</code>, reboot/swap.</dd>
+<dt>Detail</dt><dd>Answers <code>EPERM</code> (looks like a permission error, not a crash). <code>clone3</code> → <code>ENOSYS</code> so threads fall back to the filterable <code>clone</code>. Foreign architecture / x32 → killed.</dd>
+<dt>Why <code>io_uring</code></dt><dd>Submits work via shared memory, not syscalls, so it would bypass seccomp's rules (Landlock still checks the file).</dd>
+</dl>
+</div>
+
+<div class="card">
+<h3><span class="n">8</span>Process state <span class="mech">capset · prctl · rlimit</span></h3>
+<dl>
+<dt>What</dt><dd>Empty effective / permitted / inheritable / ambient capabilities; <code>no_new_privs</code>; <code>RLIMIT_CORE = 0</code> (no core dumps).</dd>
+<dt>Detail</dt><dd><code>no_new_privs</code>: launching a program never grants more power, so setuid <code>sudo</code> starts as an ordinary user. Required before installing seccomp or Landlock without admin rights.</dd>
+<dt>Limit</dt><dd>Bounding set cleared best-effort (AppArmor strips the needed capability) → <code>degraded</code> audit record; harmless given the rest.</dd>
+</dl>
+</div>
+
+<div class="card">
+<h3><span class="n">9</span>Process lifetime <span class="mech">PID namespace, sandbx's own init</span></h3>
+<dl>
+<dt>What</dt><dd>Everything the command started dies when the call ends, <code>setsid</code> included.</dd>
+<dt>Detail</dt><dd>When a namespace's init (process #1) exits, the kernel kills everything in it. Init is helper stage 2, never the command, which could switch off its own shutdown paths. Ends via group kill on timeout, or <code>PR_SET_PDEATHSIG</code> if stage 1 dies.</dd>
+<dt>Limit</dt><dd>Only time is bounded: no CPU, memory or process-count cap. WSL2 measured not delivering the death signal (#272); a survivor is still fully locked.</dd>
+</dl>
+</div>
+
+<div class="card">
+<h3><span class="n">10</span>Process signalling <span class="mech">PID namespace</span></h3>
+<dl>
+<dt>What</dt><dd>Can't signal, or even name, any process outside its namespace.</dd>
+<dt>Limit</dt><dd><code>/proc</code> shows host PIDs (remounting needs <code>mount</code>, which is blocked). A compatibility quirk, not a boundary gap.</dd>
+</dl>
+</div>
+
+<h2>If asked "what doesn't it protect?"</h2>
+<ul>
+<li>sandbx itself is not sandboxed; neither are its dependencies.</li>
+<li>Write access to a project tree = write to <code>.git/hooks</code>, <code>Makefile</code>, … which run <em>outside</em> the sandbox later.</li>
+<li>Approval is not enforcement; <code>--approve run</code> asks nothing per call.</li>
+<li>Sessions are plaintext on disk; a stored key is plaintext at <code>0600</code>.</li>
+</ul>
+
+<nav class="next">
+  <a href="architecture.html">Architecture cheat sheet</a>
+  <a href="../lessons/0002-the-architecture-map.html">Lesson 2</a>
+</nav>
+</main>
+</body>
+</html>
