@@ -21,7 +21,7 @@ use std::fmt;
 pub(super) const BASELINE_ABI: landlock::ABI = landlock::ABI::V5; // Linux 6.10: IoctlDev
 
 /// Newest ABI [`apply`](crate::helper::exec::apply) negotiates for. See [`BASELINE_ABI`].
-pub(super) const LATEST_ABI: landlock::ABI = landlock::ABI::V9; // Linux 7.1: ResolveUnix
+pub(super) const LATEST_ABI: landlock::ABI = landlock::ABI::V10; // Linux 7.2: UDP ports
 
 /// Every ABI [`negotiated_abi`] will settle for, newest first.
 ///
@@ -29,8 +29,9 @@ pub(super) const LATEST_ABI: landlock::ABI = landlock::ABI::V9; // Linux 7.1: Re
 /// refusal, not a lower rung. Written out because `ABI` is a closed enum with no iterator and
 /// no arithmetic — and a literal ladder is what an ABI bump is forced to edit, next to the two
 /// constants that bound it.
-pub(super) const NEGOTIABLE_ABI: [landlock::ABI; 5] = [
+pub(super) const NEGOTIABLE_ABI: [landlock::ABI; 6] = [
     LATEST_ABI,
+    landlock::ABI::V9,
     landlock::ABI::V8,
     landlock::ABI::V7,
     landlock::ABI::V6,
