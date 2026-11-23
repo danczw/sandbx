@@ -373,10 +373,10 @@ exception. It arrived at ABI V9 and would have joined the write set with no line
 edited, so on the first V9 kernel (Linux 7.1) `--allow-unix-sockets` (one
 boolean, documented as all-or-nothing) would have acquired a path condition: a
 pathname socket would have to sit inside a *write* grant to be dialled, and a
-command that works on V8 would fail on a newer kernel
-with the same flags. So the write axis subtracts it and the flag confers it
-instead, on every path the policy granted, masked by `from_all(abi)` so nothing
-moves at or below V8 (#259).
+command that works on V8 would fail on a newer kernel with the same flags. So
+the write axis subtracts it and the flag confers it instead, on every path the
+policy granted, masked by `from_all(abi)` so nothing moves at or below V8
+(#259).
 
 Four shapes were rejected, and the first is the one someone will re-propose:
 

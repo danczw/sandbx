@@ -153,8 +153,10 @@ fn a_bare_network_grant_reaches_both_ports() {
     }
 }
 
-/// Landlock's port rules police TCP alone, so without the seccomp denial a command
-/// allowlisted to one TCP port could still send datagrams anywhere. Asked of the same policy
+/// Below ABI V10 Landlock's port rules police TCP alone, so without the seccomp denial a
+/// command allowlisted to one TCP port could still send datagrams anywhere. On a V10 kernel
+/// Landlock refuses as well, so there this no longer isolates the seccomp rule;
+/// `a_port_list_denies_udp` pins that rule on any kernel. Asked of the same policy
 /// that reaches its TCP port, so this is the datagram refused and not a run with no network.
 #[test]
 fn udp_is_refused_under_a_port_allowlist() {

@@ -19,7 +19,7 @@ use super::{compat, rights};
 /// - rules *below* it: every right the newer ABI added is silently not granted, so the policy
 ///   promises more than the kernel is told to allow. Nothing refuses it, and no kernel-free
 ///   test can see it — `AccessFs::from_all` is constant across V5..V8, so V8→V9
-///   (`ResolveUnix`) is the only rung boundary that moves a bit.
+///   (`ResolveUnix`) is the only rung boundary that moves an fs bit.
 ///
 /// Destructured by every consumer — the [`Grants`] precedent — so a field added here fails to
 /// compile at `apply` instead of being silently ignored.
