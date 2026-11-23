@@ -98,7 +98,7 @@ the fail-open one by default.
 One ABI, hard-required, or nothing:
 
 ```
-negotiated_abi_from(probe)  NEGOTIABLE_ABI = [V9, V8, V7, V6, V5], newest first
+negotiated_abi_from(probe)  NEGOTIABLE_ABI = [V10, V9, V8, V7, V6, V5], newest first
    │                        probe = kernel_probe in production, a closure in tests
    ├─ handle_access(handled_access(abi)), handle_access(handled_net_access(abi))
    │     both under HardRequirement  ◄── or the probe picks a rung apply refuses for
