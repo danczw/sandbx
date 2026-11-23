@@ -10,10 +10,11 @@ use sandbx_event::{AgentEvent, StopReason};
 use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking, ToolChoice};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_pty_fixture::{Pty, pty};
+use sandbx_session_bridge::{Conversation, SessionChoice};
 use sandbx_session_message::TurnStop as StoredStop;
-use sandbx_session_store::Session;
+use sandbx_session_store::SessionStore;
 use sandbx_tools::ExecutionContext;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{fs, future, io};
 
 /// `path`, pinned to the object it names — the shape every grant takes (#212).
@@ -115,19 +116,8 @@ struct Driven {
 
 /// Drive one scripted round through `drive`. A default policy grants nothing, so the
 /// request carries the approved tools and whatever `--system` held, with no roots line.
-fn one_round(
-    args: &AgentRun,
-    prompt: &str,
-    events: Vec<AgentEvent>,
-    session: Option<Session>,
-) -> Driven {
-    under(
-        SandboxPolicy::default(),
-        args,
-        prompt,
-        vec![events],
-        session,
-    )
+fn one_round(args: &AgentRun, events: Vec<AgentEvent>, conversation: Conversation) -> Driven {
+    under(SandboxPolicy::default(), args, vec![events], conversation)
 }
 
 /// `one_round` over a script of several rounds, composing the system prompt the way
@@ -136,9 +126,8 @@ fn one_round(
 fn under(
     policy: SandboxPolicy,
     args: &AgentRun,
-    prompt: &str,
     rounds: Vec<Vec<AgentEvent>>,
-    session: Option<Session>,
+    conversation: Conversation,
 ) -> Driven {
     let system = orientation::system_prompt(&policy, args.allow_tool.as_deref(), args.system());
     let ctx = ExecutionContext::new(policy);
@@ -154,7 +143,6 @@ fn under(
             future::ready(Ok(canned(round)))
         },
         &ctx,
-        prompt.to_owned(),
         system,
         Channels {
             out: &mut out,
@@ -162,7 +150,7 @@ fn under(
             err_device: Device::Redirected,
             terminal: None,
         },
-        session,
+        conversation,
     ));
 
     Driven {
@@ -174,7 +162,7 @@ fn under(
 }
 
 /// Drive a turn whose request never reaches a provider at all.
-fn failed_round(args: &AgentRun, session: Option<Session>) -> Result<i32, AgentError> {
+fn failed_round(args: &AgentRun, conversation: Conversation) -> Result<i32, AgentError> {
     let ctx = ExecutionContext::new(SandboxPolicy::default());
 
     runtime().block_on(args.drive(
@@ -186,7 +174,6 @@ fn failed_round(args: &AgentRun, session: Option<Session>) -> Result<i32, AgentE
             }))
         },
         &ctx,
-        "hi".to_owned(),
         None,
         Channels {
             out: Vec::new(),
@@ -194,7 +181,7 @@ fn failed_round(args: &AgentRun, session: Option<Session>) -> Result<i32, AgentE
             err_device: Device::Redirected,
             terminal: None,
         },
-        session,
+        conversation,
     ))
 }
 
@@ -207,7 +194,7 @@ fn asked_on(
     policy: SandboxPolicy,
     terminal: Terminal,
     rounds: Vec<Vec<AgentEvent>>,
-    session: Option<Session>,
+    conversation: Conversation,
 ) -> Driven {
     let system = orientation::system_prompt(&policy, args.allow_tool.as_deref(), args.system());
     let ctx = ExecutionContext::new(policy);
@@ -223,7 +210,6 @@ fn asked_on(
             future::ready(Ok(canned(round)))
         },
         &ctx,
-        "go".to_owned(),
         system,
         Channels {
             out: &mut out,
@@ -231,7 +217,7 @@ fn asked_on(
             err_device: Device::Redirected,
             terminal: Some(terminal),
         },
-        session,
+        conversation,
     ));
 
     Driven {
@@ -270,23 +256,47 @@ fn asking_to_write(path: &Path) -> Vec<Vec<AgentEvent>> {
     ]
 }
 
-/// A store under a temporary directory, and one new session in it.
-fn new_session() -> NewSession {
-    let root = tempfile::tempdir().expect("a temp dir");
-    let store = sandbx_session_store::SessionStore::new(root.path().join("sessions"));
-    let session = store.create().expect("a new session");
-    NewSession {
-        _root: root,
-        store,
-        session,
-    }
+/// A conversation with no session behind it.
+fn off(prompt: &str) -> Conversation {
+    Conversation::open(SessionChoice::Off, prompt.to_owned(), &|_| None).expect("nothing to open")
 }
 
-/// What [`new_session`] made, under the directory that has to outlive it.
-struct NewSession {
-    _root: tempfile::TempDir,
-    store: sandbx_session_store::SessionStore,
-    session: Session,
+/// A temporary directory standing in for `$XDG_STATE_HOME`, and the store under it.
+fn sessions() -> Sessions {
+    let root = tempfile::tempdir().expect("a temp dir");
+    // Where `Conversation::open` keeps them, spelled out rather than asked for.
+    let store = SessionStore::new(root.path().join("sandbx/sessions"));
+    Sessions { root, store }
+}
+
+/// What [`sessions`] made, under the directory that has to outlive it.
+struct Sessions {
+    root: tempfile::TempDir,
+    store: SessionStore,
+}
+
+impl Sessions {
+    fn open(&self, choice: SessionChoice<'_>, prompt: &str) -> Conversation {
+        let home = self.root.path().as_os_str().to_owned();
+        let lookup = |name: &str| (name == "XDG_STATE_HOME").then(|| home.clone());
+        Conversation::open(choice, prompt.to_owned(), &lookup).expect("it opens")
+    }
+
+    /// `prompt` in a session of its own.
+    fn started(&self, prompt: &str) -> Conversation {
+        self.open(SessionChoice::New, prompt)
+    }
+
+    /// `prompt` resuming the one stored session.
+    fn resumed(&self, prompt: &str) -> Conversation {
+        self.open(SessionChoice::Resume(&only_session(&self.store)), prompt)
+    }
+
+    /// The one stored transcript.
+    fn transcript(&self) -> PathBuf {
+        let id = only_session(&self.store);
+        self.store.root().join(format!("{id}.jsonl"))
+    }
 }
 
 #[test]
@@ -300,9 +310,8 @@ fn the_prompt_is_the_whole_request_history() {
         ..
     } = one_round(
         &args,
-        &args.to_prompt(),
         vec![text("etc"), stop(StopReason::EndTurn)],
-        None,
+        off(&args.to_prompt()),
     );
 
     assert_eq!(written, "etc\n");
@@ -316,12 +325,12 @@ fn show_thinking_asks_for_it_and_nothing_else_does() {
     let round = || vec![text("etc"), stop(StopReason::EndTurn)];
 
     let quiet = agent_run(&["sandbx", "agent-run", "--", "hi"]);
-    let Driven { sent, code, .. } = one_round(&quiet, "hi", round(), None);
+    let Driven { sent, code, .. } = one_round(&quiet, round(), off("hi"));
     code.expect("clean turn");
     assert_eq!(sent[0].thinking, None);
 
     let loud = agent_run(&["sandbx", "agent-run", "--show-thinking", "--", "hi"]);
-    let Driven { sent, code, .. } = one_round(&loud, "hi", round(), None);
+    let Driven { sent, code, .. } = one_round(&loud, round(), off("hi"));
     code.expect("clean turn");
     assert_eq!(sent[0].thinking, Some(Thinking::Visible));
 }
@@ -331,13 +340,11 @@ fn show_thinking_asks_for_it_and_nothing_else_does() {
 #[test]
 fn a_stored_turn_carries_no_reasoning() {
     let args = agent_run(&["sandbx", "agent-run", "--show-thinking", "--", "hi"]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
+    let sessions = sessions();
+    let store = &sessions.store;
 
     let Driven { code, .. } = one_round(
         &args,
-        "hi",
         vec![
             AgentEvent::Thinking {
                 delta: "weighing it up".to_string(),
@@ -352,11 +359,11 @@ fn a_stored_turn_carries_no_reasoning() {
             text("etc"),
             stop(StopReason::EndTurn),
         ],
-        Some(session),
+        sessions.started("hi"),
     );
     code.expect("clean turn");
 
-    let path = store.root().join(format!("{}.jsonl", only_session(&store)));
+    let path = store.root().join(format!("{}.jsonl", only_session(store)));
     let on_disk = fs::read_to_string(&path).expect("the transcript exists");
 
     for token in ["sig-1", "EvgBCkgIBR", "thinking", "weighing it up"] {
@@ -374,27 +381,18 @@ fn a_stored_turn_carries_no_reasoning() {
 #[test]
 fn a_resumed_history_precedes_the_new_prompt() {
     let args = agent_run(&["sandbx", "agent-run", "--", "and the second?"]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
-    let id = {
-        let Driven { code, .. } = one_round(
-            &args,
-            "the first question",
-            vec![text("the first answer"), stop(StopReason::EndTurn)],
-            Some(session),
-        );
-        code.expect("clean turn");
-        // Read back from the store rather than kept from before the turn: what a
-        // resume gets is what reached disk.
-        only_session(&store)
-    };
+    let sessions = sessions();
+    let Driven { code, .. } = one_round(
+        &args,
+        vec![text("the first answer"), stop(StopReason::EndTurn)],
+        sessions.started("the first question"),
+    );
+    code.expect("clean turn");
 
     let Driven { sent, code, .. } = one_round(
         &args,
-        &args.to_prompt(),
         vec![text("the second answer"), stop(StopReason::EndTurn)],
-        Some(store.resume(&id).expect("the session resumes")),
+        sessions.resumed(&args.to_prompt()),
     );
     code.expect("clean turn");
 
@@ -422,9 +420,8 @@ fn the_request_carries_the_granted_root_as_system() {
             .allow_read(vetted(work.path()))
             .allow_write(vetted(work.path())),
         &args,
-        &args.to_prompt(),
         vec![vec![text("ok"), stop(StopReason::EndTurn)]],
-        None,
+        off(&args.to_prompt()),
     );
     code.expect("clean turn");
 
@@ -444,9 +441,8 @@ fn the_request_names_the_tools_the_run_approved() {
 
     let Driven { sent, code, .. } = one_round(
         &args,
-        &args.to_prompt(),
         vec![text("ok"), stop(StopReason::EndTurn)],
-        None,
+        off(&args.to_prompt()),
     );
     code.expect("clean turn");
 
@@ -461,15 +457,15 @@ fn the_request_names_the_tools_the_run_approved() {
 #[test]
 fn a_failed_turn_leaves_the_transcript_alone() {
     let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
-    let before = fs::read(session.path()).expect("the transcript exists");
+    let sessions = sessions();
+    let store = &sessions.store;
+    let conversation = sessions.started("hi");
+    let before = fs::read(sessions.transcript()).expect("the transcript exists");
 
-    let error = failed_round(&args, Some(session)).expect_err("a turn that never opened");
+    let error = failed_round(&args, conversation).expect_err("a turn that never opened");
 
     assert!(matches!(error, AgentError::Turn(_)), "got {error:?}");
-    let after = fs::read(store.root().join(format!("{}.jsonl", only_session(&store))))
+    let after = fs::read(store.root().join(format!("{}.jsonl", only_session(store))))
         .expect("the transcript exists");
     // An unanswered prompt would make the next resume send two user turns in a row.
     assert_eq!(after, before);
@@ -480,16 +476,15 @@ fn a_failed_turn_leaves_the_transcript_alone() {
 #[test]
 fn a_transcript_holds_no_api_key_material() {
     let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
-    let path = session.path().to_owned();
+    let sessions = sessions();
+    let store = &sessions.store;
+    let conversation = sessions.started("remember sentinel-9f3a");
+    let path = sessions.transcript();
 
     let Driven { code, .. } = one_round(
         &args,
-        "remember sentinel-9f3a",
         vec![text("noted, sentinel-9f3a"), stop(StopReason::EndTurn)],
-        Some(session),
+        conversation,
     );
     code.expect("clean turn");
 
@@ -501,11 +496,7 @@ fn a_transcript_holds_no_api_key_material() {
         assert!(!body.contains(needle), "{needle} reached {path:?}");
     }
     assert_eq!(
-        store
-            .resume(&only_session(&store))
-            .unwrap()
-            .messages()
-            .len(),
+        store.resume(&only_session(store)).unwrap().messages().len(),
         2
     );
 }
@@ -513,15 +504,13 @@ fn a_transcript_holds_no_api_key_material() {
 #[test]
 fn a_turn_with_no_reply_keeps_the_turns_own_exit_code() {
     let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
+    let sessions = sessions();
+    let store = &sessions.store;
 
     let Driven { code, said, .. } = one_round(
         &args,
-        &args.to_prompt(),
         vec![stop(StopReason::MaxTokens)],
-        Some(session),
+        sessions.started(&args.to_prompt()),
     );
 
     // `IncompleteTurn` is a stderr line, not an error: the cut-short code is what a
@@ -534,7 +523,7 @@ fn a_turn_with_no_reply_keeps_the_turns_own_exit_code() {
     );
     assert!(
         store
-            .resume(&only_session(&store))
+            .resume(&only_session(store))
             .unwrap()
             .messages()
             .is_empty()
@@ -553,9 +542,8 @@ fn a_truncated_answer_exits_incomplete() {
         written: out, code, ..
     } = one_round(
         &args,
-        &args.to_prompt(),
         vec![text("half a sen"), stop(StopReason::MaxTokens)],
-        None,
+        off(&args.to_prompt()),
     );
 
     assert_eq!(out, "half a sen\n");
@@ -577,13 +565,12 @@ fn asking_for_ls() -> Vec<AgentEvent> {
 }
 
 /// A round-limited run, scripted as the two requests it sends.
-fn capped(args: &AgentRun, wrap_up: Vec<AgentEvent>, session: Option<Session>) -> Driven {
+fn capped(args: &AgentRun, wrap_up: Vec<AgentEvent>, conversation: Conversation) -> Driven {
     under(
         SandboxPolicy::default(),
         args,
-        &args.to_prompt(),
         vec![asking_for_ls(), wrap_up],
-        session,
+        conversation,
     )
 }
 
@@ -611,17 +598,17 @@ fn stranding_text() -> Vec<AgentEvent> {
 #[test]
 fn a_discarded_wrap_up_round_owns_what_it_wrote() {
     let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
-    let path = session.path().to_owned();
+    let sessions = sessions();
+    let store = &sessions.store;
+    let conversation = sessions.started(&args.to_prompt());
+    let path = sessions.transcript();
 
     let Driven {
         sent,
         written,
         code,
         ..
-    } = capped(&args, stranding_text(), Some(session));
+    } = capped(&args, stranding_text(), conversation);
 
     assert_eq!(sent.len(), 2, "the cap should have bought a wrap-up round");
     assert_eq!(written, "looking\n\nhere is what I found\n");
@@ -633,7 +620,7 @@ fn a_discarded_wrap_up_round_owns_what_it_wrote() {
     assert!(body.contains("looking"), "got {body}");
     assert!(!body.contains("here is what I found"), "got {body}");
     let stored = store
-        .resume(&only_session(&store))
+        .resume(&only_session(store))
         .expect("a resumable turn");
     assert!(stored.pending_call());
     // The first turn's stop, the discarded round's not being stored.
@@ -665,7 +652,7 @@ fn a_lost_terminal_exits_three_without_asking_again() {
         written,
         code,
         ..
-    } = asked_on(&args, policy, hung_up(), asking_to_write(&file), None);
+    } = asked_on(&args, policy, hung_up(), asking_to_write(&file), off("go"));
 
     assert_eq!(code.expect("a reported turn"), 3);
     assert_eq!(
@@ -699,17 +686,17 @@ fn a_lost_terminal_still_stores_the_turn() {
     let policy = SandboxPolicy::default()
         .allow_read(vetted(root.path()))
         .allow_write(vetted(root.path()));
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
-    let path = session.path().to_owned();
+    let sessions = sessions();
+    let store = &sessions.store;
+    let conversation = sessions.started("go");
+    let path = sessions.transcript();
 
     let Driven { code, .. } = asked_on(
         &args,
         policy,
         hung_up(),
         asking_to_write(&file),
-        Some(session),
+        conversation,
     );
     assert_eq!(code.expect("a reported turn"), 3);
 
@@ -720,7 +707,7 @@ fn a_lost_terminal_still_stores_the_turn() {
     // the read fails first on a slave whose master is gone is platform detail.
     assert!(body.contains("no call can be approved"), "got {body}");
     let stored = store
-        .resume(&only_session(&store))
+        .resume(&only_session(store))
         .expect("a resumable turn");
     assert!(
         stored.pending_call(),
@@ -740,7 +727,7 @@ fn a_turn_out_of_rounds_exits_two_with_an_answer() {
         written,
         code,
         ..
-    } = capped(&args, summarising(), None);
+    } = capped(&args, summarising(), off(&args.to_prompt()));
 
     assert_eq!(sent.len(), 2, "the cap should have bought a wrap-up round");
     // The cap cut the tool work off whatever prose followed, so the code is unchanged.
@@ -754,7 +741,7 @@ fn a_turn_out_of_rounds_exits_two_with_an_answer() {
 fn the_wrap_up_round_forbids_tools_and_adds_no_turn() {
     let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
 
-    let Driven { sent, .. } = capped(&args, summarising(), None);
+    let Driven { sent, .. } = capped(&args, summarising(), off(&args.to_prompt()));
 
     assert!(sent[0].tool_choice.is_none(), "the first round was bound");
     assert!(!sent[1].tools.is_empty(), "got {:?}", sent[1].tools);
@@ -777,7 +764,7 @@ fn the_wrap_up_round_forbids_tools_and_adds_no_turn() {
 fn the_wrap_up_round_says_the_tools_are_gone() {
     let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
 
-    let Driven { sent, .. } = capped(&args, summarising(), None);
+    let Driven { sent, .. } = capped(&args, summarising(), off(&args.to_prompt()));
 
     // Not `is_none`: #197 gives the first round a prompt naming its approved tools,
     // so the property is that the nudge is absent there, not that nothing is.
@@ -802,9 +789,8 @@ fn no_wrap_up_still_stores_what_the_cap_reached() {
         "--",
         "go",
     ]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
+    let sessions = sessions();
+    let store = &sessions.store;
 
     let Driven {
         sent,
@@ -814,9 +800,8 @@ fn no_wrap_up_still_stores_what_the_cap_reached() {
     } = under(
         SandboxPolicy::default(),
         &args,
-        &args.to_prompt(),
         vec![asking_for_ls()],
-        Some(session),
+        sessions.started(&args.to_prompt()),
     );
 
     assert_eq!(sent.len(), 1, "no request should have followed the cap");
@@ -824,7 +809,7 @@ fn no_wrap_up_still_stores_what_the_cap_reached() {
     assert_eq!(code.expect("a reported turn"), INCOMPLETE);
 
     let stored = store
-        .resume(&only_session(&store))
+        .resume(&only_session(store))
         .expect("a resumable turn");
     // The prompt, the round that asked for a tool, and its result.
     assert_eq!(stored.messages().len(), 3);
@@ -837,15 +822,14 @@ fn no_wrap_up_still_stores_what_the_cap_reached() {
 #[test]
 fn a_turn_out_of_rounds_is_stored_and_resumable() {
     let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
+    let sessions = sessions();
+    let store = &sessions.store;
 
-    let Driven { code, .. } = capped(&args, summarising(), Some(session));
+    let Driven { code, .. } = capped(&args, summarising(), sessions.started(&args.to_prompt()));
     assert_eq!(code.expect("a reported turn"), INCOMPLETE);
 
     let stored = store
-        .resume(&only_session(&store))
+        .resume(&only_session(store))
         .expect("a resumable turn");
     // The prompt, the round that asked for a tool, its result, and the summary.
     assert_eq!(stored.messages().len(), 4);
@@ -859,9 +843,8 @@ fn a_turn_out_of_rounds_is_stored_and_resumable() {
 #[test]
 fn a_failed_wrap_up_round_costs_the_turn_nothing() {
     let args = agent_run(&["sandbx", "agent-run", "--max-rounds", "1", "--", "go"]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
+    let sessions = sessions();
+    let store = &sessions.store;
 
     // A round with no events at all ends without a `Stop`, which is the wrap-up
     // round failing without a provider that can be made to fail.
@@ -870,7 +853,7 @@ fn a_failed_wrap_up_round_costs_the_turn_nothing() {
         written,
         said,
         code,
-    } = capped(&args, Vec::new(), Some(session));
+    } = capped(&args, Vec::new(), sessions.started(&args.to_prompt()));
 
     assert_eq!(sent.len(), 2, "the wrap-up round should have been tried");
     assert_eq!(written, "looking\n");
@@ -878,7 +861,7 @@ fn a_failed_wrap_up_round_costs_the_turn_nothing() {
     assert_eq!(code.expect("a reported turn"), INCOMPLETE);
 
     let stored = store
-        .resume(&only_session(&store))
+        .resume(&only_session(store))
         .expect("a resumable turn");
     assert_eq!(stored.messages().len(), 3);
     assert!(stored.pending_call());
@@ -889,9 +872,7 @@ fn a_failed_wrap_up_round_costs_the_turn_nothing() {
 #[test]
 fn a_prompt_resuming_an_unanswered_call_joins_it() {
     let args = agent_run(&["sandbx", "agent-run", "--", "what did you find?"]);
-    let fixture = new_session();
-    let store = fixture.store;
-    let session = fixture.session;
+    let sessions = sessions();
     let capping = agent_run(&[
         "sandbx",
         "agent-run",
@@ -904,18 +885,16 @@ fn a_prompt_resuming_an_unanswered_call_joins_it() {
     under(
         SandboxPolicy::default(),
         &capping,
-        &capping.to_prompt(),
         vec![asking_for_ls()],
-        Some(session),
+        sessions.started(&capping.to_prompt()),
     )
     .code
     .expect("a reported turn");
 
     let Driven { sent, code, .. } = one_round(
         &args,
-        &args.to_prompt(),
         vec![text("nothing"), stop(StopReason::EndTurn)],
-        Some(store.resume(&only_session(&store)).expect("it resumes")),
+        sessions.resumed(&args.to_prompt()),
     );
     code.expect("clean turn");
 
@@ -988,9 +967,7 @@ fn a_budget_of_zero_is_refused() {
 /// transcript's `turn` line, or the turn after a cut sends the whole history again.
 #[test]
 fn a_resumed_session_keeps_its_cut() {
-    let fixture = new_session();
-    let store = fixture.store;
-    let mut session = Some(fixture.session);
+    let sessions = sessions();
     let run = |prompt: &str| {
         agent_run(&[
             "sandbx",
@@ -1006,12 +983,14 @@ fn a_resumed_session_keeps_its_cut() {
     // Six turns, twelve messages; the last request measured over budget.
     for (index, input) in [10, 10, 10, 10, 10, 5000].into_iter().enumerate() {
         let args = run(&format!("turn {index}"));
-        let session = session
-            .take()
-            .unwrap_or_else(|| store.resume(&only_session(&store)).expect("it resumes"));
+        let conversation = if index == 0 {
+            sessions.started(&args.to_prompt())
+        } else {
+            sessions.resumed(&args.to_prompt())
+        };
         let Driven {
             sent, code, said, ..
-        } = one_round(&args, &args.to_prompt(), answered_at(input), Some(session));
+        } = one_round(&args, answered_at(input), conversation);
         code.expect("clean turn");
         assert_eq!(
             sent[0].messages.len(),
@@ -1025,12 +1004,7 @@ fn a_resumed_session_keeps_its_cut() {
     let args = run("cut");
     let Driven {
         sent, code, said, ..
-    } = one_round(
-        &args,
-        &args.to_prompt(),
-        answered_at(10),
-        Some(store.resume(&only_session(&store)).expect("it resumes")),
-    );
+    } = one_round(&args, answered_at(10), sessions.resumed(&args.to_prompt()));
     code.expect("clean turn");
     assert_eq!(sent[0].messages.len(), 9, "got {:?}", sent[0].messages);
     assert_eq!(said_in(&sent[0].messages[0]), "turn 2");
@@ -1040,12 +1014,7 @@ fn a_resumed_session_keeps_its_cut() {
     let args = run("held");
     let Driven {
         sent, code, said, ..
-    } = one_round(
-        &args,
-        &args.to_prompt(),
-        answered_at(10),
-        Some(store.resume(&only_session(&store)).expect("it resumes")),
-    );
+    } = one_round(&args, answered_at(10), sessions.resumed(&args.to_prompt()));
     code.expect("clean turn");
     assert_eq!(sent[0].messages.len(), 11, "got {:?}", sent[0].messages);
     assert_eq!(said_in(&sent[0].messages[0]), "turn 2");
@@ -1055,12 +1024,7 @@ fn a_resumed_session_keeps_its_cut() {
     let args = agent_run(&["sandbx", "agent-run", "--session", "--", "off"]);
     let Driven {
         sent, code, said, ..
-    } = one_round(
-        &args,
-        &args.to_prompt(),
-        answered_at(10),
-        Some(store.resume(&only_session(&store)).expect("it resumes")),
-    );
+    } = one_round(&args, answered_at(10), sessions.resumed(&args.to_prompt()));
     code.expect("clean turn");
     assert_eq!(sent[0].messages.len(), 17, "got {:?}", sent[0].messages);
     assert!(!said.contains("--compact-at"), "got {said}");
@@ -1079,10 +1043,6 @@ impl Notes for Said {
 /// request streamed handing back the stored floor; the request it sent withheld nothing.
 #[test]
 fn only_compaction_claims_a_cut() {
-    let merged = sandbx_session_bridge::merge_user_runs(
-        vec![asked("one"), answered("two"), asked("three")],
-        2,
-    );
     let carrying_the_floor = || sandbx_turn::TurnOutcome {
         messages: vec![answered("four")],
         usage: None,
@@ -1094,14 +1054,12 @@ fn only_compaction_claims_a_cut() {
     let lines = |argv: &[&str]| {
         let mut said = Said(Vec::new());
         // Bound, so the directory outlives the append.
-        let fixture = new_session();
+        let sessions = sessions();
         agent_run(argv)
             .save(
-                fixture.session,
-                &asked("three"),
+                sessions.started("three"),
                 carrying_the_floor(),
                 StoredStop::Answered,
-                &merged,
                 &mut said,
             )
             .expect("it stores");
@@ -1120,7 +1078,7 @@ fn only_compaction_claims_a_cut() {
 }
 
 /// The id of the one session in `store`.
-fn only_session(store: &sandbx_session_store::SessionStore) -> sandbx_session_id::SessionId {
+fn only_session(store: &SessionStore) -> sandbx_session_id::SessionId {
     let mut ids: Vec<String> = fs::read_dir(store.root())
         .expect("the store exists")
         .map(|entry| {

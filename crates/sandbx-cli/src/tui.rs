@@ -16,17 +16,17 @@
 //! reprint; repainted only when an event arrives, a line is noted or a call starts, so the
 //! screen does not move while a call runs.
 
+use std::env;
 use std::io::{self, Write};
 use std::sync::Mutex;
 
 use sandbx_anthropic::AnthropicClient;
 use sandbx_approval::{ApprovalDecision, CallGate, Settled, ToolCall};
-use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
+use sandbx_prompt::{Prompt, Thinking};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_screen::{Screen, Transcript};
-use sandbx_session_bridge as session;
+use sandbx_session_bridge::Conversation;
 use sandbx_session_message::TurnStop as StoredStop;
-use sandbx_session_store::Session;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Answers, Keys, Stopped};
 use sandbx_turn::{Turn, TurnError, TurnOutcome, TurnStop, run_turn_until};
@@ -85,15 +85,17 @@ impl Tui {
         // may sit between the vet and the pin, and this call writes a directory and can
         // block on stderr. The pane being the only place a command's text was drawn is why
         // this path in particular needs the id on the trail.
-        let session = session::open(self.run.session())?;
+        let conversation = Conversation::open(self.run.session(), prompt.clone(), &|name| {
+            env::var_os(name)
+        })?;
 
         let policy = self.run.policy()?;
         let system =
             orientation::system_prompt(&policy, self.run.allow_tool.as_deref(), self.run.system());
         // Adjacent to the vet above, for `AgentRun::execute`'s reason: what is between them
         // resolves paths but cannot be stalled.
-        let ctx = match session.as_ref() {
-            Some(open) => ExecutionContext::for_session(policy, open.id().to_string()),
+        let ctx = match conversation.id() {
+            Some(id) => ExecutionContext::for_session(policy, id.to_string()),
             None => ExecutionContext::new(policy),
         };
 
@@ -102,10 +104,10 @@ impl Tui {
         self.drive(
             |request| client.stream_chat(request),
             &ctx,
-            prompt,
+            &prompt,
             system,
             &approved,
-            session,
+            conversation,
         )
         .await
     }
@@ -127,7 +129,8 @@ impl Tui {
         Ok(())
     }
 
-    /// Run one turn against `open`, drawing it, and save it to `session`.
+    /// Run one turn of `conversation` against `open`, drawing it under `prompt`, and record
+    /// it.
     ///
     /// The stream opener is an argument for the same reason it is on
     /// [`AgentRun::drive`](super::AgentRun): it is the only way to drive a turn without a
@@ -136,27 +139,15 @@ impl Tui {
         &self,
         mut open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
-        prompt: String,
+        prompt: &str,
         system: Option<String>,
         approved: &[String],
-        session: Option<Session>,
+        conversation: Conversation,
     ) -> Result<i32, AgentError> {
-        let mut transcript = Transcript::new(&prompt, self.run.reasoning());
+        let mut transcript = Transcript::new(prompt, self.run.reasoning());
         for line in approved {
             transcript.note(line);
         }
-
-        let asked = RequestMessage {
-            role: Role::User,
-            content: vec![ContentBlock::Text { text: prompt }],
-        };
-
-        let mut history = session.as_ref().map_or_else(Vec::new, |session| {
-            session::request_history(session.messages())
-        });
-        history.push(asked.clone());
-        let merged =
-            session::merge_user_runs(history, session.as_ref().map_or(0, Session::withheld));
 
         let turn = Turn {
             model: self.run.model().to_string(),
@@ -165,13 +156,10 @@ impl Tui {
             tools: &BuiltinTool::ALL,
             tool_choice: None,
             thinking: self.run.show_thinking.then_some(Thinking::Visible),
-            history: &merged.history,
+            history: conversation.history(),
             limits: self.run.limits(),
-            observed: session
-                .as_ref()
-                .and_then(Session::observed)
-                .map(session::request_usage),
-            withheld: merged.withheld,
+            observed: conversation.observed(),
+            withheld: conversation.withheld(),
         };
 
         // Before the screen: a record written once it is up lands in the pane and dies
@@ -291,11 +279,9 @@ impl Tui {
 
         // Not `?`: a store that refused the turn must still leave the transcript and the
         // trail, the answer being on the screen and nowhere else.
-        let saved = match (outcome, session) {
-            (Some((outcome, stop)), Some(session)) => self
-                .run
-                .save(session, &asked, outcome, stop, &merged, &mut pane),
-            _ => Ok(()),
+        let saved = match outcome {
+            Some((outcome, stop)) => self.run.save(conversation, outcome, stop, &mut pane),
+            None => Ok(()),
         };
         let code = saved.and(code);
 

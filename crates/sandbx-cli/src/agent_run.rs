@@ -9,18 +9,17 @@
 //! and `wrapup`. `AgentRun`'s doc comments are rendered `--help` text, not commentary.
 
 use std::io::Write;
-use std::{io, slice};
+use std::{env, io};
 
 use sandbx_anthropic::AnthropicClient;
 use sandbx_core::SandboxPolicy;
-use sandbx_prompt::{ContentBlock, Prompt, RequestMessage, Role, Thinking};
+use sandbx_prompt::{Prompt, Thinking};
 use sandbx_provider::{EventStream, ProviderError};
 use sandbx_screen::Reasoning;
-use sandbx_session_bridge::{self as session, Merged, SessionChoice};
+use sandbx_session_bridge::{Conversation, SessionChoice};
 use sandbx_session_error::SessionError;
 use sandbx_session_id::SessionId;
-use sandbx_session_message::{CompletedTurn, TurnStop as StoredStop};
-use sandbx_session_store::Session;
+use sandbx_session_message::TurnStop as StoredStop;
 use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_turn::{Compaction, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
@@ -304,7 +303,7 @@ impl AgentRun {
         // The cost, taken deliberately: a refused policy below leaves a header-only
         // transcript nothing deletes. A stray directory against a window in the sandbox's
         // TOCTOU guarantee (`guide-sandboxing.md`, *Known gaps*).
-        let session = session::open(self.session())?;
+        let conversation = Conversation::open(self.session(), prompt, &|name| env::var_os(name))?;
 
         let policy = self.policy()?;
         // Read off once: a second `self.policy()?` re-reads `getcwd`, and a cwd that moved
@@ -314,8 +313,8 @@ impl AgentRun {
         // re-vets each granted path, but that is a bounded number of lookups on
         // operator-named paths, nothing that blocks and no model-chosen input. What may
         // not come between is anything an attacker can stall, hence the session above.
-        let ctx = match session.as_ref() {
-            Some(open) => ExecutionContext::for_session(policy, open.id().to_string()),
+        let ctx = match conversation.id() {
+            Some(id) => ExecutionContext::for_session(policy, id.to_string()),
             None => ExecutionContext::new(policy),
         };
 
@@ -325,7 +324,6 @@ impl AgentRun {
         self.drive(
             |request| client.stream_chat(request),
             &ctx,
-            prompt,
             system,
             Channels {
                 out: io::stdout(),
@@ -333,7 +331,7 @@ impl AgentRun {
                 err_device: Device::of(&io::stderr()),
                 terminal,
             },
-            session,
+            conversation,
         )
         .await
     }
@@ -361,8 +359,8 @@ impl AgentRun {
         }
     }
 
-    /// Run one turn against `open`, writing the answer to `out` and saving it to
-    /// `session`.
+    /// Run one turn of `conversation` against `open`, writing the answer to `out` and
+    /// recording it.
     ///
     /// The opener and the channels are arguments so a test can drive a canned turn and
     /// read back the request — the only way to check either without a key.
@@ -370,26 +368,10 @@ impl AgentRun {
         &self,
         mut open: impl AsyncFnMut(Prompt) -> Result<EventStream, ProviderError>,
         ctx: &ExecutionContext,
-        prompt: String,
         system: Option<String>,
         channels: Channels<W, E>,
-        session: Option<Session>,
+        conversation: Conversation,
     ) -> Result<i32, AgentError> {
-        let asked = RequestMessage {
-            role: Role::User,
-            content: vec![ContentBlock::Text { text: prompt }],
-        };
-
-        // Stored turns first: the new prompt is the conversation's latest, not its own request.
-        let mut history = session.as_ref().map_or_else(Vec::new, |session| {
-            session::request_history(session.messages())
-        });
-        history.push(asked.clone());
-        // Merged, not appended: a stored turn out of rounds ends on tool results, which
-        // the prompt joins rather than follows (#188).
-        let merged =
-            session::merge_user_runs(history, session.as_ref().map_or(0, Session::withheld));
-
         let turn = Turn {
             model: self.model.clone(),
             max_output_tokens: self.max_tokens,
@@ -397,14 +379,11 @@ impl AgentRun {
             tools: &BuiltinTool::ALL,
             tool_choice: None, // The model's to make.
             thinking: self.show_thinking.then_some(Thinking::Visible),
-            history: &merged.history,
+            history: conversation.history(),
             limits: self.limits(),
             // Last measured by the resumed conversation; `None`/`0` without one.
-            observed: session
-                .as_ref()
-                .and_then(Session::observed)
-                .map(session::request_usage),
-            withheld: merged.withheld,
+            observed: conversation.observed(),
+            withheld: conversation.withheld(),
         };
 
         let mut render = Render::with(channels.out, channels.err)
@@ -461,41 +440,31 @@ impl AgentRun {
         let ending = ending::of(&outcome, unfinished);
         let closed = render.finish(&ending.said);
 
-        if let Some(session) = session {
-            self.save(
-                session,
-                &asked,
-                outcome,
-                ending.stored,
-                &merged,
-                &mut render,
-            )?;
-        }
+        self.save(conversation, outcome, ending.stored, &mut render)?;
 
         // Last: an append still happens for a closed stdout — the transcript is the
         // conversation, not what reached the terminal.
         closed.map(|()| ending.code)
     }
 
-    /// Add the prompt and the finished turn to the transcript.
+    /// Record the finished turn in `conversation`'s session, if it has one.
     ///
-    /// `asked` has to be passed back in: `TurnOutcome::messages` is what the turn
-    /// produced, so a transcript built from the outcome alone would hold the model's
-    /// replies with nothing it replied to. `stop` is the caller's, `outcome.stop` alone being
-    /// unable to say a cap was summarised or who interrupted a turn. `notes` takes the lines
-    /// owed to a turn with nothing to store or history left out, which under `tui` must not
-    /// reach the stderr the screen covers.
+    /// `notes` takes the lines owed to a turn with nothing to store or history left out,
+    /// which under `tui` must not reach the stderr the screen covers.
     pub(super) fn save(
         &self,
-        mut session: Session,
-        asked: &RequestMessage,
+        conversation: Conversation,
         outcome: TurnOutcome,
         stop: StoredStop,
-        merged: &Merged,
         notes: &mut impl Notes,
     ) -> Result<(), AgentError> {
-        // Back out of the request's index space, which the merge moved.
-        let withheld = merged.unmerged(outcome.withheld);
+        let Some(recorded) =
+            conversation.record(&outcome.messages, outcome.usage, outcome.withheld, stop)
+        else {
+            return Ok(());
+        };
+
+        let withheld = recorded.withheld;
         // Not off the figure alone: with compaction off, a turn interrupted before its first
         // request streamed hands back the stored floor, while what it sent withheld nothing.
         if self.compact_at.is_some() && withheld > 0 {
@@ -506,23 +475,14 @@ impl AgentRun {
             ));
         }
 
-        let mut messages = session::stored_messages(slice::from_ref(asked));
-        messages.extend(session::stored_messages(&outcome.messages));
-        let turn = CompletedTurn {
-            messages: &messages,
-            observed: outcome.usage.map(session::stored_usage),
-            withheld,
-            stop,
-        };
-
-        match session.append(turn) {
+        match recorded.appended {
             Ok(()) => Ok(()),
             // Not an error: the turn's own exit code already says what happened, and a
             // turn that produced nothing at all has nothing to add.
             Err(SessionError::IncompleteTurn) => {
                 notes.note(&format!(
                     "sandbx: the turn produced nothing to store; session {} is unchanged",
-                    session.id()
+                    recorded.id
                 ));
                 Ok(())
             }
