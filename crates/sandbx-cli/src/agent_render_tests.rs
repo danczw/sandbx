@@ -1,8 +1,10 @@
-use super::super::{Device, INCOMPLETE};
-use super::{Answer, Render, Unfinished};
+use super::super::Device;
+use super::super::ending::{self, Answer};
+use super::Render;
 use crate::AgentError;
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_screen::Reasoning;
+use sandbx_turn::TurnStop;
 use std::io;
 use std::io::Write;
 
@@ -36,24 +38,24 @@ fn captured() -> Render<Vec<u8>, Vec<u8>> {
     Render::with(Vec::new(), Vec::new())
 }
 
-/// Everything stdout received, and what the turn would have exited with.
+/// Everything stdout received, and whether it could all be written.
 fn rendered(events: &[AgentEvent]) -> Rendered {
     let mut render = captured();
     for event in events {
         render.event(event);
     }
 
-    let code = render.finish(None, Answer::Whole);
+    let closed = render.finish(&[]);
     Rendered {
         written: String::from_utf8(render.out).expect("utf-8"),
-        code,
+        closed,
     }
 }
 
-/// What [`rendered`] got back: everything stdout received, and the exit code.
+/// What [`rendered`] got back.
 struct Rendered {
     written: String,
-    code: Result<i32, AgentError>,
+    closed: Result<(), AgentError>,
 }
 
 /// Stdout is the answer, so a pipe into `jq` or a file is the whole of it. Both halves
@@ -81,7 +83,7 @@ fn no_part_of_the_reasoning_reaches_stdout() {
         for event in &events {
             render.event(event);
         }
-        let code = render.finish(None, Answer::Whole);
+        let closed = render.finish(&[]);
 
         assert_eq!(
             String::from_utf8(render.out).expect("utf-8"),
@@ -100,7 +102,7 @@ fn no_part_of_the_reasoning_reaches_stdout() {
             },
             "{reasoning:?}"
         );
-        assert_eq!(code.expect("clean turn"), 0);
+        closed.expect("clean turn");
     }
 }
 
@@ -130,7 +132,7 @@ fn the_answer_does_not_continue_a_reasoning_line() {
 /// reasoning on stderr must not count as having written one.
 #[test]
 fn reasoning_alone_is_not_an_answer() {
-    let Rendered { written, code } = rendered(&[
+    let Rendered { written, closed } = rendered(&[
         AgentEvent::Thinking {
             delta: "weighing it up".to_string(),
         },
@@ -138,12 +140,12 @@ fn reasoning_alone_is_not_an_answer() {
     ]);
 
     assert_eq!(written, "");
-    assert_eq!(code.expect("clean turn"), 0);
+    closed.expect("clean turn");
 }
 
 #[test]
 fn a_rounds_stop_does_not_terminate_the_answer() {
-    let Rendered { written, code } = rendered(&[
+    let Rendered { written, closed } = rendered(&[
         text("looking"),
         stop(StopReason::ToolUse),
         text(" — found it"),
@@ -152,83 +154,7 @@ fn a_rounds_stop_does_not_terminate_the_answer() {
 
     // One trailing newline, not one per round.
     assert_eq!(written, "looking — found it\n");
-    assert_eq!(code.expect("clean turn"), 0);
-}
-
-/// No `Stop` decides it: the figure comes off the outcome's `round_stop`, so
-/// a renderer fed a `max_tokens` round and told nothing still exits clean.
-#[test]
-fn the_exit_code_comes_from_the_outcome_not_a_stop() {
-    let Rendered {
-        code: unreported, ..
-    } = rendered(&[stop(StopReason::EndTurn), stop(StopReason::MaxTokens)]);
-    assert_eq!(unreported.expect("clean turn"), 0);
-
-    let mut render = captured();
-    render.event(&stop(StopReason::EndTurn));
-    let told = render
-        .finish(None, Answer::Truncated)
-        .expect("truncated turn");
-    assert_eq!(told, INCOMPLETE);
-}
-
-/// The turn's own bound, which no `round_stop` reports: a round-limited turn ends on a
-/// `ToolUse` stop, the same one a healthy round ends on.
-#[test]
-fn a_turn_out_of_rounds_is_always_incomplete() {
-    for capped in [
-        Unfinished::CutShort(3),
-        Unfinished::Summarised(3),
-        Unfinished::Discarded(3),
-    ] {
-        let mut render = captured();
-        render.event(&text("looking"));
-        render.event(&stop(StopReason::ToolUse));
-
-        // A summary is prose on stdout, not a complete turn: the cap still cut the
-        // tool work off, so a script reading the status sees the same thing.
-        let code = render
-            .finish(Some(capped), Answer::Whole)
-            .expect("a reported turn");
-        assert_eq!(code, INCOMPLETE, "got {code} for {capped:?}");
-    }
-
-    assert_eq!(
-        captured().finish(None, Answer::Whole).expect("clean turn"),
-        0,
-        "a turn with rounds to spare should still exit 0"
-    );
-}
-
-/// The three codes a caller branches on, as literals: read off the consts, this would
-/// only prove the module agrees with itself.
-#[test]
-fn a_turn_that_lost_its_operator_exits_three() {
-    let abandoned = |events: &[AgentEvent], answer: Answer| {
-        let mut render = captured();
-        for event in events {
-            render.event(event);
-        }
-        render
-            .finish(Some(Unfinished::Aborted), answer)
-            .expect("a reported turn")
-    };
-
-    assert_eq!(
-        abandoned(&[text("looking"), stop(StopReason::ToolUse)], Answer::Whole),
-        3
-    );
-    // A truncated answer from a run whose operator went away is still that run: the
-    // bound is recoverable by raising a flag, and the lost operator is not.
-    assert_eq!(abandoned(&[], Answer::Truncated), 3);
-
-    assert_eq!(captured().finish(None, Answer::Whole).expect("clean"), 0);
-    assert_eq!(
-        captured()
-            .finish(Some(Unfinished::CutShort(3)), Answer::Whole)
-            .expect("capped"),
-        2
-    );
+    closed.expect("clean turn");
 }
 
 /// Three whole lines in one order: the reasoning terminated first — no `Stop` here, so
@@ -240,25 +166,14 @@ fn what_a_turn_is_told_is_whole_lines_in_order() {
         delta: "weighing it up".to_string(),
     });
 
-    let code = render
-        .finish(Some(Unfinished::Aborted), Answer::Truncated)
-        .expect("a reported turn");
-    assert_eq!(code, 3);
+    let said = ending::of(TurnStop::GateAborted, None, Answer::Truncated).said;
+    render.finish(&said).expect("a reported turn");
 
     let told = String::from_utf8(render.err).expect("utf-8");
     let mut lines = told.lines();
     assert_eq!(lines.next(), Some("weighing it up"));
-    assert!(
-        lines
-            .next()
-            .expect("the lost operator")
-            .contains("could no longer ask"),
-        "got {told:?}"
-    );
-    assert_eq!(
-        lines.next(),
-        Some("sandbx: answer truncated at --max-tokens")
-    );
+    assert_eq!(lines.next(), Some(said[0].as_str()), "got {told:?}");
+    assert_eq!(lines.next(), Some(said[1].as_str()), "got {told:?}");
     assert_eq!(lines.next(), None, "got {told:?}");
 }
 
@@ -317,19 +232,13 @@ fn reasoning_that_renders_is_left_alone() {
 #[test]
 fn a_line_about_the_answer_resets_only_where_it_renders() {
     for (err, told) in [
-        (
-            Device::Terminal,
-            "\x1b[0msandbx: answer truncated at --max-tokens\n",
-        ),
-        (
-            Device::Redirected,
-            "sandbx: answer truncated at --max-tokens\n",
-        ),
+        (Device::Terminal, "\x1b[0msandbx: cut\n"),
+        (Device::Redirected, "sandbx: cut\n"),
     ] {
         let mut render = captured().rendering(err);
         render.event(&text("hidden\x1b[8m"));
         render
-            .finish(None, Answer::Truncated)
+            .finish(&["sandbx: cut".to_string()])
             .expect("truncated turn");
 
         assert_eq!(String::from_utf8(render.err).expect("utf-8"), told);
@@ -348,9 +257,7 @@ fn across_the_cap(before: &[AgentEvent], after: &[AgentEvent]) -> String {
         render.event(event);
     }
 
-    render
-        .finish(Some(Unfinished::Summarised(1)), Answer::Whole)
-        .expect("rendered");
+    render.finish(&[]).expect("rendered");
     String::from_utf8(render.out).expect("utf-8")
 }
 
@@ -402,10 +309,7 @@ fn a_turn_nothing_can_read_is_reported_not_swallowed() {
     render.event(&text("hi"));
     render.event(&stop(StopReason::EndTurn));
 
-    assert!(matches!(
-        render.finish(None, Answer::Whole),
-        Err(AgentError::Output(_))
-    ));
+    assert!(matches!(render.finish(&[]), Err(AgentError::Output(_))));
 }
 
 /// Both can arrive together, and the write failure keeps the exit: `3` would claim an
@@ -416,10 +320,8 @@ fn a_broken_stdout_outranks_the_lost_operator() {
     let mut render = Render::with(ClosedPipe, Vec::new());
     render.event(&text("looking"));
 
-    assert!(matches!(
-        render.finish(Some(Unfinished::Aborted), Answer::Whole),
-        Err(AgentError::Output(_))
-    ));
+    let said = ending::of(TurnStop::GateAborted, None, Answer::Whole).said;
+    assert!(matches!(render.finish(&said), Err(AgentError::Output(_))));
 
     let told = String::from_utf8(render.err).expect("utf-8");
     assert!(

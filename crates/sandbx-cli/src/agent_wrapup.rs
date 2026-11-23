@@ -25,8 +25,8 @@ use sandbx_provider::{EventStream, ProviderError};
 use sandbx_tools::ExecutionContext;
 use sandbx_turn::{Turn, TurnLimits, TurnOutcome, TurnStop, run_turn};
 
+use super::ending::Unfinished;
 use super::prompt::Notes;
-use super::render::Unfinished;
 
 /// What the model is told in place of the tools it may no longer call.
 ///

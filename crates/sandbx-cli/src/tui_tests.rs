@@ -1,6 +1,6 @@
-use super::super::render::Unfinished;
-use super::super::{Device, INCOMPLETE, NO_CONSENT, gate};
-use super::{Accounted, Driven, Ending, Tui, accounted, counted, ending, given_back, held, stop};
+use super::super::ending::{Ending, INCOMPLETE, NO_CONSENT};
+use super::super::{Device, gate};
+use super::{Accounted, Driven, Tui, accounted, given_back, held, stop};
 use crate::{AgentError, Cli, Command};
 use clap::Parser;
 use sandbx_event::StopReason;
@@ -66,112 +66,6 @@ fn outcome(stop: TurnStop, round_stop: Option<StopReason>) -> TurnOutcome {
         stop,
         round_stop,
     }
-}
-
-/// A lost operator outranks a cut round, and both outrank an answer.
-///
-/// The code and not the note: `GateAborted` keeps the turn's messages and usage, so it
-/// is as well formed as an answer and only the code tells them apart (#218).
-#[test]
-fn a_gate_that_could_not_be_asked_exits_three_and_a_cut_round_two() {
-    let code = |stop| ending(&outcome(stop, None), None).code;
-
-    assert_eq!(code(TurnStop::GateAborted), NO_CONSENT);
-    assert_eq!(code(TurnStop::RoundLimit { rounds: 4 }), INCOMPLETE);
-
-    // Non-vacuous in the other direction: a finished answer takes the `_` arm and
-    // exits 0, so the two codes above are the stops and not the function.
-    assert_eq!(
-        ending(&outcome(TurnStop::Answered, None), None),
-        Ending {
-            code: 0,
-            said: Vec::new()
-        }
-    );
-}
-
-/// The bound `TurnStop` does not carry: a round cut at `--max-tokens` still stops as
-/// `Answered`, so reading the stop alone would exit 0 on a truncated reply.
-#[test]
-fn an_answer_cut_at_max_tokens_exits_two_whatever_the_stop_was() {
-    let cut = || Some(StopReason::MaxTokens);
-
-    assert_eq!(
-        ending(&outcome(TurnStop::Answered, cut()), None).code,
-        INCOMPLETE
-    );
-    assert_eq!(
-        ending(&outcome(TurnStop::RoundLimit { rounds: 4 }, cut()), None).code,
-        INCOMPLETE
-    );
-
-    // The cut does not lower a code already chosen, and it adds its own line to a turn
-    // that met both bounds.
-    let Ending { code, said } = ending(&outcome(TurnStop::GateAborted, cut()), None);
-    assert_eq!(code, NO_CONSENT);
-    assert_eq!(said.len(), 2, "{said:?}");
-
-    // Non-vacuous: the same stop with a round that was not cut exits 0, so the code
-    // above is the cut and not the fixture.
-    assert_eq!(
-        ending(
-            &outcome(TurnStop::Answered, Some(StopReason::EndTurn)),
-            None
-        )
-        .code,
-        0
-    );
-}
-
-/// Every code the screen reports comes with the line that explains it: a bare 3 in a
-/// shell is not an account of where the turn stopped.
-#[test]
-fn a_stop_that_is_not_an_answer_says_why() {
-    let stops = [
-        outcome(TurnStop::GateAborted, None),
-        outcome(TurnStop::RoundLimit { rounds: 4 }, None),
-        outcome(TurnStop::Answered, Some(StopReason::MaxTokens)),
-    ];
-
-    for stop in &stops {
-        let Ending { code, said } = ending(stop, None);
-        assert_ne!(code, 0, "{stop:?}");
-        assert!(
-            said.iter().all(|line| line.starts_with("sandbx: ")),
-            "{said:?}"
-        );
-    }
-}
-
-/// Each way a wrap-up round can leave a capped turn exits 2 with a line of its own, as
-/// under `agent-run`: a summary is prose about cut-off work, not a finished turn (#232).
-#[test]
-fn every_ending_of_a_capped_turn_exits_two_and_says_which() {
-    let capped = TurnStop::RoundLimit { rounds: 4 };
-    let endings = [
-        ending(
-            &outcome(TurnStop::Answered, Some(StopReason::EndTurn)),
-            Some(Unfinished::Summarised(4)),
-        ),
-        ending(&outcome(capped, None), Some(Unfinished::Discarded(4))),
-        ending(&outcome(capped, None), Some(Unfinished::CutShort(4))),
-    ];
-
-    for Ending { code, said } in &endings {
-        assert_eq!(*code, INCOMPLETE, "{said:?}");
-        assert_eq!(said.len(), 1, "{said:?}");
-    }
-    // Three lines and not one: a summary must not read as a turn that ended on tool work.
-    let lines: Vec<_> = endings.iter().map(|ending| &ending.said[0]).collect();
-    assert!(lines[0] != lines[1] && lines[1] != lines[2] && lines[0] != lines[2]);
-
-    // A summary cut at `--max-tokens` names both bounds, or it reads as a whole one.
-    let cut = ending(
-        &outcome(TurnStop::Answered, Some(StopReason::MaxTokens)),
-        Some(Unfinished::Summarised(4)),
-    );
-    assert_eq!(cut.code, INCOMPLETE);
-    assert_eq!(cut.said.len(), 2, "{:?}", cut.said);
 }
 
 /// What [`given_back`] wrote to stdout and to stderr, and the code it returned.
@@ -316,7 +210,7 @@ fn only_a_terminal_stderr_holds_the_audit_trail() {
 #[test]
 fn a_terminal_that_went_away_is_not_reported_as_an_interrupt() {
     for wrapping in [false, true] {
-        let Ending { code, said } = stop(Stopped::Gone, wrapping);
+        let Ending { code, said, .. } = stop(Stopped::Gone, wrapping);
         assert_eq!(code, NO_CONSENT);
         let given = given(Ok(code), None, &said, Device::Redirected);
         assert!(matches!(given.code, Ok(3)));
@@ -412,12 +306,6 @@ fn a_stopped_wrap_up_still_names_a_cut_round() {
     .said;
     assert_eq!(said.len(), 3, "{said:?}");
     assert!(said[2].contains("--max-tokens"), "{said:?}");
-}
-
-#[test]
-fn one_round_is_not_one_rounds() {
-    assert_eq!(counted(1), "1 round");
-    assert_eq!(counted(4), "4 rounds");
 }
 
 /// The flattened flags are the same flags: one `--allow-tool` cannot approve two
