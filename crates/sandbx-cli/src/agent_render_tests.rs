@@ -1,12 +1,23 @@
-use super::super::Device;
-use super::super::ending::{self, Answer};
+use super::super::{Device, ending};
 use super::Render;
 use crate::AgentError;
 use sandbx_event::{AgentEvent, StopReason};
 use sandbx_screen::Reasoning;
-use sandbx_turn::TurnStop;
+use sandbx_turn::{TurnOutcome, TurnStop};
 use std::io;
 use std::io::Write;
+
+/// What a turn whose gate was lost says, its last round having stopped `round_stop`.
+fn gate_lost(round_stop: Option<StopReason>) -> Vec<String> {
+    let outcome = TurnOutcome {
+        messages: Vec::new(),
+        usage: None,
+        withheld: 0,
+        stop: TurnStop::GateAborted,
+        round_stop,
+    };
+    ending::of(&outcome, None).said
+}
 
 pub(crate) fn text(delta: &str) -> AgentEvent {
     AgentEvent::Text {
@@ -166,7 +177,7 @@ fn what_a_turn_is_told_is_whole_lines_in_order() {
         delta: "weighing it up".to_string(),
     });
 
-    let said = ending::of(TurnStop::GateAborted, None, Answer::Truncated).said;
+    let said = gate_lost(Some(StopReason::MaxTokens));
     render.finish(&said).expect("a reported turn");
 
     let told = String::from_utf8(render.err).expect("utf-8");
@@ -320,7 +331,7 @@ fn a_broken_stdout_outranks_the_lost_operator() {
     let mut render = Render::with(ClosedPipe, Vec::new());
     render.event(&text("looking"));
 
-    let said = ending::of(TurnStop::GateAborted, None, Answer::Whole).said;
+    let said = gate_lost(None);
     assert!(matches!(render.finish(&said), Err(AgentError::Output(_))));
 
     let told = String::from_utf8(render.err).expect("utf-8");
