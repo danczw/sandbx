@@ -135,3 +135,29 @@ fn a_port_rule_grants_no_more_than_the_kernel_is_told_to_police() {
         );
     }
 }
+
+/// The ceiling's worked case of the asymmetry above: ABI V10 (Linux 7.2) adds UDP port rights,
+/// so on a kernel that has them Landlock denies UDP under a port list behind seccomp's
+/// `socket` denial, and an allowlisted TCP port does not open its UDP twin. Spelled out for
+/// the reason [`a_port_rule_grants_both_tcp_rights_and_nothing_else`] gives.
+#[test]
+fn a_port_list_polices_udp_and_grants_it_on_no_port() {
+    let udp = landlock::AccessNet::BindUdp | landlock::AccessNet::ConnectSendUdp;
+    let policy = SandboxPolicy::default().allow_network_port(53);
+
+    let RequestedNet::Ports {
+        handled, granted, ..
+    } = requested_at(&policy, LATEST_ABI).net
+    else {
+        panic!("a port allowlist left the network axis unhandled");
+    };
+
+    assert!(
+        handled.contains(udp),
+        "the ceiling does not police UDP, so on a kernel with the rights only seccomp denies it"
+    );
+    assert!(
+        !granted.intersects(udp),
+        "a port rule grants {granted:?}, so an allowlisted port is open to UDP as well"
+    );
+}
