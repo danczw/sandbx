@@ -295,7 +295,11 @@ impl Sessions {
     /// The one stored transcript.
     fn transcript(&self) -> PathBuf {
         let id = only_session(&self.store);
-        self.store.root().join(format!("{id}.jsonl"))
+        self.store
+            .resume(&id)
+            .expect("it resumes")
+            .path()
+            .to_owned()
     }
 }
 
@@ -341,7 +345,6 @@ fn show_thinking_asks_for_it_and_nothing_else_does() {
 fn a_stored_turn_carries_no_reasoning() {
     let args = agent_run(&["sandbx", "agent-run", "--show-thinking", "--", "hi"]);
     let sessions = sessions();
-    let store = &sessions.store;
 
     let Driven { code, .. } = one_round(
         &args,
@@ -363,8 +366,7 @@ fn a_stored_turn_carries_no_reasoning() {
     );
     code.expect("clean turn");
 
-    let path = store.root().join(format!("{}.jsonl", only_session(store)));
-    let on_disk = fs::read_to_string(&path).expect("the transcript exists");
+    let on_disk = fs::read_to_string(sessions.transcript()).expect("the transcript exists");
 
     for token in ["sig-1", "EvgBCkgIBR", "thinking", "weighing it up"] {
         assert!(
@@ -458,15 +460,13 @@ fn the_request_names_the_tools_the_run_approved() {
 fn a_failed_turn_leaves_the_transcript_alone() {
     let args = agent_run(&["sandbx", "agent-run", "--", "hi"]);
     let sessions = sessions();
-    let store = &sessions.store;
     let conversation = sessions.started("hi");
     let before = fs::read(sessions.transcript()).expect("the transcript exists");
 
     let error = failed_round(&args, conversation).expect_err("a turn that never opened");
 
     assert!(matches!(error, AgentError::Turn(_)), "got {error:?}");
-    let after = fs::read(store.root().join(format!("{}.jsonl", only_session(store))))
-        .expect("the transcript exists");
+    let after = fs::read(sessions.transcript()).expect("the transcript exists");
     // An unanswered prompt would make the next resume send two user turns in a row.
     assert_eq!(after, before);
 }
@@ -1055,9 +1055,15 @@ fn only_compaction_claims_a_cut() {
         let mut said = Said(Vec::new());
         // Bound, so the directory outlives the append.
         let sessions = sessions();
+        let first = sessions.started("one");
+        first
+            .record(&[answered("two")], None, 0, StoredStop::Answered)
+            .expect("a session records")
+            .appended
+            .expect("it stores");
         agent_run(argv)
             .save(
-                sessions.started("three"),
+                sessions.resumed("three"),
                 carrying_the_floor(),
                 StoredStop::Answered,
                 &mut said,
