@@ -89,10 +89,12 @@ pub(super) fn of(outcome: &TurnOutcome, unfinished: Option<Unfinished>) -> Endin
             INCOMPLETE
         }
         (TurnStop::Answered | TurnStop::RoundLimit { .. }, Some(Unfinished::Discarded(n))) => {
+            // Left where it is rather than disowned quietly: it was paid for, and the
+            // operator is the only one who can judge it.
             said.push(format!(
-                "sandbx: out of rounds after {}; what the wrap-up round wrote is not an \
-                 answer, and is not stored. Raising `--max-rounds` would let the turn go \
-                 further",
+                "sandbx: out of rounds after {}; nothing above is an answer, and what the \
+                 wrap-up round wrote is not stored. Raising `--max-rounds` would let the \
+                 turn go further",
                 counted(n)
             ));
             INCOMPLETE

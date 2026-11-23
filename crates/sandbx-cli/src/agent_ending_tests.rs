@@ -133,6 +133,12 @@ fn each_way_out_of_rounds_has_its_own_line() {
     let discarded = line(capped, Unfinished::Discarded(4));
 
     assert!(cut != summarised && summarised != discarded && cut != discarded);
+    // The text before the cap ended on tool work, so it is no answer either: disowning only
+    // the wrap-up's leaves it reading as one.
+    assert!(
+        discarded.contains("nothing above is an answer"),
+        "{discarded}"
+    );
     for said in [&cut, &summarised, &discarded] {
         assert!(said.contains("`--max-rounds`"), "{said}");
     }
