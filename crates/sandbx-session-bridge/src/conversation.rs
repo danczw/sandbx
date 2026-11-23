@@ -50,7 +50,8 @@ impl Conversation {
     /// its history.
     ///
     /// Before the first request, so a refused mode or an id with nothing behind it costs
-    /// nothing. `lookup` reads the environment that locates the store.
+    /// nothing. `lookup` locates the store; outside tests it must be the real environment,
+    /// which `sandbx-grants` reads to refuse a grant over the same directory.
     ///
     /// # Errors
     ///
