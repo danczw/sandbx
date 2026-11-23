@@ -18,7 +18,7 @@ sandbox-integration = []
 # The only way to drop this process's capabilities that stays inside
 # `unsafe_code = "forbid"`: nix has no capability module, libc only the raw prctl.
 caps = "0.5.6"
-landlock = "0.4.7"
+landlock = "0.4.8"
 libc = "0.2.189"
 # `dir` is `fdopendir`, the only way to list a directory off a descriptor: `std`'s
 # `ReadDir` can be built from a path and nothing else, so a listing rooted at a granted
