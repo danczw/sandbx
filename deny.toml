@@ -161,14 +161,15 @@ wrappers = ["sandbx-cli"]
 [[bans.deny]]
 name = "sandbx-session-message"
 # Neither `sandbx-session-bridge`'s edge nor `sandbx-cli`'s is inherited through
-# `sandbx-session-store`: the bridge is the translation #359 described, and `agent_run.rs`
-# names `CompletedTurn` to append a finished turn (#351).
+# `sandbx-session-store`: the bridge is the translation #359 described, and
+# `agent_ending.rs` names `TurnStop` to pick the stop a finished turn is stored with (#351).
 wrappers = ["sandbx-cli", "sandbx-session-bridge", "sandbx-session-store"]
 
 [[bans.deny]]
 name = "sandbx-session-store"
-# `sandbx-session-bridge` opens a store and reads a transcript back; `agent_run.rs` appends
-# a finished turn to the `Session` it holds (#350, #351).
+# `sandbx-session-bridge` opens a store, reads a transcript back and appends a finished
+# turn to it; `sandbx-cli`'s edge is a dev-dependency, its tests reading back what a run
+# wrote (#350, #529).
 wrappers = ["sandbx-cli", "sandbx-session-bridge"]
 
 [[bans.deny]]
