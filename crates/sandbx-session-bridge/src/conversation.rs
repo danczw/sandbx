@@ -119,6 +119,7 @@ impl Conversation {
     /// nothing they replied to. `withheld` is the turn's figure, in the request's numbering,
     /// and `stop` is the caller's, a turn's own stop being unable to say a cap was
     /// summarised or who interrupted it.
+    #[must_use = "an append that failed is only in `Recorded::appended`"]
     pub fn record(
         self,
         messages: &[RequestMessage],
