@@ -31,7 +31,7 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Answers, Keys, Stopped};
 use sandbx_turn::{Turn, TurnError, TurnOutcome, TurnStop, run_turn_until};
 
-use super::ending::{self, Answer, Ending, INCOMPLETE, NO_CONSENT, Unfinished, counted};
+use super::ending::{self, Ending, INCOMPLETE, NO_CONSENT, Unfinished, counted};
 use super::modal::{Modal, Shows};
 use super::prompt::{Notes, Stderr, account};
 use super::{AgentRun, Approve, Device, gate, orientation, wrapup};
@@ -372,7 +372,7 @@ fn accounted(driven: Driven) -> Result<Accounted, TurnError> {
         // stop's code stands: the cap's is 2, and a hangup's 3 must not be lowered by it.
         Driven::StoppedWrapping(stopped, first, rounds) => {
             let Ending { code, mut said, .. } = stop(stopped, true);
-            let capped = finished(&first, Some(Unfinished::CutShort(rounds)));
+            let capped = ending::of(&first, Some(Unfinished::CutShort(rounds)));
             said.extend(capped.said);
             Accounted {
                 code,
@@ -381,7 +381,7 @@ fn accounted(driven: Driven) -> Result<Accounted, TurnError> {
             }
         }
         Driven::Finished(outcome, unfinished) => {
-            let Ending { code, said, stored } = finished(&outcome, unfinished);
+            let Ending { code, said, stored } = ending::of(&outcome, unfinished);
             Accounted {
                 code,
                 kept: Some((outcome, stored)),
@@ -390,15 +390,6 @@ fn accounted(driven: Driven) -> Result<Accounted, TurnError> {
         }
         Driven::Failed(error) => return Err(error),
     })
-}
-
-/// What `outcome` came to, its reply's round read for the cut.
-fn finished(outcome: &TurnOutcome, unfinished: Option<Unfinished>) -> Ending {
-    ending::of(
-        outcome.stop,
-        unfinished,
-        Answer::of(outcome.round_stop.as_ref()),
-    )
 }
 
 /// How a stop is stored, a hangup apart from a keypress for [`stop`]'s reason.

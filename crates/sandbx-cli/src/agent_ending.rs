@@ -5,7 +5,7 @@
 
 use sandbx_event::StopReason;
 use sandbx_session_message::TurnStop as StoredStop;
-use sandbx_turn::TurnStop;
+use sandbx_turn::{TurnOutcome, TurnStop};
 
 use super::prompt::APPROVE_CALL;
 
@@ -21,24 +21,6 @@ pub(super) const INCOMPLETE: i32 = 2;
 /// a failure: the turn ended on purpose and its work is stored. A caller branching on the
 /// status has to be able to tell the three apart (#218).
 pub(super) const NO_CONSENT: i32 = 3;
-
-/// Whether the answer was cut off at `--max-tokens`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Answer {
-    Whole,
-    Truncated,
-}
-
-impl Answer {
-    /// Read off the stop of the round carrying the reply, whatever ended the turn.
-    pub(super) fn of(round_stop: Option<&StopReason>) -> Self {
-        if matches!(round_stop, Some(StopReason::MaxTokens)) {
-            Self::Truncated
-        } else {
-            Self::Whole
-        }
-    }
-}
 
 /// How a turn out of rounds ended, which no event reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,12 +57,12 @@ pub(super) struct Ending {
 /// `--max-tokens` ends a round inside it. Every cap exits [`INCOMPLETE`], the tool work
 /// having been cut off whatever prose followed it.
 ///
-/// Exhaustive on `stop` with no `_` arm, so a new way to end fails to compile here rather
+/// Exhaustive on the stop with no `_` arm, so a new way to end fails to compile here rather
 /// than exiting 0.
-pub(super) fn of(stop: TurnStop, unfinished: Option<Unfinished>, answer: Answer) -> Ending {
+pub(super) fn of(outcome: &TurnOutcome, unfinished: Option<Unfinished>) -> Ending {
     let mut said = Vec::new();
 
-    let code = match (stop, unfinished) {
+    let code = match (outcome.stop, unfinished) {
         // Ahead of the bounds: one turn can hit `--max-rounds` and lose its operator, and
         // only the second is unrecoverable. A `GateAborted` outcome holds its messages and
         // usage like an answered one, so nothing but the code tells a caller (#218).
@@ -127,25 +109,25 @@ pub(super) fn of(stop: TurnStop, unfinished: Option<Unfinished>, answer: Answer)
         (TurnStop::Answered, None) => 0,
     };
 
-    // Whatever the stop was: the round carrying the reply can be cut on its own, which is
-    // an answer stopping mid-sentence and must not exit 0.
-    let code = match answer {
-        Answer::Whole => code,
-        Answer::Truncated => {
-            said.push(
-                "sandbx: the answer stops at `--max-tokens`, mid-sentence and not at the \
-                 model's own end of turn"
-                    .to_string(),
-            );
-            // Never over a code already chosen, the cut being the recoverable one.
-            if code == 0 { INCOMPLETE } else { code }
-        }
+    // Off the outcome's round, not the stream's: on `Discarded` that is the first turn's,
+    // the wrap-up round's text not being an answer. Whatever the stop was: the round
+    // carrying the reply can be cut on its own, which must not exit 0.
+    let code = if outcome.round_stop == Some(StopReason::MaxTokens) {
+        said.push(
+            "sandbx: the answer stops at `--max-tokens`, mid-sentence and not at the \
+             model's own end of turn"
+                .to_string(),
+        );
+        // Never over a code already chosen, the cut being the recoverable one.
+        if code == 0 { INCOMPLETE } else { code }
+    } else {
+        code
     };
 
     Ending {
         code,
         said,
-        stored: stored(stop, unfinished),
+        stored: stored(outcome.stop, unfinished),
     }
 }
 

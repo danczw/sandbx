@@ -26,7 +26,7 @@ use sandbx_turn::{Compaction, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn}
 
 use crate::{AgentError, Grants, PolicyError};
 
-use super::ending::{self, Answer, Unfinished};
+use super::ending::{self, Unfinished};
 use super::gate::{self, tool_name};
 use super::prompt::{Approve, Notes, Stderr, Terminal};
 use super::render::Render;
@@ -458,13 +458,7 @@ impl AgentRun {
             }
         };
 
-        // The outcome's figure, not the stream's: on `Discarded` that's the first turn's,
-        // the wrap-up round's text not being an answer.
-        let ending = ending::of(
-            outcome.stop,
-            unfinished,
-            Answer::of(outcome.round_stop.as_ref()),
-        );
+        let ending = ending::of(&outcome, unfinished);
         let closed = render.finish(&ending.said);
 
         if let Some(session) = session {
