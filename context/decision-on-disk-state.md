@@ -123,12 +123,12 @@ append-only, what a reader refuses, why a torn last line is dropped, and why a
 user turn of nothing but tool results may end one (#188).
 
 The one rule that spans crates: a pair of user turns is legal on disk only
-because `sandbx-session-bridge`'s `merge_user_runs` collapses it into the one
+because `sandbx-session-bridge`'s `Conversation` collapses it into the one
 message the API takes, results first, before it reaches the wire. That merge is
 the one thing `agent-run` does to its history that moves a prefix's indices, and
-`withheld` is an index, so `Merged` carries both spaces: the floor goes in
-translated, and the figure the turn reports comes back out through
-`Merged::unmerged` before it is stored. A cut onto a merged pair sheds its
-results with the call they answer, so it comes back out naming the prose
-(#208). `sandbx-compact`'s `//!` has why that figure's exactness is
-load-bearing.
+`withheld` is an index, so `Conversation` holds both spaces: the floor goes in
+translated by `open`, and the figure the turn reports comes back out through
+`record` before it is stored, so no caller translates between the two. A cut
+onto a merged pair sheds its results with the call they answer, so it comes back
+out naming the prose (#208). `sandbx-compact`'s `//!` has why that figure's
+exactness is load-bearing.

@@ -242,7 +242,8 @@ wrappers = ["sandbx-cli", "sandbx-turn", "sandbx-turn-fixture"]
 name = "sandbx-session-error"
 # `sandbx-cli`'s edge is direct and not inherited through `sandbx-session-store`: it matches
 # the variants and converts them to an `AgentError`. `sandbx-session-bridge`'s is direct
-# too: `open` returns a `SessionError` rather than wrapping one (#351).
+# too: `Conversation::open` and `Recorded` hand back a `SessionError` rather than wrapping
+# one (#351).
 wrappers = [
     "sandbx-cli",
     "sandbx-session-bridge",
@@ -263,9 +264,9 @@ wrappers = ["sandbx-cli", "sandbx-session-bridge", "sandbx-session-store"]
 name = "sandbx-session-paths"
 # Neither parent inherits this through `sandbx-session-store`, which has no edge here:
 # `sandbx-grants` names `sessions_directory` to refuse a grant covering the transcript
-# directory, and `sandbx-session-bridge` names it to build the store from the real
-# environment. `sandbx-cli` is absent — it names `Session`, `SessionStore` and `SessionId`,
-# never this (#361).
+# directory, and `sandbx-session-bridge` names it to build the store from the environment
+# `Conversation::open` is handed. `sandbx-cli` is absent: its tests open a `SessionStore`
+# at a directory they spell out, never this (#361).
 wrappers = ["sandbx-grants", "sandbx-session-bridge"]
 
 [[bans.deny]]
