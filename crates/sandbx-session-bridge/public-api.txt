@@ -15,6 +15,21 @@ impl<'a> core::marker::Unpin for sandbx_session_bridge::SessionChoice<'a>
 impl<'a> core::marker::UnsafeUnpin for sandbx_session_bridge::SessionChoice<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for sandbx_session_bridge::SessionChoice<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for sandbx_session_bridge::SessionChoice<'a>
+pub struct sandbx_session_bridge::Conversation
+impl sandbx_session_bridge::Conversation
+pub fn sandbx_session_bridge::Conversation::history(&self) -> &[sandbx_prompt::RequestMessage]
+pub fn sandbx_session_bridge::Conversation::id(&self) -> core::option::Option<&sandbx_session_id::SessionId>
+pub fn sandbx_session_bridge::Conversation::observed(&self) -> core::option::Option<sandbx_compact::PromptUsage>
+pub fn sandbx_session_bridge::Conversation::open(sandbx_session_bridge::SessionChoice<'_>, alloc::string::String, &impl core::ops::function::Fn(&str) -> core::option::Option<std::ffi::os_str::OsString>) -> core::result::Result<Self, sandbx_session_error::SessionError>
+pub fn sandbx_session_bridge::Conversation::record(self, &[sandbx_prompt::RequestMessage], core::option::Option<sandbx_compact::PromptUsage>, usize, sandbx_session_message::TurnStop) -> core::option::Option<sandbx_session_bridge::Recorded>
+pub fn sandbx_session_bridge::Conversation::withheld(&self) -> usize
+impl core::marker::Freeze for sandbx_session_bridge::Conversation
+impl core::marker::Send for sandbx_session_bridge::Conversation
+impl core::marker::Sync for sandbx_session_bridge::Conversation
+impl core::marker::Unpin for sandbx_session_bridge::Conversation
+impl core::marker::UnsafeUnpin for sandbx_session_bridge::Conversation
+impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_bridge::Conversation
+impl core::panic::unwind_safe::UnwindSafe for sandbx_session_bridge::Conversation
 pub struct sandbx_session_bridge::Merged
 pub sandbx_session_bridge::Merged::history: alloc::vec::Vec<sandbx_prompt::RequestMessage>
 pub sandbx_session_bridge::Merged::withheld: usize
@@ -27,6 +42,17 @@ impl core::marker::Unpin for sandbx_session_bridge::Merged
 impl core::marker::UnsafeUnpin for sandbx_session_bridge::Merged
 impl core::panic::unwind_safe::RefUnwindSafe for sandbx_session_bridge::Merged
 impl core::panic::unwind_safe::UnwindSafe for sandbx_session_bridge::Merged
+pub struct sandbx_session_bridge::Recorded
+pub sandbx_session_bridge::Recorded::appended: core::result::Result<(), sandbx_session_error::SessionError>
+pub sandbx_session_bridge::Recorded::id: sandbx_session_id::SessionId
+pub sandbx_session_bridge::Recorded::withheld: usize
+impl core::marker::Freeze for sandbx_session_bridge::Recorded
+impl core::marker::Send for sandbx_session_bridge::Recorded
+impl core::marker::Sync for sandbx_session_bridge::Recorded
+impl core::marker::Unpin for sandbx_session_bridge::Recorded
+impl core::marker::UnsafeUnpin for sandbx_session_bridge::Recorded
+impl !core::panic::unwind_safe::RefUnwindSafe for sandbx_session_bridge::Recorded
+impl !core::panic::unwind_safe::UnwindSafe for sandbx_session_bridge::Recorded
 pub fn sandbx_session_bridge::merge_user_runs(alloc::vec::Vec<sandbx_prompt::RequestMessage>, usize) -> sandbx_session_bridge::Merged
 pub fn sandbx_session_bridge::open(sandbx_session_bridge::SessionChoice<'_>) -> core::result::Result<core::option::Option<sandbx_session_store::session::Session>, sandbx_session_error::SessionError>
 pub fn sandbx_session_bridge::request_history(&[sandbx_session_message::Message]) -> alloc::vec::Vec<sandbx_prompt::RequestMessage>

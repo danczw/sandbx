@@ -12,7 +12,7 @@
 //! `PromptUsage`, so folding them into `sandbx-cli` would give it a `sandbx-compact` edge
 //! for a type nothing else in it mentions (#351).
 
-use std::env;
+use std::ffi::OsString;
 
 use sandbx_compact::PromptUsage;
 use sandbx_prompt::{ContentBlock, RequestMessage, Role};
@@ -21,6 +21,10 @@ use sandbx_session_id::SessionId;
 use sandbx_session_message::{Content, Message, Role as StoredRole, TurnStop, Usage};
 use sandbx_session_paths::sessions_directory;
 use sandbx_session_store::{Session, SessionStore};
+
+mod conversation;
+
+pub use conversation::{Conversation, Recorded};
 
 /// What `--session` asked for.
 #[derive(Debug, Clone, Copy)]
@@ -37,13 +41,19 @@ pub enum SessionChoice<'a> {
 
 /// Open the session `choice` describes, reporting it on stderr.
 ///
-/// Called before the first request, so a refused mode or an id with nothing behind it
-/// costs nothing.
-///
 /// # Errors
 ///
 /// Every [`SessionError`] the store can raise.
 pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> {
+    opened(choice, &|name| std::env::var_os(name))
+}
+
+/// Open the session `choice` describes under `lookup`'s state home, reporting it on stderr.
+fn opened(
+    choice: SessionChoice<'_>,
+    lookup: &impl Fn(&str) -> Option<OsString>,
+) -> Result<Option<Session>, SessionError> {
+    let store = || sessions_directory(lookup).map(SessionStore::new);
     let session = match choice {
         SessionChoice::Off => return Ok(None),
         SessionChoice::New => {
@@ -116,14 +126,6 @@ fn resume_note(pending: bool, stop: Option<TurnStop>) -> Option<&'static str> {
              does not say why; this prompt goes to the model beside it"
         }
     })
-}
-
-/// The store under this process's environment.
-///
-/// `var_os` is read here and not injected, unlike in `sandbx-session-paths` itself: this is
-/// the one place that wants the real environment, and a test drives the store directly.
-fn store() -> Result<SessionStore, SessionError> {
-    sessions_directory(&|name| env::var_os(name)).map(SessionStore::new)
 }
 
 /// A stored conversation, in the shape a request carries it.
