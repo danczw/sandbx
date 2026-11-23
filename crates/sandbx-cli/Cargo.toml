@@ -56,8 +56,6 @@ serde_json = "1.0.151"
 tempfile = "3.27.0"
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 sandbx-pty-fixture = { path = "../sandbx-pty-fixture" }
-# Only the tests open a store, to read back what a run wrote; `src/` reaches it through
-# `sandbx-session-bridge`'s `Conversation`.
 sandbx-session-store = { path = "../sandbx-session-store" }
 # The test's `SecretString` is `AnthropicClient::new`'s, so this tracks `sandbx-anthropic`'s.
 secrecy = "0.10.3"
