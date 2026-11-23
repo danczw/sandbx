@@ -1,11 +1,12 @@
 # What a port allowlist has to deny, and what a per-host one would cost
 
 `--allow-network 443` says egress reaches port 443 and nowhere else. Landlock's
-network rules police TCP bind and connect and nothing else, so with UDP left open
-that sentence is false: a command confined to one TCP port could still send
-datagrams to any host on any port. The repo rule that `SECURITY.md` must never
-overstate the sandbox then leaves two choices — weaken the claim, or deny the
-transports that falsify it. The claim is the product. The transports go.
+network rules police TCP bind and connect, and UDP only from ABI V10 (Linux 7.2),
+so on any older kernel with UDP left open that sentence is false: a command
+confined to one TCP port could still send datagrams to any host on any port. The
+repo rule that `SECURITY.md` must never overstate the sandbox then leaves two
+choices: weaken the claim, or deny the transports that falsify it. The claim is
+the product. The transports go.
 
 Three other things falsify it the same way, each by reaching a TCP port without
 passing the hook Landlock's port rules hang off: a stream socket carrying a
@@ -223,10 +224,18 @@ defers the handshake but still goes through the `connect` syscall, so
 
 ## What was rejected
 
-**Allowing UDP on port 53 only.** The obvious fix for the DNS cliff, and it is
-not expressible. seccomp gates the `socket` call, where no port exists yet, and
-`connect`'s `sockaddr` is behind a pointer the filter cannot follow. What is
-expressible is TCP 53, which is what `--dns-over-tcp` is for.
+**Allowing UDP on port 53 only.** The obvious fix for the DNS cliff, and seccomp
+cannot express it: it gates the `socket` call, where no port exists yet, and
+`connect`'s `sockaddr` is behind a pointer the filter cannot follow. Landlock can
+from ABI V10 (Linux 7.2), whose `ConnectSendUdp` is a port rule on `connect` and
+`sendto` alike, and every kernel below V10 still needs the seccomp denial (#522).
+Three costs come with it. An unbound socket's first datagram auto-binds an
+ephemeral port, so `BindUdp` on port 0 has to be granted beside it, letting the
+command bind any ephemeral UDP port. The `socket` denial has to narrow to
+`SOCK_DGRAM` with protocol 0 or `IPPROTO_UDP` on the IP families, or ICMP
+datagram sockets pass with it. And seccomp, installed before the ABI is
+negotiated, has to learn the outcome. What sandbx expresses is TCP 53, which is
+what `--dns-over-tcp` is for.
 
 **Setting `RES_OPTIONS=use-vc` whenever a port list is in force.** It would make
 the common case work with no flag, and sandbx would be reaching into the
