@@ -26,9 +26,10 @@ use sandbx_turn::{Compaction, Turn, TurnLimits, TurnOutcome, TurnStop, run_turn}
 
 use crate::{AgentError, Grants, PolicyError};
 
+use super::ending::{self, Answer, Unfinished};
 use super::gate::{self, tool_name};
 use super::prompt::{Approve, Notes, Stderr, Terminal};
-use super::render::{Answer, Render, Unfinished};
+use super::render::Render;
 use super::{Device, orientation, wrapup};
 
 /// The model asked when `--model` is not given.
@@ -45,19 +46,6 @@ const DEFAULT_MAX_TOKENS: u32 = 4096;
 /// Counted over the whole request, the turn's own messages included, so a turn long in tool
 /// rounds can leave out every earlier one. No flag: #302 found no use for one.
 const COMPACT_KEEP_RECENT: usize = 10;
-
-/// The exit code for an answer a bound cut short.
-///
-/// Neither success nor failure: stdout holds the text that arrived before the bound, and
-/// nothing at all when the model opened with a tool call. Stderr names the bound.
-pub(super) const INCOMPLETE: i32 = 2;
-
-/// The exit code for a run whose operator could no longer be asked.
-///
-/// Not [`INCOMPLETE`], which means a bound the operator chose cut the turn short, and not
-/// a failure: the turn ended on purpose and its work is stored. A caller branching on the
-/// status has to be able to tell the three apart (#218).
-pub(super) const NO_CONSENT: i32 = 3;
 
 /// Where one run writes, and where it asks.
 ///
@@ -434,8 +422,7 @@ impl AgentRun {
         // After the loop, where `render`'s borrow has ended: no event carries the turn's own stop.
         let stop = outcome.as_ref().ok().map(|outcome| outcome.stop);
 
-        // Exhaustive on `TurnStop`, so a new way to end cannot reach `finish` as a clean one.
-        let (outcome, ending) = match (stop, outcome) {
+        let (outcome, unfinished) = match (stop, outcome) {
             (Some(TurnStop::RoundLimit { rounds }), Ok(first)) if !self.no_wrap_up => {
                 render.separate();
                 let (outcome, ending) = wrapup::run(
@@ -453,34 +440,47 @@ impl AgentRun {
             (Some(TurnStop::RoundLimit { rounds }), outcome) => {
                 (outcome, Some(Unfinished::CutShort(rounds)))
             }
-            // Skipped rather than refused by a flag: the wrap-up round is exactly the
+            // A lost gate skips the wrap-up with no flag to ask: that round is exactly the
             // request there is no longer anyone to have asked for (#218).
-            (Some(TurnStop::GateAborted), outcome) => (outcome, Some(Unfinished::Aborted)),
-            // `run_turn` has no stop of its own; only `run_turn_until`'s caller interrupts.
-            (Some(TurnStop::Answered | TurnStop::Interrupted) | None, outcome) => (outcome, None),
+            (Some(TurnStop::Answered | TurnStop::GateAborted | TurnStop::Interrupted), outcome)
+            | (None, outcome) => (outcome, None),
+        };
+
+        let outcome = match outcome {
+            Ok(outcome) => outcome,
+            // Closed before the turn's own error is propagated: a turn that died mid-stream
+            // has already written part of an answer, and left the line it was on open. Before
+            // the append too: a `TurnError` discards the turn's own messages, and a prompt
+            // persisted without its answer makes the next resume send two user turns in a row.
+            Err(error) => {
+                let _ = render.finish(&[]);
+                return Err(error.into());
+            }
         };
 
         // The outcome's figure, not the stream's: on `Discarded` that's the first turn's,
         // the wrap-up round's text not being an answer.
-        let answer = outcome.as_ref().map_or(Answer::Whole, |outcome| {
-            Answer::of(outcome.round_stop.as_ref())
-        });
-
-        // Closed before the turn's own error is propagated: a turn that died mid-stream
-        // has already written part of an answer, and left the line it was on open.
-        let code = render.finish(ending, answer);
-        // Before the append: a `TurnError` discards the turn's own messages, and a prompt
-        // persisted without its answer makes the next resume send two user turns in a row.
-        let outcome = outcome?;
+        let ending = ending::of(
+            outcome.stop,
+            unfinished,
+            Answer::of(outcome.round_stop.as_ref()),
+        );
+        let closed = render.finish(&ending.said);
 
         if let Some(session) = session {
-            let stop = stored_stop(outcome.stop, ending);
-            self.save(session, &asked, outcome, stop, &merged, &mut render)?;
+            self.save(
+                session,
+                &asked,
+                outcome,
+                ending.stored,
+                &merged,
+                &mut render,
+            )?;
         }
 
         // Last: an append still happens for a closed stdout — the transcript is the
         // conversation, not what reached the terminal.
-        code
+        closed.map(|()| ending.code)
     }
 
     /// Add the prompt and the finished turn to the transcript.
@@ -534,25 +534,6 @@ impl AgentRun {
             }
             Err(error) => Err(error.into()),
         }
-    }
-}
-
-/// How the transcript records a turn's end: `stop`, unless `ending` says the answer is the
-/// wrap-up round's, which `stop` cannot.
-///
-/// Exhaustive on both, with no `_` arm, so a new way to end, or a new kind of answer after
-/// the cap, has to be given a stop here rather than falling through to a whole turn.
-/// `Interrupted` cannot say who stopped the turn, so `tui`, which can, does not ask here.
-pub(super) fn stored_stop(stop: TurnStop, ending: Option<Unfinished>) -> StoredStop {
-    match (stop, ending) {
-        (TurnStop::Answered, Some(Unfinished::Summarised(_))) => StoredStop::Summarised,
-        (
-            TurnStop::Answered,
-            None | Some(Unfinished::CutShort(_) | Unfinished::Discarded(_) | Unfinished::Aborted),
-        ) => StoredStop::Answered,
-        (TurnStop::RoundLimit { .. }, _) => StoredStop::RoundLimit,
-        (TurnStop::GateAborted, _) => StoredStop::GateAborted,
-        (TurnStop::Interrupted, _) => StoredStop::Interrupted,
     }
 }
 

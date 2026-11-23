@@ -7,49 +7,13 @@
 use std::io::Write;
 use std::{io, mem};
 
-use sandbx_event::{AgentEvent, StopReason};
+use sandbx_event::AgentEvent;
 use sandbx_screen::Reasoning;
 use sandbx_text::{invisible, line_separator};
 
-use super::prompt::{APPROVE_CALL, Notes, account};
-use super::{Device, INCOMPLETE, NO_CONSENT};
+use super::Device;
+use super::prompt::{Notes, account};
 use crate::AgentError;
-
-/// Whether the answer was cut off at `--max-tokens`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Answer {
-    Whole,
-    Truncated,
-}
-
-impl Answer {
-    /// Read off the stop of the round carrying the reply, whatever ended the turn.
-    pub(super) fn of(round_stop: Option<&StopReason>) -> Self {
-        if matches!(round_stop, Some(StopReason::MaxTokens)) {
-            Self::Truncated
-        } else {
-            Self::Whole
-        }
-    }
-}
-
-/// How a turn ended short of a finished answer, which no event reports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Unfinished {
-    /// Nothing reached stdout after the cap, so it holds only what arrived before it.
-    CutShort(usize),
-
-    /// A tool-less round answered from what the turn had already found.
-    Summarised(usize),
-
-    /// A tool-less round wrote to stdout and then did not answer, so what *it* wrote is
-    /// neither an answer nor stored, unlike the turn before it. Streamed, so it cannot be
-    /// taken back.
-    Discarded(usize),
-
-    /// The gate lost the channel it decides on, so the turn ended where it was asked.
-    Aborted,
-}
 
 /// Writes a turn out, split so stdout can be piped to something that wants the answer
 /// alone.
@@ -196,20 +160,12 @@ impl<W: Write, E: Write> Render<W, E> {
         }
     }
 
-    /// Close the answer off, and report what the way it ended means for the exit code.
+    /// Close the answer off, and write `said`, the lines accounting for how it ended.
     ///
-    /// `ending` is `Some` for a turn that ran out of rounds or lost its operator;
-    /// `answer` is passed in rather than inferred here, so a caller with no renderer
-    /// sees the same figure. Both bounds are named when both were hit: a summary cut off
-    /// at `max_tokens` reads as a whole one otherwise, and which *bound* ended the turn
-    /// does not change the code — the three cap variants all exit [`INCOMPLETE`], the
-    /// tool work having been cut off whatever prose followed it. A lost operator is not a
-    /// bound and exits [`NO_CONSENT`].
-    pub(super) fn finish(
-        &mut self,
-        ending: Option<Unfinished>,
-        answer: Answer,
-    ) -> Result<i32, AgentError> {
+    /// Every line ahead of the stdout failure: the gate's own account of a call went to
+    /// the device that went away, so an early return for a broken pipe would take the
+    /// last record of it too.
+    pub(super) fn finish(&mut self, said: &[String]) -> Result<(), AgentError> {
         // Again here, for the round that never reached a `Stop` — a stream error or the
         // per-round timeout — whose report is the next thing on stderr.
         self.end_thinking_line();
@@ -218,57 +174,14 @@ impl<W: Write, E: Write> Render<W, E> {
             self.write(b"\n");
         }
 
-        // Before the stdout failure below rather than in the match with the others: the
-        // gate's own account of the call went to the device that went away, so an early
-        // return for a broken pipe would take the last record of it too.
-        if ending == Some(Unfinished::Aborted) {
-            self.note(&format!(
-                "sandbx: `{APPROVE_CALL}` could no longer ask on this terminal, \
-                 so the turn stopped where it was asked; that call and every call \
-                 behind it were refused, nothing after them ran, and no further \
-                 request was sent"
-            ));
+        for line in said {
+            self.note(line);
         }
 
-        if let Some(error) = self.failed.take() {
-            return Err(AgentError::Output(error));
+        match self.failed.take() {
+            Some(error) => Err(AgentError::Output(error)),
+            None => Ok(()),
         }
-
-        if answer == Answer::Truncated {
-            // Otherwise a truncated answer reads as a complete one.
-            self.note("sandbx: answer truncated at --max-tokens");
-        }
-
-        match ending {
-            Some(Unfinished::CutShort(rounds)) => self.note(&format!(
-                "sandbx: stopped after {rounds} rounds of tool calls; \
-                 raise --max-rounds to let the turn go further"
-            )),
-            Some(Unfinished::Summarised(rounds)) => self.note(&format!(
-                "sandbx: stopped after {rounds} rounds of tool calls; \
-                 the answer above summarises what was found, \
-                 and raising --max-rounds would let the turn go further"
-            )),
-            // The text is left where it is rather than disowned quietly: it was paid
-            // for, and the operator is the only one who can judge it.
-            Some(Unfinished::Discarded(rounds)) => self.note(&format!(
-                "sandbx: stopped after {rounds} rounds of tool calls; \
-                 nothing on stdout is an answer, and what followed the cap was \
-                 not saved either — raising --max-rounds would let the turn go further"
-            )),
-            // Written above, ahead of the stdout failure check.
-            Some(Unfinished::Aborted) | None => {}
-        }
-
-        // Ahead of `INCOMPLETE`: a turn can hit a bound and lose its operator, and losing
-        // the operator is the one a caller cannot find out any other way.
-        Ok(if ending == Some(Unfinished::Aborted) {
-            NO_CONSENT
-        } else if ending.is_some() || answer == Answer::Truncated {
-            INCOMPLETE
-        } else {
-            0
-        })
     }
 
     /// Flushed per call: a line-buffered stdout holds the answer back until the model

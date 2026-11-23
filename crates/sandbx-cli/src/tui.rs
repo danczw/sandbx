@@ -31,12 +31,10 @@ use sandbx_tools::{BuiltinTool, ExecutionContext};
 use sandbx_tui_input::{Answers, Keys, Stopped};
 use sandbx_turn::{Turn, TurnError, TurnOutcome, TurnStop, run_turn_until};
 
+use super::ending::{self, Answer, Ending, INCOMPLETE, NO_CONSENT, Unfinished, counted};
 use super::modal::{Modal, Shows};
 use super::prompt::{Notes, Stderr, account};
-use super::render::{Answer, Unfinished};
-use super::{
-    AgentRun, Approve, Device, INCOMPLETE, NO_CONSENT, gate, orientation, stored_stop, wrapup,
-};
+use super::{AgentRun, Approve, Device, gate, orientation, wrapup};
 use crate::AgentError;
 
 /// `sandbx tui [--allow-…] -- <prompt>`
@@ -363,37 +361,44 @@ struct Accounted {
 fn accounted(driven: Driven) -> Result<Accounted, TurnError> {
     Ok(match driven {
         Driven::Stopped(stopped, outcome) => {
-            let Ending { code, said } = stop(stopped, false);
+            let Ending { code, said, stored } = stop(stopped, false);
             Accounted {
                 code,
-                kept: Some((outcome, stored(stopped))),
+                kept: Some((outcome, stored)),
                 said,
             }
         }
         // The cap's own lines too, as the same turn stored under `--no-wrap-up` has them. The
         // stop's code stands: the cap's is 2, and a hangup's 3 must not be lowered by it.
         Driven::StoppedWrapping(stopped, first, rounds) => {
-            let unfinished = Some(Unfinished::CutShort(rounds));
-            let Ending { code, mut said } = stop(stopped, true);
-            said.extend(ending(&first, unfinished).said);
-            let stored = stored_stop(first.stop, unfinished);
+            let Ending { code, mut said, .. } = stop(stopped, true);
+            let capped = finished(&first, Some(Unfinished::CutShort(rounds)));
+            said.extend(capped.said);
             Accounted {
                 code,
-                kept: Some((first, stored)),
+                kept: Some((first, capped.stored)),
                 said,
             }
         }
         Driven::Finished(outcome, unfinished) => {
-            let Ending { code, said } = ending(&outcome, unfinished);
-            let stop = stored_stop(outcome.stop, unfinished);
+            let Ending { code, said, stored } = finished(&outcome, unfinished);
             Accounted {
                 code,
-                kept: Some((outcome, stop)),
+                kept: Some((outcome, stored)),
                 said,
             }
         }
         Driven::Failed(error) => return Err(error),
     })
+}
+
+/// What `outcome` came to, its reply's round read for the cut.
+fn finished(outcome: &TurnOutcome, unfinished: Option<Unfinished>) -> Ending {
+    ending::of(
+        outcome.stop,
+        unfinished,
+        Answer::of(outcome.round_stop.as_ref()),
+    )
 }
 
 /// How a stop is stored, a hangup apart from a keypress for [`stop`]'s reason.
@@ -440,14 +445,7 @@ fn stop(stopped: Stopped, wrapping: bool) -> Ending {
     Ending {
         code,
         said: vec![what],
-    }
-}
-
-/// `rounds` with its noun, so a cap of one does not read as "1 rounds".
-fn counted(rounds: usize) -> String {
-    match rounds {
-        1 => "1 round".to_string(),
-        n => format!("{n} rounds"),
+        stored: stored(stopped),
     }
 }
 
@@ -500,91 +498,6 @@ fn given_back(
     }
 
     Ok(code)
-}
-
-/// The code a finished turn exits with, and every line accounting for it.
-///
-/// `unfinished` is what became of a turn out of rounds, `None` for any other. Apart from
-/// the drawing so the code is an assertion rather than a screenshot: a `GateAborted`
-/// outcome holds its messages and its usage like an answered one, so nothing but the code
-/// tells a caller the operator went away. A list and not a line, because two bounds can cut
-/// one turn: `--max-rounds` ends the turn and `--max-tokens` ends a round inside it.
-fn ending(outcome: &TurnOutcome, unfinished: Option<Unfinished>) -> Ending {
-    // Not `account`: CodeQL's `rust/cleartext-logging` reads that name as a credential and
-    // flags every assert that prints this list (#461). Rename back once it stops matching.
-    let mut said = Vec::new();
-
-    // Every cap variant exits 2, as under `agent-run`: the tool work was cut off whatever
-    // prose followed it.
-    let code = match (outcome.stop, unfinished) {
-        // Ahead of the bounds, as `Render::finish` has it: one turn can hit `--max-rounds`
-        // and lose its operator, and only the second is unrecoverable.
-        (TurnStop::GateAborted, _) | (_, Some(Unfinished::Aborted)) => {
-            said.push(
-                "sandbx: the gate could no longer be asked, so the turn stopped where it \
-                 was asked. That call and every call behind it were refused, and nothing \
-                 further was sent"
-                    .to_string(),
-            );
-            NO_CONSENT
-        }
-        (_, Some(Unfinished::Summarised(rounds))) => {
-            said.push(format!(
-                "sandbx: the answer above summarises what {} of tool calls found; raising \
-                 `--max-rounds` would let the turn go further",
-                counted(rounds)
-            ));
-            INCOMPLETE
-        }
-        (_, Some(Unfinished::Discarded(rounds))) => {
-            said.push(format!(
-                "sandbx: out of rounds after {}; what the wrap-up round wrote is not an \
-                 answer, and is not stored. Raising `--max-rounds` would let the turn go further",
-                counted(rounds)
-            ));
-            INCOMPLETE
-        }
-        (_, Some(Unfinished::CutShort(rounds))) | (TurnStop::RoundLimit { rounds }, None) => {
-            said.push(format!(
-                "sandbx: out of rounds after {}, so the answer ends on tool work; raising \
-                 `--max-rounds` would let the turn go further",
-                counted(rounds)
-            ));
-            INCOMPLETE
-        }
-        // Not matched exhaustively: a stop this does not know about is an answer it has no
-        // account of. One documenting an exit code of its own needs an arm above, or `tui`
-        // contradicts a code `agent-run` already claims.
-        _ => 0,
-    };
-
-    // Read whatever the stop was: the round carrying the reply can be cut at `--max-tokens`
-    // on its own, which is an answer stopping mid-sentence and must not exit 0.
-    if Answer::of(outcome.round_stop.as_ref()) == Answer::Truncated {
-        said.push(
-            "sandbx: the answer stops at `--max-tokens`, mid-sentence and not at the \
-             model's own end of turn"
-                .to_string(),
-        );
-
-        // Never over a code already chosen: a turn can lose its operator and be cut in the
-        // same round, and the cut is the recoverable one.
-        return Ending {
-            code: if code == 0 { INCOMPLETE } else { code },
-            said,
-        };
-    }
-
-    Ending { code, said }
-}
-
-/// What [`ending`] makes of a finished turn.
-#[derive(Debug, PartialEq, Eq)]
-struct Ending {
-    code: i32,
-    /// Every line accounting for `code`, in the order they are drawn. Named as [`ending`]'s
-    /// local is, for the reason given there.
-    said: Vec<String>,
 }
 
 /// The screen, and the account noted on it.

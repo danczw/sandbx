@@ -1,7 +1,8 @@
+use super::super::ending::INCOMPLETE;
 use super::super::prompt::{APPROVE_CALL, Approve, Notes, Terminal};
 use super::super::render::tests::{stop, text};
 use super::super::{Device, orientation};
-use super::{AgentRun, Channels, INCOMPLETE, round_cap, session_id};
+use super::{AgentRun, Channels, round_cap, session_id};
 use crate::AgentError;
 use clap::Parser;
 use sandbx_core::SandboxPolicy;
