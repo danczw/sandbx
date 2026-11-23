@@ -10,8 +10,8 @@ use sandbx_session_message::{CompletedTurn, TurnStop};
 use sandbx_session_store::Session;
 
 use crate::{
-    Merged, SessionChoice, merge_user_runs, opened, request_history, request_usage,
-    stored_messages, stored_usage,
+    Merged, SessionChoice, merge_user_runs, open, request_history, request_usage, stored_messages,
+    stored_usage,
 };
 
 /// One run's conversation: the stored history, the prompt that joins it, and the session
@@ -60,7 +60,7 @@ impl Conversation {
         prompt: String,
         lookup: &impl Fn(&str) -> Option<OsString>,
     ) -> Result<Self, SessionError> {
-        let session = opened(choice, lookup)?;
+        let session = open(choice, lookup)?;
         let asked = RequestMessage {
             role: Role::User,
             content: vec![ContentBlock::Text { text: prompt }],

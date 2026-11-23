@@ -7,8 +7,8 @@
 //! [`Content`] variant is the same in the other direction. Free functions and not `From`
 //! impls, both types being foreign to this crate.
 //!
-//! A crate though `sandbx-cli` is its only dependent: [`request_usage`] and
-//! [`stored_usage`] are the only first-party code outside `sandbx-turn` that names
+//! A crate though `sandbx-cli` is its only dependent: [`Conversation::observed`] and
+//! [`Conversation::record`] are the only first-party code outside `sandbx-turn` that names
 //! `PromptUsage`, so folding them into `sandbx-cli` would give it a `sandbx-compact` edge
 //! for a type nothing else in it mentions (#351).
 
@@ -39,17 +39,8 @@ pub enum SessionChoice<'a> {
     Resume(&'a SessionId),
 }
 
-/// Open the session `choice` describes, reporting it on stderr.
-///
-/// # Errors
-///
-/// Every [`SessionError`] the store can raise.
-pub fn open(choice: SessionChoice<'_>) -> Result<Option<Session>, SessionError> {
-    opened(choice, &|name| std::env::var_os(name))
-}
-
 /// Open the session `choice` describes under `lookup`'s state home, reporting it on stderr.
-fn opened(
+fn open(
     choice: SessionChoice<'_>,
     lookup: &impl Fn(&str) -> Option<OsString>,
 ) -> Result<Option<Session>, SessionError> {
@@ -130,7 +121,7 @@ fn resume_note(pending: bool, stop: Option<TurnStop>) -> Option<&'static str> {
 
 /// A stored conversation, in the shape a request carries it.
 #[must_use]
-pub fn request_history(stored: &[Message]) -> Vec<RequestMessage> {
+fn request_history(stored: &[Message]) -> Vec<RequestMessage> {
     stored
         .iter()
         .map(|message| RequestMessage {
@@ -149,13 +140,13 @@ pub fn request_history(stored: &[Message]) -> Vec<RequestMessage> {
 /// Two index spaces meet here: the transcript stores every message separately, the request
 /// carries each run of user messages as one. `withheld` is an *index*, so a figure
 /// crossing between them is translated in whichever direction it is going.
-pub struct Merged {
+struct Merged {
     /// What the request carries, each run of user messages collapsed into one.
-    pub history: Vec<RequestMessage>,
+    history: Vec<RequestMessage>,
 
     /// The compaction floor in [`Merged::history`]'s index space, which is what a `Turn`
     /// takes.
-    pub withheld: usize,
+    withheld: usize,
 
     /// Where a cut onto each merged message lands in the unmerged history: its first part
     /// that is not all results, `sandbx_compact::window` shedding those with their calls.
@@ -172,7 +163,7 @@ impl Merged {
     /// names one of the turn's own messages, which the merge never saw and append does not
     /// move.
     #[must_use]
-    pub fn unmerged(&self, withheld: usize) -> usize {
+    fn unmerged(&self, withheld: usize) -> usize {
         match self.opens.get(withheld) {
             // No call withheld, so no result shed.
             Some(_) if withheld == 0 => 0,
@@ -190,7 +181,7 @@ impl Merged {
 /// transcript's index space and comes back in the request's; one inside a run names the
 /// message the run became.
 #[must_use]
-pub fn merge_user_runs(history: Vec<RequestMessage>, withheld: usize) -> Merged {
+fn merge_user_runs(history: Vec<RequestMessage>, withheld: usize) -> Merged {
     let length = history.len();
     let mut merged: Vec<RequestMessage> = Vec::with_capacity(length);
     let mut opens: Vec<usize> = Vec::with_capacity(length);
@@ -255,7 +246,7 @@ fn request_block(stored: &Content) -> ContentBlock {
 
 /// A turn the loop produced, in the shape the transcript stores it.
 #[must_use]
-pub fn stored_messages(sent: &[RequestMessage]) -> Vec<Message> {
+fn stored_messages(sent: &[RequestMessage]) -> Vec<Message> {
     sent.iter()
         .map(|message| Message {
             role: match message.role {
@@ -298,7 +289,7 @@ fn stored_block(sent: &ContentBlock) -> Option<Content> {
 
 /// What a resumed session last measured, in the shape the turn loop takes it.
 #[must_use]
-pub fn request_usage(stored: Usage) -> PromptUsage {
+fn request_usage(stored: Usage) -> PromptUsage {
     PromptUsage {
         input_tokens: stored.input_tokens,
         cache_read_tokens: stored.cache_read_input_tokens,
@@ -308,7 +299,7 @@ pub fn request_usage(stored: Usage) -> PromptUsage {
 
 /// What a turn measured, in the shape the transcript stores it.
 #[must_use]
-pub fn stored_usage(observed: PromptUsage) -> Usage {
+fn stored_usage(observed: PromptUsage) -> Usage {
     Usage {
         input_tokens: observed.input_tokens,
         cache_read_input_tokens: observed.cache_read_tokens,
