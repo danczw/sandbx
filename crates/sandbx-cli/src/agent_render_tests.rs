@@ -63,7 +63,6 @@ fn rendered(events: &[AgentEvent]) -> Rendered {
     }
 }
 
-/// What [`rendered`] got back.
 struct Rendered {
     written: String,
     closed: Result<(), AgentError>,
